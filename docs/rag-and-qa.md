@@ -40,7 +40,7 @@ Triggered asynchronously as new `Utterance` rows are written (does not block the
 
 ## Failure handling
 
-An empty vector store, an embedding-model load failure, or a `sqlite-vec` query error are all returned as `QAQuery.status = "failed"` — distinctly different from `status = "no_grounding"` (which means retrieval worked but found nothing relevant). The dashboard must be able to show the difference between "the system doesn't know" and "the system is broken" (`architecture.md` failure-boundaries table).
+A vector store or embedding model that cannot be used (a load failure, a `sqlite-vec` query error, an index in a failed state) is returned as `QAQuery.status = "failed"` — distinctly different from `status = "no_grounding"` (which means retrieval worked but found nothing relevant). A meeting with nothing indexed yet, on a healthy index, is `no_grounding`, not `failed` (ADR-15, proposed; `api.md` gap X5). Both are HTTP 200 results with the persisted `QAQuery`, never HTTP errors (`api.md`). The dashboard must be able to show the difference between "the system doesn't know" and "the system is broken" (`architecture.md` failure-boundaries table).
 
 ## Explicit invocation — restated
 

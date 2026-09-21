@@ -197,3 +197,86 @@ Each entry: decision, rationale, alternatives considered, tradeoffs, status. Rea
 **Tradeoffs:** A small amount of indirection for a meaningful amount of flexibility. No significant downside at this scale.
 
 **Status:** Locked.
+
+---
+
+## Contract decisions made by CON-02
+
+ADR-15 to ADR-18 finalize the API and event contracts (`api.md`, `transport.md`, `data-model.md`). They are **Proposed**: they follow the recommended resolutions in the CON-02 work order, they are already written into those documents so that CON-03 to CON-11 can build on them, and each needs project-lead confirmation before it is treated as locked. If one is rejected, the ADR and the documents it names are amended together. Gap numbers (G1 to G20, X1 to X6) refer to the ledger in `logs/contracts.md`.
+
+---
+
+### ADR-15: Meeting access, device identity, and Q&A result semantics
+
+**Decision:**
+- **Meeting ID (G1).** The meeting UUID is the stored key, the URL component, and the sole access boundary (ADR-10). No short join code is added. The join URL is `https://<lan-address>:<port>/join/<meeting_id>` and the QR encodes only that URL.
+- **Impersonation (G5).** `device_id` is a bearer identifier with no secret. Any LAN client that learns it can `join` as that device and displace its connection. This limitation is accepted, not solved.
+- **Q&A outcomes (G8).** `POST …/qa` returns HTTP 200 with the persisted `QAQuery` for `answered`, `no_grounding` and `failed`. The error envelope is only for request-level errors.
+- **Q&A history after reload (G18).** No route lists past `QAQuery` rows in the MVP; a reloaded dashboard does not redisplay earlier answers.
+- **Empty index (X5).** A meeting with no indexed chunks returns `no_grounding` when the index is healthy and `failed` when the embedding model or vector store cannot be used.
+
+**Rationale:** A UUID in the URL is already unguessable and needs no new field; a QR of about 70 characters is easily scanned. A per-device secret would need a stored hash (a schema change) or in-memory tokens that break reconnection after a server restart, and the threat it addresses (someone in the same room deliberately hijacking a phone) is outside this project's model: no accounts, one room, correctable labels. The hijack stays visible after the fact through `device_reconnected` audit events and the reconnect counter. Returning `no_grounding` and `failed` as results keeps "the system does not know" and "the system is broken" distinguishable in one code path (`rag-and-qa.md`), which the honesty requirement depends on. Answers are stored, so omitting the list route loses only convenience.
+
+**Alternatives considered:** A short join code (rejected: a second identifier and lookup for a marginal QR-density gain); a per-device secret (deferred: revisit if the demo environment has untrusted participants); HTTP error statuses for `no_grounding`/`failed` (rejected: conflates a result with a request fault and invites string matching); a `GET …/qa` list route (deferred: cheap to add later without changing any shape).
+
+**Tradeoffs:** A malicious LAN participant can hijack a device silently in the moment; a reload mid-demo loses the on-screen Q&A history. The empty-index rule refines `rag-and-qa.md`, which listed "an empty vector store" under `failed`; it is read here as a store that cannot be queried, not an empty meeting.
+
+**Status:** Proposed.
+
+---
+
+### ADR-16: Signaling contract
+
+**Decision:**
+- **Registration order (G3).** REST `POST …/devices` registers the device and creates its rows; the WebSocket `join` only attaches a connection to a registered device and is rejected otherwise.
+- **Device ID (G4).** The phone generates a UUID `device_id` and persists it in `localStorage` under `convene:<meeting_id>:device_id`; the server issues `participant_id`.
+- **Messages (G6).** Client to server: `join`, `offer` (optionally `ice_restart`), `leave`. Server to client: `joined`, `answer`, `error`, `meeting_ended`. There is no separate `reconnect` message and no `ice-candidate` message: one `join` serves first attach and reconnect (the server knows which), and ICE is non-trickle.
+- **Casing.** All field names are `snake_case`, replacing the camelCase examples in the earlier `transport.md`.
+- **Errors.** A malformed or invalid message gets an `error` reply, and the offending device's socket and peer are reset; other devices are untouched.
+- **Lifetimes.** The signaling socket and the peer connection have separate lifetimes. Closing the socket alone does not change device status or close the peer; device status follows the peer connection state.
+
+**Rationale:** Registration over REST gives one place that creates identity and lets the dashboard show a device before it connects. One `join` removes the case where the client and server disagree about whether a connection is a reconnect. Non-trickle ICE is what the DT-17 prototype used, needs no candidate plumbing, and is sufficient with no ICE servers (only host candidates). `localStorage` lets a closed and reopened tab resume the same identity, which `sessionStorage` (the prototype's choice) does not. One casing across REST, WebSocket, and the data model removes a class of mapping bugs. Keeping the peer alive across a socket loss is what makes the documented "ICE restart first" recovery possible.
+
+**Alternatives considered:** WebSocket `join` creating the device (rejected: two registration paths); separate `join` and `reconnect` messages (rejected: redundant, and the server must not trust the client's claim); trickle ICE (deferred: more messages and ordering cases for no benefit on one LAN); keeping camelCase for signaling (rejected: two casings in one API); tearing the peer down on socket close as the prototype did (rejected: prevents ICE restart and turns a brief signaling drop into an audio drop).
+
+**Tradeoffs:** The peer-lifetime change departs from the prototype and is unproven on real phones until CON-04 re-runs checks R3 and R4 (`logs/transport.md`). Non-trickle relies on the phone waiting for ICE gathering to finish, which the prototype capped at a few seconds. A fatal error resets a device's connection, so a spurious malformed message costs that device a reconnect.
+
+**Status:** Proposed.
+
+---
+
+### ADR-17: Correction semantics, and server-owned confidence
+
+**Decision:**
+- **Body (G10).** A correction supplies exactly one of `participant_id` (any participant of the same meeting, including on another device) or `display_name` (reuse the unique participant with that exact name in the meeting, else create one on the utterance's device; more than one match is a conflict).
+- **First original wins.** `Utterance.original_participant_id` keeps the participant from the first correction only. Each correction's audit payload records the full "from" state (participant, method, confidence, prior `corrected`) and the "to" state.
+- **Confirm.** Correcting to the participant already assigned is allowed and means confirm: it sets `manual_correction` and confidence 1.0 and records `changed: false`. A repeat that changes nothing writes nothing.
+- **Threshold (G20).** The low-confidence threshold is server configuration. The server sends `low_confidence` as a boolean (true also for `generic_unresolved`); clients never compare confidence numbers.
+
+**Rationale:** Naming a generic speaker needs a target that may not be a participant yet, hence `display_name`. Keeping only the first original on the row and everything else in the audit stream avoids a schema change while preserving the complete history (ADR-04, ADR-13). Confirm is the fastest way to clear a low-confidence marker that turned out to be right, and it is still recorded. A single server-side threshold means the dashboard, summary, and export cannot disagree about what "low confidence" means.
+
+**Alternatives considered:** Rejecting a same-participant correction (rejected: it forces a needless reassign-and-back to clear a marker); storing every prior state on the utterance row (rejected: schema growth duplicating the audit stream); a client-side threshold (rejected: business logic in the frontend, `frontend.md`).
+
+**Tradeoffs:** `corrected = 1` with a null `original_participant_id` means "started unresolved", which readers must know. A confirmation is recorded as a correction, which slightly inflates correction counts.
+
+**Status:** Proposed.
+
+---
+
+### ADR-18: Derived state, resynchronization, and schema additions
+
+**Decision:**
+- **Ordering and resync (G9, G16).** `AuditEvent` gains an integer `seq`, unique and strictly increasing, assigned by the single `emit` path in the same transaction. Every durable dashboard event carries the `seq` of its audit event; snapshots carry `as_of_seq`. Clients subscribe, buffer, fetch, and discard buffered events at or below the snapshot's `as_of_seq`. Transcript reads accept `after_seq`.
+- **Gauges versus audit (G12).** Durable state (device status, reconnect counts, meeting status, staleness) is derived from the audit stream; last-audio-age, audio duration, STT backlog and drops are live in-memory gauges, never persisted and never used to answer what happened.
+- **Staleness.** A summary or export is stale when a newer `utterance_created` or `utterance_corrected` exists than the `input_as_of_seq` in its own audit event. No stored flag.
+- **Failure state (G13, G14).** `Summary` and `Export` gain `status` (`pending`, `ready`, `failed`) and a nullable `error_message`; `summary_text` and `storage_path` become nullable. A failed attempt never replaces the current `ready` result.
+- **Flows (G15).** `POST …/end` returns 202 (200 if already ended) with `summary_pending`; `summarize` creates a new `Summary`; export is rendered automatically after a successful summary and re-rendered on demand when stale, and never served stale silently.
+- **Audit catalog (G11) and events (G7).** The complete audit catalog is in `data-model.md`; the dashboard gains `meeting_status`, `device_status`, `device_gauges`, `utterance_updated`, `summary_failed`, `export_ready`, `export_failed`, and `error`.
+
+**Rationale:** A resync needs a total order that survives restarts; the audit stream already is the ordered record, so its position is the natural cursor. Deriving staleness from the same stream means nothing can disagree with it (ADR-13). The failure states are already required by `architecture.md` ("marked failed") but had nowhere to be stored.
+
+**Alternatives considered:** A per-meeting in-memory counter (rejected: resets on restart, breaking resync); client re-fetch on every event (rejected: wasteful and racy); stored `stale` flags (rejected: can drift from the stream); a separate failure table (rejected: a status column is simpler).
+
+**Tradeoffs:** Three schema additions (`AuditEvent.seq`, `Summary` and `Export` status and error). `seq` is not contiguous per meeting, so clients must not treat gaps as loss. Ephemeral events cannot be replayed after a reconnect; the next snapshot supplies current values instead.
+
+**Status:** Proposed.
