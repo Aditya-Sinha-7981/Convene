@@ -1,0 +1,42 @@
+[
+  {
+    "file": "ship_beta.wav",
+    "voice": "Samantha",
+    "text": "We should ship the beta on Friday."
+  },
+  {
+    "file": "release_notes.wav",
+    "voice": "Daniel",
+    "text": "I can take the release notes and send them tomorrow."
+  },
+  {
+    "file": "budget.wav",
+    "voice": "Samantha",
+    "text": "The budget for the next quarter is very tight."
+  },
+  {
+    "file": "call_client.wav",
+    "voice": "Daniel",
+    "text": "Please remind me to call the client on Monday morning."
+  },
+  {
+    "file": "design_review.wav",
+    "voice": "Samantha",
+    "text": "Let's move the design review to Thursday afternoon."
+  },
+  {
+    "file": "alphabet.wav",
+    "voice": "Daniel",
+    "text": "Alpha, bravo, charlie, delta, echo."
+  },
+  {
+    "file": "interviews.wav",
+    "voice": "Samantha",
+    "text": "Priya will handle the customer interviews this week."
+  },
+  {
+    "file": "objection.wav",
+    "voice": "Daniel",
+    "text": "Does anyone object to the new schedule?"
+  }
+]

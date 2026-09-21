@@ -76,7 +76,7 @@ The core transcript record.
 | text | TEXT | |
 | t_start | TEXT (ISO 8601) | |
 | t_end | TEXT (ISO 8601) | |
-| stt_confidence | REAL | model-reported, 0–1 |
+| stt_confidence | REAL | 0–1. **An uncalibrated score, not a probability**: for the `mlx` runtime it is `exp(duration-weighted mean of the segments' avg_logprob) × (1 − mean no_speech_prob)`, clamped (`stt-pipeline.md`). It ranks how certain the model was of the tokens it chose; it does **not** tell speech from non-speech (measured: Whisper returns a stock phrase on silence at 0.6–0.8), which is the VAD gate's job |
 | attribution_method | TEXT | `device` \| `enrolled` \| `generic_unresolved` \| `manual_correction` |
 | attribution_confidence | REAL | 0–1; fixed high for `device`, similarity-derived for `enrolled`, low for `generic_unresolved`, 1.0 for `manual_correction` |
 | corrected | INTEGER (bool) | default 0 |
@@ -162,7 +162,7 @@ Chunked, embedded units for RAG. One chunk covers a contiguous run of Utterances
 
 ### ModelExecution
 
-One row per model invocation, for observability and post-hoc debugging of latency/quality issues.
+One row per model invocation, for observability and post-hoc debugging of latency/quality issues. Written for every STT invocation, including ones that failed (the matching `model_error` audit event says which); windows the VAD gate or the overload policy dropped never reached the model and have no row.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -171,7 +171,7 @@ One row per model invocation, for observability and post-hoc debugging of latenc
 | model_identifier | TEXT | e.g. `mlx-community/whisper-large-v3-turbo` |
 | runtime | TEXT | `mlx` \| `groq` \| `gemini` |
 | duration_ms | INTEGER | |
-| related_id | TEXT, nullable | utterance_id, query_id, or summary_id depending on caller |
+| related_id | TEXT, nullable | utterance_id, query_id, or summary_id depending on caller. For `stt` it is a window reference, `<device_id>/<window_id>`, because a transcribed window exists before, and often without, an `Utterance` |
 | created_at | TEXT (ISO 8601) | |
 
 ### AuditEvent
@@ -263,7 +263,7 @@ Payload value sets:
 Which values are derived from the audit stream and which are live gauges (resolving the tension between ADR-13 and values that change every second):
 
 - **Derived from `AuditEvent` / `ConnectionEvent` (durable, replayable):** device `status`, `reconnect_count`, every connection change, meeting `status`, utterance creation and correction, Q&A results, summary and export outcomes, and **staleness**. A summary is *stale* when the latest `utterance_corrected` or `utterance_created` audit event for the meeting has `seq` greater than the current summary's `summary_generated.input_as_of_seq`. An export is stale when its `export_created.input_as_of_seq` is below the same high-water mark or below a newer current summary's. No stored flag exists; nothing can disagree with the stream.
-- **Live gauges (ephemeral, never persisted, never used to answer "what happened"):** `last_audio_age_ms`, `audio_duration_s`, `stt_backlog`, `stt_dropped_windows`. They are computed in memory, served in `GET /api/meetings/{meeting_id}` and the `device_gauges` dashboard event (`api.md`), and reset by a server restart. A gauge never contradicts the audit stream because it describes the present instant, not history; the audit-visible consequences (a drop, a reconnect, a resumed stream) are separate events.
+- **Live gauges (ephemeral, never persisted, never used to answer "what happened"):** `last_audio_age_ms`, `audio_duration_s`, `stt_backlog`, `stt_dropped_windows`. `stt_backlog` is the number of the device's windows queued for or being transcribed; `stt_dropped_windows` is how many the overload policy has dropped since the server started (each drop is also an audit event). They are computed in memory, served in `GET /api/meetings/{meeting_id}` and the `device_gauges` dashboard event (`api.md`), and reset by a server restart. A gauge never contradicts the audit stream because it describes the present instant, not history; the audit-visible consequences (a drop, a reconnect, a resumed stream) are separate events.
 
 ## Retention
 

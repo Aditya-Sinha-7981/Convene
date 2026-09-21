@@ -1,6 +1,8 @@
 # Testing
 
-This extends the original DT-17 transport test plan (`transport.md`'s inherited layer already has its own validated test sequence) with the layers Convene adds on top. Run transport tests first — a failure there invalidates everything above it, same principle as the original plan's "failed early check means later checks cannot validate yet" rule.
+This extends the original DT-17 transport test plan (`transport.md`'s inherited layer already has its own validated test sequence) with the layers Convene adds on top. The step-by-step checklist for what needs real phones, Wi-Fi and speech (everything built so far) is [manual-tests.md](manual-tests.md).
+
+Run transport tests first — a failure there invalidates everything above it, same principle as the original plan's "failed early check means later checks cannot validate yet" rule.
 
 ## New failure classification: F6 — Misattribution
 
@@ -12,6 +14,13 @@ Added alongside the original plan's F1 (browser), F2 (secure-context), F3 (Wi-Fi
 - F6c: enrollment failure cascading into unnecessary generic-label attribution
 
 Do not "fix" an F6 failure by adding unrelated infrastructure — identify which subclass it is first (`speaker-attribution.md`).
+
+## Test: STT pipeline (CON-05)
+
+- Default run (`pytest -m "not model"`, no weights): VAD, windowing and time base, resampling, the scheduler (fairness, overload, isolation, drain), the priority hook, the adapter contract and confidence mapping, offline model resolution, and synthetic phones through the real server with a fake model (`tests/test_vad.py`, `test_windowing.py`, `test_scheduler.py`, `test_stt_adapter.py`, `test_stt_integration.py`).
+- Real model (`pytest tests/test_stt_adapter.py -m model`, reference laptop, weights provisioned): synthetic speech fixtures transcribed within a recorded error rate, safe from worker threads, resolved and run **with any non-loopback socket or DNS lookup raising**, and two devices through the whole pipeline with each transcript staying with its own device.
+- Measurements (`scripts/measure_stt.py models|pipeline`): model comparison and latency/queue behavior at 1, 2 and 5 synthetic devices. Recorded in `logs/stt.md`.
+- None of these establish accuracy on real phone audio, cross-device bleed, or behavior with real phones. Synthetic speech is clean text-to-speech; real-phone STT and bleed checks are still required (see the single-device and cross-device tests below).
 
 ## Test: single-device attribution baseline
 

@@ -18,6 +18,6 @@ The operational instructions for the current prototype are in the [root README](
 | Audio and speaker identity | [Transport](transport.md), [STT pipeline](stt-pipeline.md), [speaker attribution](speaker-attribution.md) |
 | Models and meeting intelligence | [Models](models.md), [RAG and Q&A](rag-and-qa.md), [summarization](summarization.md) |
 | UI and output | [Frontend](frontend.md), [export](export.md) |
-| Running and verifying | [Deployment](deployment.md), [testing](testing.md), [demo](demo.md) |
+| Running and verifying | [Deployment](deployment.md), [testing](testing.md), [manual tests](manual-tests.md), [demo](demo.md) |
 
 When a plan and a topic contract differ, follow the topic contract and update the plan. For rationale, consult `decisions.md`.

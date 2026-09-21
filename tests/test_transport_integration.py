@@ -626,7 +626,7 @@ def test_startup_fails_loudly_when_the_certificate_lacks_the_advertised_address(
     cert, key = make_certificate(tmp_path, ips=["192.168.1.5"], dns=["localhost"])
     monkeypatch.setattr(app_module.uvicorn, "run", lambda *a, **k: pytest.fail("the server must not start"))
     with pytest.raises(SystemExit) as caught:
-        app_module.main(["--cert", str(cert), "--key", str(key), "--advertise-ip", "192.168.50.10"])
+        app_module.main(["--cert", str(cert), "--key", str(key), "--advertise-ip", "192.168.50.10", "--no-stt"])
     message = str(caught.value)
     assert "192.168.50.10" in message and "192.168.1.5" in message and "localhost" in message
     assert "startup failed" in message
@@ -636,17 +636,17 @@ def test_startup_reports_a_bad_advertise_ip_or_config_and_no_lan_address(tmp_pat
     cert, key = make_certificate(tmp_path, ips=["192.168.50.10"])
     monkeypatch.setattr(app_module.uvicorn, "run", lambda *a, **k: pytest.fail("the server must not start"))
     with pytest.raises(SystemExit, match="startup failed"):
-        app_module.main(["--cert", str(cert), "--key", str(key), "--advertise-ip", "999.1.1.1"])
+        app_module.main(["--cert", str(cert), "--key", str(key), "--advertise-ip", "999.1.1.1", "--no-stt"])
     bad_config = tmp_path / "bad.toml"
     bad_config.write_text("[paths")
     with pytest.raises(SystemExit, match="startup failed"):
         app_module.main(["--cert", str(cert), "--key", str(key), "--advertise-ip", "192.168.50.10",
-                         "--config", str(bad_config)])
+                         "--config", str(bad_config), "--no-stt"])
 
     started = {}
     monkeypatch.setattr(app_module.uvicorn, "run", lambda app, **kw: started.update(app=app, **kw))
     monkeypatch.setattr(app_module.network, "detect_lan_address", lambda advertise=None: None)
-    app_module.main(["--cert", str(cert), "--key", str(key)])  # no address: warns and still starts
+    app_module.main(["--cert", str(cert), "--key", str(key), "--no-stt"])  # no address: warns and still starts
     assert "No LAN address detected" in capsys.readouterr().err and started["host"] == "0.0.0.0"
 
 
@@ -655,7 +655,7 @@ def test_main_binds_all_interfaces_over_tls_with_the_documented_options(tmp_path
     started = {}
     monkeypatch.setattr(app_module.uvicorn, "run", lambda app, **kw: started.update(app=app, **kw))
     app_module.main(["--cert", str(cert), "--key", str(key), "--port", "9443", "--advertise-ip", "192.168.50.10",
-                     "--config", str(tmp_path / "absent.toml")])
+                     "--config", str(tmp_path / "absent.toml"), "--no-stt"])
     assert (started["host"], started["port"]) == ("0.0.0.0", 9443)
     assert started["ssl_certfile"] == str(cert) and started["ssl_keyfile"] == str(key)
     assert started["ws_ping_interval"] == 15 and started["ws_max_size"] == TransportConfig().ws_max_size
@@ -679,3 +679,39 @@ async def test_diagnostics_route_reports_per_device_counters(server, make_phone)
         (row,) = await response.json()
     assert row["device_id"] == phone.device_id and row["state"] == "connected" and row["audio_received"] is True
     assert {"frames", "dropped_frames", "sink_errors", "audio_gaps"} <= set(row) and GAUGE_KEYS <= set(row)
+
+
+def test_startup_without_a_pinned_or_cached_model_fails_loudly_and_never_serves(tmp_path, monkeypatch):
+    cert, key = make_certificate(tmp_path, ips=["192.168.50.10"])
+    monkeypatch.setattr(app_module.uvicorn, "run", lambda *a, **k: pytest.fail("the server must not start"))
+    with pytest.raises(SystemExit) as unpinned:  # no model pinned in the (absent) config
+        app_module.main(["--cert", str(cert), "--key", str(key), "--advertise-ip", "192.168.50.10",
+                         "--config", str(tmp_path / "absent.toml")])
+    assert "startup failed" in str(unpinned.value) and "no STT model is pinned" in str(unpinned.value)
+
+    config = tmp_path / "pinned.toml"  # pinned, but nothing is in the local cache
+    config.write_text('[models.stt]\nmodel = "nobody/never-downloaded-model"\nrevision = "0000000000000000000000000000000000000000"\n')
+    import huggingface_hub.constants as hf_constants  # its cache path is read once at import: patch the constant
+    monkeypatch.setattr(hf_constants, "HF_HUB_CACHE", str(tmp_path / "empty-hf-cache"))
+    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+    with pytest.raises(SystemExit) as missing:
+        app_module.main(["--cert", str(cert), "--key", str(key), "--advertise-ip", "192.168.50.10", "--config", str(config)])
+    assert "not in the local cache" in str(missing.value) and "provision_models.py" in str(missing.value)
+
+
+def test_no_stt_flag_skips_the_model_and_a_loaded_adapter_is_handed_to_the_app(tmp_path, monkeypatch, capsys):
+    from server.pipeline.adapter import FakeAdapter
+    cert, key = make_certificate(tmp_path, ips=["192.168.50.10"])
+    started = {}
+    monkeypatch.setattr(app_module.uvicorn, "run", lambda app, **kw: started.update(app=app, **kw))
+    base = ["--cert", str(cert), "--key", str(key), "--advertise-ip", "192.168.50.10", "--config", str(tmp_path / "absent.toml")]
+    app_module.main([*base, "--no-stt"])
+    assert started["app"].state.runtime.stt_adapter is None and "STT disabled" in capsys.readouterr().out
+
+    fake = FakeAdapter()
+    fake.load_seconds = 1.5
+    monkeypatch.setattr(app_module, "build_adapter", lambda config: fake)
+    app_module.main(base)
+    out = capsys.readouterr().out
+    assert fake.loaded is True and "STT model ready (1.5 s)" in out
+    assert started["app"].state.runtime.stt_adapter is fake and started["app"].state.runtime._stt_loaded is True

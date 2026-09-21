@@ -43,7 +43,7 @@ def test_a_partial_file_keeps_the_other_defaults(tmp_path):
 
 def test_other_sections_are_ignored_so_later_tasks_can_add_theirs(tmp_path):
     config = tmp_path / "c.toml"
-    config.write_text('[models]\nstt = "whatever"\n\n[paths]\ndatabase = "d.db"\n')
+    config.write_text('[retrieval]\ntop_k = 5\n\n[paths]\ndatabase = "d.db"\n')
     assert load_settings(config, root=tmp_path).database_path == tmp_path / "d.db"
 
 
@@ -63,3 +63,43 @@ def test_malformed_or_invalid_files_fail_loudly(tmp_path, text, message):
 def test_data_directory_is_git_ignored():
     ignore = (ROOT / ".gitignore").read_text().splitlines()
     assert "/data/" in ignore
+
+
+def test_stt_and_pipeline_sections_load_with_types_checked(tmp_path):
+    from server.config import PipelineConfig, SttModelConfig
+    config = tmp_path / "c.toml"
+    config.write_text('[models.stt]\nruntime = "mlx"\nmodel = "org/some-model"\nrevision = "abc123"\n'
+                      'no_speech_threshold = 1\n\n'
+                      '[pipeline]\nwindow_ms = 2000\nvad_margin_db = 12\nworkers = 2\nhallucination_blocklist = ["thank you."]\n')
+    settings = load_settings(config, root=tmp_path)
+    assert (settings.stt.model, settings.stt.revision, settings.stt.no_speech_threshold) == ("org/some-model", "abc123", 1.0)
+    assert settings.pipeline.hallucination_blocklist == ("thank you.",)
+    assert (settings.pipeline.window_ms, settings.pipeline.vad_margin_db, settings.pipeline.workers) == (2000, 12.0, 2)
+    assert settings.pipeline.queue_max == PipelineConfig().queue_max and SttModelConfig().language == "en"
+
+
+@pytest.mark.parametrize("text,message", [
+    ('[pipeline]\nwindw_ms = 1000', "unknown keys"),
+    ('[pipeline]\nwindow_ms = "1000"', "window_ms must be int"),
+    ('[pipeline]\nworkers = true', "workers must be int"),
+    ('[models.stt]\nmodel = 5', "model must be str"),
+    ('[pipeline]\nhallucination_blocklist = "x"', "hallucination_blocklist"),
+    ('pipeline = 3', "must be a table"),
+    ('[pipeline]\nsegmentation = "words"', "segmentation"),
+    ('[pipeline]\nsegment_min_ms = 9000\nsegment_max_ms = 8000', "segment_min_ms"),
+    ('[pipeline]\nsegment_end_silence_ms = 0', "segment_end_silence_ms"),
+    ('[pipeline]\nsegment_max_ms = "8000"', "segment_max_ms must be int"),
+])
+def test_bad_stt_or_pipeline_values_fail_loudly(tmp_path, text, message):
+    config = tmp_path / "bad.toml"
+    config.write_text(text)
+    with pytest.raises(ConfigError, match=message):
+        load_settings(config, root=tmp_path)
+
+
+def test_segments_are_the_default_and_fixed_windows_stay_selectable(tmp_path):
+    assert load_settings(tmp_path / "missing.toml", root=tmp_path).pipeline.segmentation == "segments"
+    config = tmp_path / "c.toml"
+    config.write_text('[pipeline]\nsegmentation = "fixed"\nsegment_max_ms = 5000\nlog_transcripts = false')
+    pipeline = load_settings(config, root=tmp_path).pipeline
+    assert (pipeline.segmentation, pipeline.segment_max_ms, pipeline.log_transcripts) == ("fixed", 5000, False)

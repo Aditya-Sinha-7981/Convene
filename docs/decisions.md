@@ -280,3 +280,20 @@ ADR-15 to ADR-18 finalize the API and event contracts (`api.md`, `transport.md`,
 **Tradeoffs:** Three schema additions (`AuditEvent.seq`, `Summary` and `Export` status and error). `seq` is not contiguous per meeting, so clients must not treat gaps as loss. Ephemeral events cannot be replayed after a reconnect; the next snapshot supplies current values instead.
 
 **Status:** Proposed.
+
+
+---
+
+## Decision made during CON-05
+
+### ADR-19: STT input is VAD-bounded speech segments, not ~1 s windows
+
+**Decision:** Each device's audio is sent to STT as one *segment* per stretch of speech: it starts when the device's VAD hears speech (with a short pre-roll), ends after a pause (600 ms by default) with a short tail, and is capped at 8 s, where it is cut at the quietest nearby frame. A voiced burst under 300 ms is discarded. Fixed windows (about 1 s, the earlier design in `stt-pipeline.md`) remain available as `[pipeline] segmentation = "fixed"`.
+
+**Rationale:** Measured on the reference laptop with `whisper-large-v3-turbo`, one model call costs about 0.5 s whether the audio is 1 s or 8 s, so one worker sustains only about 2 calls per second. Fixed 1 s windows therefore overloaded the model at five phones (55% of windows dropped, about 4 s of lag when all five talked) and cut words in half (word error rate 0.156 to 0.219 on realistic streams, with fragments such as "very tough. height."). Segments sent 3 to 6 times fewer calls, produced one line per sentence, and had word error rate 0.000 on the same streams. One line per stretch of speech is also the right granularity for `Utterance` rows, live Q&A citations and the exported minutes.
+
+**Alternatives considered:** longer fixed windows (3 s: word error rate 0.031 to 0.078, fits five phones, but still cuts words at arbitrary points and shows fragments; kept as the fallback); a smaller model (`whisper-small` about 5 calls/s, `base` about 25: keeps 1 s windows but trades accuracy that clean synthetic speech cannot show, and does not fix mid-word cuts); more workers (inference is GPU-bound: 4 workers gave 2.06 calls/s against 1.94 for one).
+
+**Tradeoffs:** a line appears about 1.2 s after the speaker stops (pause detection plus the model call) instead of streaming every second; correctness now depends on the energy VAD detecting pauses well, which was only measured on synthetic material, so a noisy room can merge two people's speech into one segment or fail to end one (the 8 s cap bounds it). The VAD cannot tell surging noise from speech, so such noise can still yield false lines. Changing this document's fixed ~1 s windows was approved by the project lead (2026-09-22); real-phone validation is still owed (`manual-tests.md`).
+
+**Status:** Accepted by the project lead; pending validation on real phones.

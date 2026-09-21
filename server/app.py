@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import network
 from .config import ConfigError, Settings, load_settings
+from .pipeline.mlx_whisper_adapter import build_adapter
 from .routes import CLIENT_DIR, install_error_handlers, router
 from .runtime import Runtime, TransportConfig
 from .transport.audio import AudioSink
@@ -23,13 +24,17 @@ log = logging.getLogger("convene")
 
 
 def create_app(settings: Settings | None = None, *, sink: AudioSink | None = None, host: str | None = None,
-               port: int = 8443, transport: TransportConfig | None = None) -> FastAPI:
+               port: int = 8443, transport: TransportConfig | None = None, stt_adapter=None,
+               stt_loaded: bool = False) -> FastAPI:
     """Build the application. ``host`` and ``port`` are the address phones use (for join URLs and QR codes).
 
-    Register hooks on ``app.state.runtime`` (for example ``on_meeting_ended``) before the server starts. The
+    Pass ``stt_adapter`` to run the transcription pipeline (``stt_loaded=True`` if it is already loaded);
+    without one the server does transport only and audio goes to the counting sink. Register hooks on
+    ``app.state.runtime`` (``on_meeting_ended``, ``on_transcribed_window``) before the server starts. The
     interactive API documentation pages are disabled because they load assets from a CDN.
     """
-    runtime = Runtime(settings or load_settings(), sink=sink, host=host, port=port, transport=transport)
+    runtime = Runtime(settings or load_settings(), sink=sink, host=host, port=port, transport=transport,
+                      stt_adapter=stt_adapter, stt_loaded=stt_loaded)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -61,6 +66,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--advertise-ip", help="the laptop's Wi-Fi IPv4 address for join URLs and QR codes "
                                                "(detected when omitted)")
     parser.add_argument("--config", help="path to a convene.toml (default: config/convene.toml)")
+    parser.add_argument("--no-stt", action="store_true",
+                        help="transport only: do not load the STT model or transcribe (for checking phones and Wi-Fi)")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s", datefmt="%H:%M:%S")
 
@@ -80,8 +87,21 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(f"startup failed: {exc}")
     print("Certificate OK", flush=True)
 
+    adapter = None
+    if args.no_stt:
+        print("STT disabled (--no-stt): audio is received and counted, not transcribed.", flush=True)
+    else:
+        try:
+            adapter = build_adapter(settings.stt)
+            print(f"Loading STT model {settings.stt.model} from the local cache ...", flush=True)
+            adapter.load()  # fails loudly here, not mid-meeting; never downloads
+        except Exception as exc:
+            sys.exit(f"startup failed: {exc}")
+        print(f"STT model ready ({adapter.load_seconds:.1f} s)", flush=True)
+
     transport = TransportConfig()
-    app = create_app(settings, host=address, port=args.port, transport=transport)
+    app = create_app(settings, host=address, port=args.port, transport=transport, stt_adapter=adapter,
+                     stt_loaded=adapter is not None)
     where = address or "<this machine's address>"
     print(f"Open https://{where}:{args.port}/ on this laptop to start a meeting; phones join from the QR code it shows.",
           flush=True)

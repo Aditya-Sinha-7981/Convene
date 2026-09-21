@@ -56,6 +56,9 @@ class PeerManager:
             session = DeviceSession(device_id, meeting_id, self.config.audio_queue_frames)
             session.pump_task = asyncio.create_task(self._pump(session))
             self.sessions[device_id] = session
+            bind = getattr(self.sink, "bind_device", None)  # optional part of the sink seam (CON-05)
+            if bind is not None:
+                bind(device_id, meeting_id)
         return session
 
     @staticmethod
@@ -275,6 +278,13 @@ class PeerManager:
         except Exception as exc:
             log.exception("receive loop failed for %s", session.device_id)
             self._spawn(self._receive_failed(session, exc))
+        finally:
+            ended = getattr(self.sink, "stream_ended", None)  # optional part of the sink seam (CON-05)
+            if ended is not None:
+                try:
+                    ended(session.device_id)
+                except Exception:
+                    log.exception("the audio sink failed to close the stream of %s", session.device_id)
 
     async def _receive_failed(self, session: DeviceSession, exc: Exception) -> None:
         """One device's receive loop died: audit it, and treat it as that device's peer failing."""
@@ -316,10 +326,18 @@ class PeerManager:
 
     # -- reads ------------------------------------------------------------------------------
 
+    def _with_stt(self, session: DeviceSession, gauges: dict) -> dict:
+        """Replace the placeholder STT gauges with the pipeline's, when a pipeline is the sink."""
+        stt = getattr(self.sink, "gauges", None)
+        if stt is not None and gauges["last_audio_age_ms"] is not None:
+            gauges = {**gauges, **stt(session.device_id)}
+        return gauges
+
     def gauges_for_device(self, device_id: str) -> dict:
         session = self.sessions.get(device_id)
-        return session.gauges(time.monotonic()) if session else {k: None for k in
-                ("last_audio_age_ms", "audio_duration_s", "stt_backlog", "stt_dropped_windows")}
+        if session is None:
+            return {k: None for k in ("last_audio_age_ms", "audio_duration_s", "stt_backlog", "stt_dropped_windows")}
+        return self._with_stt(session, session.gauges(time.monotonic()))
 
     def gauges_for_meeting(self, meeting_id: str) -> list[dict]:
         """One entry per device of the meeting that has streamed audio (docs/api.md, ``device_gauges``)."""
@@ -327,7 +345,7 @@ class PeerManager:
         rows = []
         for session in self.sessions.values():
             if session.meeting_id == meeting_id and session.stats.last_audio_at is not None:
-                rows.append({"device_id": session.device_id, **session.gauges(now)})
+                rows.append({"device_id": session.device_id, **self._with_stt(session, session.gauges(now))})
         return rows
 
     def diagnostics(self) -> list[dict]:
@@ -338,8 +356,11 @@ class PeerManager:
             stats = session.stats
             rows.append({
                 "device_id": session.device_id, "meeting_id": session.meeting_id, "state": session.peer_state,
-                "audio_received": stats.last_audio_at is not None, **session.gauges(now),
+                "audio_received": stats.last_audio_at is not None, **self._with_stt(session, session.gauges(now)),
                 "frames": stats.frames, "dropped_frames": stats.dropped_frames,
                 "sink_errors": stats.sink_errors, "audio_gaps": stats.gaps,
             })
+            device_stats = getattr(self.sink, "device_stats", None)
+            if device_stats is not None:
+                rows[-1]["stt"] = device_stats().get(session.device_id)
         return rows

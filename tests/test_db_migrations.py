@@ -10,6 +10,8 @@ from server.errors import DatabaseOpenError, MigrationError, SchemaVersionError
 from tests.test_api_contract_docs import ENTITY_FIELDS, ENUMS
 
 CORE_TABLES = {"Meeting", "Device", "Participant", "Utterance", "ConnectionEvent", "AuditEvent"}
+LATEST_VERSION = 2  # 0001 core, 0002 ModelExecution (CON-05)
+TABLES_SO_FAR = CORE_TABLES | {"ModelExecution"}
 
 
 def schema(conn):
@@ -22,8 +24,8 @@ def tables(conn):
 
 def test_creates_the_schema_from_an_empty_file(tmp_path):
     database = Database.open(tmp_path / "new.db")
-    assert database.conn.execute("PRAGMA user_version").fetchone()[0] == 1
-    assert tables(database.conn) == CORE_TABLES  # no table from a later task
+    assert database.conn.execute("PRAGMA user_version").fetchone()[0] == LATEST_VERSION
+    assert tables(database.conn) == TABLES_SO_FAR  # each task adds only the tables it first uses
     database.close()
 
 
@@ -42,7 +44,7 @@ def test_second_run_is_a_no_op_and_reopening_keeps_data(tmp_path):
     before = schema(first.conn)
     first.conn.execute("INSERT INTO Meeting (meeting_id, title, status, created_at) VALUES (?, 't', 'created', ?)",
                        ("0d4f6a52-7c1b-4e7a-b0a3-51e1f4c2a9d8", "2026-09-21T11:30:00.000Z"))
-    assert migrate(first.conn) == 1
+    assert migrate(first.conn) == LATEST_VERSION
     assert schema(first.conn) == before
     first.close()
     second = Database.open(path)
@@ -84,7 +86,7 @@ def test_migration_files_must_be_named_and_numbered_contiguously(tmp_path):
     (tmp_path / "notes.sql").write_text("SELECT 1;")
     with pytest.raises(MigrationError, match="must look like"):
         discover_migrations(tmp_path)
-    assert [n for n, _ in discover_migrations(MIGRATIONS_DIR)] == [1]
+    assert [n for n, _ in discover_migrations(MIGRATIONS_DIR)] == list(range(1, LATEST_VERSION + 1))
 
 
 def test_database_newer_than_the_code_stops_startup(tmp_path):

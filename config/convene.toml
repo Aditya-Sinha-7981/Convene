@@ -4,3 +4,40 @@
 [paths]
 database = "data/convene.db"
 exports = "data/exports"
+
+# The STT model: the ONE place it is named (ADR-14). Pinned to an exact revision, resolved from the local cache
+# only; scripts/provision_models.py downloads it once while online. Chosen on the reference laptop (M4 Pro, 24 GB):
+# distil-large-v3 was neither faster nor more accurate (logs/stt.md).
+[models.stt]
+runtime = "mlx"
+model = "mlx-community/whisper-large-v3-turbo"
+revision = "a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb"
+language = "en"
+
+# VAD, segmenting, scheduling and priority. Each value below was set from measurement on this machine with
+# synthetic audio (logs/stt.md); none has been tuned on real phone audio. CON-15 tunes them with real bleed data.
+[pipeline]
+# STT input: one segment per stretch of speech, ended by a pause (ADR-19). "fixed" restores fixed windows of
+# window_ms (about 1 s was the earlier design) and needs only this line changed.
+segmentation = "segments"
+segment_end_silence_ms = 600    # a pause this long ends a segment: about 1 s after the speaker stops, text appears
+segment_max_ms = 8000           # a longer stretch is cut at its quietest point near the end, so text keeps flowing
+segment_min_ms = 300            # a shorter voiced burst (click, cough) is not transcribed
+segment_pre_roll_ms = 200
+segment_tail_ms = 200
+segment_cut_search_ms = 1500
+window_ms = 1000                # fixed mode only
+min_speech_fraction = 0.2
+vad_margin_db = 9.0             # 12 dB gated more noise but lost speech at 5 to 10 dB SNR
+vad_min_db = -50.0
+vad_noise_window_s = 5.0
+vad_noise_percentile = 10.0
+vad_hangover_frames = 5
+workers = 1                     # inference is GPU-bound: 2 to 4 workers gave no extra throughput, only longer latency
+queue_max = 4                   # segments queued per device before the oldest is dropped
+overload_policy = "drop_oldest"
+window_timeout_s = 20.0
+hallucination_min_strength_db = 10.0
+log_transcripts = true          # print each transcribed line on the server console (never written to a file)
+priority_high_backlog_windows = 4
+priority_max_wait_s = 3.0
