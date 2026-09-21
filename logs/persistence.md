@@ -1,7 +1,7 @@
 # logs/persistence.md
 
 > Workstream: meeting, device, participant and audit persistence (CON-03)
-> Status: implemented and tested offline; **not yet wired into `server/app.py`** (CON-04)
+> Status: implemented and tested offline; wired into the server by CON-04 (see the addendum at the end)
 
 Tracked project history. No secrets, private audio or transcripts. The manual checks below used made-up names and a throwaway database that was deleted afterwards.
 
@@ -103,3 +103,8 @@ This proves the storage rules. It does not prove that a real phone keeps its ide
 - Registration versus reconnect semantics (decision 1) follow CON-02, not the work order text.
 - Reconciliation leaves `enrolling` devices alone (the work order lists only `connected` and `joining`).
 - Meeting `started_at` is set on first successful connection, not registration.
+
+
+### Addendum from CON-04 (2026-09-22)
+
+`end_meeting` and `record_device_left` were added to `server/registry.py` by CON-04 (one transaction: meeting `ended`, `meeting_ended` audit, every device not yet `left` becomes `left` with `device_left`). `utterances.count_for_meeting` was added for the `meeting_ended` payload. The audit catalog gained `hook_failed` (26 types). Everything else in this log is unchanged.

@@ -152,7 +152,7 @@ Re-run after the FastAPI migration. The "baseline" column is **empty until the r
 | LAN detection, join URL, QR, certificate-coverage startup check | Done |
 | Join page (name, consent line, persisted `device_id`, registration, reconnect, retry button) | Done |
 | Synthetic phone retargeted; integration tests | Done |
-| Automated tests | **302 passed**, four consecutive runs, about 40 s, offline. New for CON-04: 187 (`test_signaling` 40, `test_meetings_api` 34, `test_transport_integration` 28, `test_join_page` 18 under node, `test_audio_frames` 10, `test_network` 12, plus the contract and storage tests updated). The work order's three files: 102 passed |
+| Automated tests | **302 passed**, four consecutive runs, about 40 s, offline. New for CON-04: 144 (`test_signaling` 40, `test_meetings_api` 34, `test_transport_integration` 28, `test_join_page` 18 under node, `test_audio_frames` 12, `test_network` 12). The work order's three files: 102 passed |
 | Mutation check | 20 deliberate breakages of the server and the join page were each caught |
 | Real process check (`python -m server.app`, TLS, curl) | Passed (below) |
 | **CON-01 regression checklist on real phones (R1 to R9)** | **Not run: no phones, no trusted mkcert certificate, no local network in this session.** Parity with the prototype is **not** declared |
@@ -241,3 +241,8 @@ Also not run and required by the work order: server restart while real phones ar
 - **CON-10:** subscribe with `app.state.runtime.on_meeting_ended(hook)`; keep the hook fast and start the work as a task; serve `/meetings/{id}`.
 - **CON-12:** re-run transport checks in the offline rehearsal.
 - **Docs that are now stale and were not edited (outside this task's files):** the "checked-in `server/` and `client/` are the DT-17 prototype" sentences in `AGENTS.md`, `docs/README.md` and `docs/00-AI-CONTEXT.md`.
+
+
+### Correction (2026-09-22)
+
+The first version of the CON-04 summary above said "187 new tests" and `test_audio_frames` 10. Both were unchecked estimates. Counted with `pytest --collect-only`: 144 new tests, `test_audio_frames` 12. The suite total (302) and the work order's three-file count (102) were measured and were right. The summary row has been corrected in place.

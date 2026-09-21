@@ -100,3 +100,11 @@ Known consequences left in the contract, not defects: a phone whose signaling so
 - **CON-09 / CON-10 / CON-11:** Q&A three-outcome mapping including X5; summary states and X7; export states, auto-render, and no stale serving.
 - **CON-13 / CON-14:** finalize the provisional enrollment and history shapes.
 - Choices left to tasks: the default title format's timezone display, the `stt_backlog` and gauge push period, and any confidence numbers (contract fixes semantics only).
+
+
+### Addendum from CON-04 (2026-09-22)
+
+- The audit catalog now has **26** event types, not 25: CON-04 added `hook_failed {hook, error}` (component `api`) for meeting-level hooks that raise or time out. It is in `docs/data-model.md` and `server/audit_catalog.py`, and a test keeps the two equal. **Needs the project lead's confirmation**, like the other catalog additions.
+- CON-04 reuses `signaling_error` with code `receive_failed` for a failure inside one device's audio receive loop (documented in `docs/transport.md`). Also to confirm.
+- CON-04 found that aiortc cannot restart ICE, so the `ice_restart` offer field and the `via: ice_restart` audit value are in the contract but never used by this server (`docs/transport.md`, `logs/transport.md`). ADR-16 stays Proposed.
+- ADR-15 to ADR-18 are still **Proposed**; no confirmation has been recorded.
