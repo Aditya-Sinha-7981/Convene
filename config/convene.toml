@@ -1,0 +1,6 @@
+# Convene configuration. Paths are relative to the repository root unless absolute.
+# Later tasks add their own sections (models, attribution, retrieval, ...).
+
+[paths]
+database = "data/convene.db"
+exports = "data/exports"

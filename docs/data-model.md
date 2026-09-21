@@ -95,7 +95,7 @@ Index: `(meeting_id, t_start)`, `(meeting_id, participant_id)`.
 | event_type | TEXT | `connected` \| `disconnected` \| `reconnected` \| `audio_resumed` |
 | timestamp | TEXT (ISO 8601) | |
 
-A `ConnectionEvent` is a query-friendly projection of one `AuditEvent` and is written in the same transaction as it (`connected` → `device_connected`, `disconnected` → `device_disconnected`, `reconnected` → `device_reconnected`, `audio_resumed` → `device_audio_resumed`). The audit event is the record; if the two ever disagree, the audit event wins.
+A `ConnectionEvent` is a query-friendly projection of one `AuditEvent` and is written in the same transaction as it (`connected` → `device_connected`, `disconnected` → `device_disconnected`, `reconnected` → `device_reconnected`, `audio_resumed` → `device_audio_resumed`). The `ConnectionEvent.event_id` equals the `event_id` of the audit event it projects, which links the two rows. The audit event is the record; if the two ever disagree, the audit event wins.
 
 ### TranscriptChunk
 
@@ -182,7 +182,7 @@ The single source of truth (ADR-13) — see `architecture.md` lifecycle sections
 |---|---|---|
 | event_id | TEXT (UUID) | PK |
 | seq | INTEGER | **(proposed)** unique, strictly increasing across the whole database, assigned by the single `emit` write path inside the same transaction as the row (`max(seq) + 1`; there is one writer). It is the ordering key for dashboard resynchronization (`api.md`). It survives restarts because it is stored |
-| meeting_id | TEXT (UUID), nullable | null only for events outside any meeting (`server_started`, model load) |
+| meeting_id | TEXT (UUID), nullable | null only for the types that can occur outside a single meeting: `server_started`, `model_load`, `model_error`, `signaling_error` (a join for an unknown meeting), and `qa_query` (a history query across several meetings). Every other type requires it, and `emit` enforces that |
 | event_type | TEXT | one of the catalog below; a value outside the catalog is rejected by the `emit` path |
 | component | TEXT | emitting component: `api`, `transport`, `registry`, `stt`, `attribution`, `speaker`, `rag`, `summary`, `export`, `models` |
 | timestamp | TEXT (ISO 8601) | |

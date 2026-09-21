@@ -37,3 +37,7 @@ STT_COMMAND='whisper-cli -m /path/to/ggml-model.bin -f {wav} -nt' .venv/bin/pyth
 ```
 
 Download the model before the offline test. Without `STT_COMMAND`, audio windows still appear and no transcription is attempted. The microphone remains active while the page is open; screen lock and background behavior must be measured on each browser.
+
+## Data
+
+The Convene persistence layer (not yet wired into the prototype server) stores meetings, devices, participants, utterances and the audit stream in a SQLite file at `data/convene.db`, with exports under `data/exports/`; both paths come from `config/convene.toml`. `data/` is git-ignored because it will hold private transcripts. Never commit it or paste its contents into logs.

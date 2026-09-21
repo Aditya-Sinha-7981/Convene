@@ -4,6 +4,7 @@ import pytest
 from aiohttp import web
 
 from server import app as prototype
+from server.db import Database
 
 MEETING = "TEST-123"
 
@@ -83,3 +84,11 @@ def signaling_url(server):
 @pytest.fixture
 def meeting():
     return MEETING
+
+
+@pytest.fixture
+def db(tmp_path):
+    """A fresh, migrated database in a temporary file (never the real data/convene.db)."""
+    database = Database.open(tmp_path / "convene.db")
+    yield database
+    database.close()
