@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+*.pem
+*.crt
+*.key
+join-*.svg
+.DS_Store
+
+# Local planning material and reference docs
+/tasks/
+/convene-tasks/
+/bulwark_docs/
+/old_docs/AGENTS.md

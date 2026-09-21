@@ -1,0 +1,4 @@
+aiohttp>=3.10,<4
+aiortc>=1.10,<2
+numpy>=1.26,<3
+qrcode>=8,<9
