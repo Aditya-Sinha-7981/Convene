@@ -2,19 +2,24 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DT-17 microphone test</title>
+<title>Join meeting</title>
 <style>
   body { font: 16px system-ui, sans-serif; max-width: 34rem; margin: 2rem auto; padding: 0 1rem; }
-  button { padding: .8rem 1.2rem; font: inherit; }
+  button, input { padding: .8rem 1.2rem; font: inherit; }
+  input { width: 100%; box-sizing: border-box; margin: .3rem 0 1rem; }
   p { line-height: 1.5; }
   #status { font-weight: bold; }
+  #consent { font-size: .9rem; color: #444; }
+  [hidden] { display: none; }
 </style>
-<h1>DT-17 microphone test</h1>
-<p>Connect to the local Wi-Fi, then start the microphone test. Keep this page open.</p>
-<button id="start">Start microphone</button>
+<h1>Join meeting</h1>
+<p id="consent">This session's audio is being transcribed. Keep this page open while you speak.</p>
+<label for="name">Your name</label>
+<input id="name" maxlength="80" autocomplete="name" placeholder="e.g. Priya">
+<button id="start">Join and start microphone</button>
 <button id="stop" disabled>Stop</button>
-<p>Participant: <span id="participant">—</span></p>
+<button id="retry" hidden>Try again</button>
 <p>Connection: <span id="status">idle</span></p>
 <p id="detail"></p>
-<script src="/app.js"></script>
+<script src="/static/app.js"></script>
 </html>

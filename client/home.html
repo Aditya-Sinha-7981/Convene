@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Convene</title>
+<style>
+  body { font: 16px system-ui, sans-serif; max-width: 34rem; margin: 2rem auto; padding: 0 1rem; }
+  button, input { padding: .8rem 1.2rem; font: inherit; }
+  input { width: 100%; box-sizing: border-box; margin: .3rem 0 1rem; }
+</style>
+<h1>Convene</h1>
+<p>Start a meeting, then have each person scan the QR code with their phone.</p>
+<label for="title">Meeting title (optional)</label>
+<input id="title" maxlength="200">
+<button id="create">New meeting</button>
+<p id="message"></p>
+<script>
+document.querySelector("#create").onclick = async () => {
+  const message = document.querySelector("#message");
+  try {
+    const response = await fetch("/api/meetings", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: document.querySelector("#title").value.trim() || null }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error ? body.error.message : "could not create the meeting");
+    location.href = `/dashboard/${body.meeting.meeting_id}`;
+  } catch (error) { message.textContent = String(error); }
+};
+</script>
+</html>

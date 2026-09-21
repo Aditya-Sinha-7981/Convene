@@ -39,3 +39,7 @@ def list_for_meeting(conn, meeting_id: str, *, participant_id: str | None = None
 def update(conn, utterance_id: str, /, **changes) -> Utterance:
     base.update(conn, "Utterance", "utterance_id", utterance_id, changes, UPDATABLE)
     return require(conn, utterance_id)
+
+
+def count_for_meeting(conn, meeting_id: str) -> int:
+    return base.query_one(conn, "SELECT COUNT(*) FROM Utterance WHERE meeting_id = ?", (meeting_id,))[0]

@@ -1,43 +1,42 @@
 # Convene
 
-Convene is a planned offline meeting assistant that uses a phone per speaker for reliable attribution, live transcription, Q&A, and meeting minutes. The code currently in this repository is its DT-17 transport prototype: phones send live microphone audio to a laptop over WebRTC, with optional local command-driven STT. The full Convene features described in the design documents are not yet implemented.
+Convene turns phones on a local Wi-Fi network into separate meeting microphones: a laptop receives each phone's audio over WebRTC, and will transcribe it, attribute speech by device, answer questions about the meeting, and produce a summary and DOCX minutes. **What exists today** is the transport, meeting and device registry, and persistence: phones join a meeting from a QR code, stream audio to a per-device sink, reconnect under the same identity, and the laptop records every connection event in an audit stream. Transcription, attribution, the live dashboard, Q&A, summary and export are designed in `docs/` but **not implemented yet**. Nothing here has been verified on real phones; see `logs/transport.md`.
 
-Read the [Convene documentation](docs/README.md) for the design and build plan. Read the [DT-17 test plan](old_docs/TEST_PLAN.md) before measuring the current prototype.
+Read the [Convene documentation](docs/README.md) for the design and build plan, and `AGENTS.md` before changing anything.
 
-## Run
+## Install
 
-Use Python 3.11–3.13. Install dependencies while Internet is available, then run tests offline:
+Use Python 3.11–3.13 (the automated tests also pass on 3.14). Install while the Internet is available, then work offline:
 
 ```sh
 uv venv --python 3.13
-uv pip install -r requirements.txt
+uv pip install -r requirements-dev.txt     # runtime dependencies plus pytest and the aiohttp test client
 ```
 
-Connect the Mac to the hotspot or local Wi-Fi first. Find its Wi-Fi IPv4 address with `ipconfig getifaddr en0` (on most Macs), then generate a certificate covering that exact address. Replace the example address below:
+## Run
+
+Connect the Mac to the hotspot or local Wi-Fi. Find its address (`ipconfig getifaddr en0` on most Macs), generate a certificate covering that exact address, and trust the CA on each phone as described in [local HTTPS instructions](old_docs/HTTPS_LOCAL.md). Replace the example address:
 
 ```sh
 mkcert -install
 mkcert -cert-file local.pem -key-file local-key.pem 192.168.50.10
-```
-
-Trust the mkcert CA on each phone as described in [local HTTPS instructions](old_docs/HTTPS_LOCAL.md). Then:
-
-```sh
 .venv/bin/python -m server.app --cert local.pem --key local-key.pem --advertise-ip 192.168.50.10
 ```
 
-Open the printed join URL on each phone, or open the printed `join-<ip>.svg` file on the Mac and scan it. The QR encodes the local IP URL and works without Internet. Regenerate the certificate and QR if the Mac's hotspot IP changes. A phone must trust the local CA before microphone access works; a QR code does not bypass HTTPS trust.
+Open `https://192.168.50.10:8443/` on the Mac and press **New meeting**; the page shows a QR code and join link. Each phone scans it, enters a name, and taps **Join**. A QR code does not bypass HTTPS trust: the phone must trust the local CA before microphone access works. Regenerate the certificate if the Mac's hotspot address changes; the server refuses to start if the certificate does not cover the address it advertises.
 
-The terminal reports connection state, audio windows, and recent audio age; `https://<laptop-ip>:8443/metrics` provides current values as JSON. `last_audio_age_ms` measures time since receipt, **not** one-way transport latency.
+The terminal logs connection state, audio, and a metrics line every 5 seconds. `https://<laptop-ip>:8443/metrics` returns the same per-device counters as JSON (a debug route, not part of the API contract). `last_audio_age_ms` is time since the last audio frame, **not** one-way latency. The microphone stays active while the join page is open; screen lock and background behavior must be measured on each browser.
 
-Local STT is optional. Set `STT_COMMAND` to a local program that reads a WAV file and writes text to stdout, using `{wav}` as the input placeholder. For whisper.cpp, for example:
-
-```sh
-STT_COMMAND='whisper-cli -m /path/to/ggml-model.bin -f {wav} -nt' .venv/bin/python -m server.app --cert local.pem --key local-key.pem
-```
-
-Download the model before the offline test. Without `STT_COMMAND`, audio windows still appear and no transcription is attempted. The microphone remains active while the page is open; screen lock and background behavior must be measured on each browser.
+Run details, the startup checks, and the database location are in [deployment](docs/deployment.md). The earlier DT-17 `aiohttp` prototype and its optional `STT_COMMAND` command-line transcription were replaced by this server and are recoverable from Git history (commit `d44ba68`); local STT returns in a later task.
 
 ## Data
 
-The Convene persistence layer (not yet wired into the prototype server) stores meetings, devices, participants, utterances and the audit stream in a SQLite file at `data/convene.db`, with exports under `data/exports/`; both paths come from `config/convene.toml`. `data/` is git-ignored because it will hold private transcripts. Never commit it or paste its contents into logs.
+Meetings, devices, participants, utterances and the audit stream are stored in SQLite at `data/convene.db`, with exports under `data/exports/`; both paths come from `config/convene.toml`. `data/` is git-ignored because it will hold private transcripts. Never commit it or paste its contents into logs.
+
+## Test
+
+```sh
+.venv/bin/python -m pytest tests -q
+```
+
+Tests run offline with no phones, certificates, or model weights (`tests/js/` runs the join page under `node`). They use synthetic phones over loopback, which show the server's protocol, identity and cleanup code work; they do **not** show browser, Wi-Fi, HTTPS-trust, screen-lock, or latency behavior. Those need real phones: the regression checklist R1 to R9 in `logs/transport.md`.

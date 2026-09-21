@@ -200,6 +200,7 @@ The complete set. Payloads reference records by ID and never contain transcript 
 | `meeting_created` | `api` | `title` |
 | `meeting_started` | `transport` | `first_device_id` |
 | `meeting_ended` | `api` | `utterance_count`, `device_count` |
+| `hook_failed` | `api` | `hook`, `error` |
 | `device_registered` | `registry` | `device_id`, `is_shared`, `declared_speaker_count`, `user_agent` |
 | `device_connected` | `transport` | `device_id`, `reconnect_count` |
 | `device_reconnected` | `transport` | `device_id`, `reconnect_count`, `via`, `remote_addr`, `user_agent` |
@@ -224,6 +225,7 @@ The complete set. Payloads reference records by ID and never contain transcript 
 
 Payload value sets:
 
+- `hook_failed` records a subscriber of a meeting-level hook (for example the summarization trigger on meeting end) that raised; the failure never fails the request that fired the hook. `hook` is the hook's name and `error` a short message.
 - `device_reconnected.via`: `ice_restart` \| `new_peer`. `device_disconnected.reason`: `peer_disconnected` \| `peer_failed` \| `peer_closed` \| `server_restart`. `device_left.reason`: `client_leave` \| `meeting_ended`. `stt_window_dropped.reason`: `overload`. `summary_started.trigger`: `meeting_end` \| `manual`. `qa_query.error_code`: null unless `status = failed`.
 - `utterance_corrected.from` is `{participant_id, attribution_method, attribution_confidence, corrected}` as the utterance stood immediately before this correction; `to` is `{participant_id, attribution_method, attribution_confidence}` after it. `changed` is false for a confirmation (same participant); `created_participant_id` is set when the correction created a new `Participant`. The full original attribution of a first correction is therefore always recoverable from this payload, even though the `Utterance` row keeps only `original_participant_id`.
 - `summary_generated.input_as_of_seq` and `export_created.input_as_of_seq` are the `seq` high-water mark of the transcript the artifact was built from. They are how staleness is derived (see below), so no extra column is needed.

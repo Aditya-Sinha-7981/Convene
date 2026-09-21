@@ -22,6 +22,7 @@ CATALOG: dict[str, EventSpec] = {
     "meeting_created": _spec("api", "title"),
     "meeting_started": _spec("transport", "first_device_id"),
     "meeting_ended": _spec("api", "utterance_count", "device_count"),
+    "hook_failed": _spec("api", "hook", "error"),
     "device_registered": _spec("registry", "device_id", "is_shared", "declared_speaker_count", "user_agent"),
     "device_connected": _spec("transport", "device_id", "reconnect_count"),
     "device_reconnected": _spec("transport", "device_id", "reconnect_count", "via", "remote_addr", "user_agent"),

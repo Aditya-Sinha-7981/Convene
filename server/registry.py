@@ -18,7 +18,7 @@ from .audit import emit, record_connection_event
 from .db import Tx
 from .errors import DeviceConflictError, MeetingEndedError, ValidationError
 from .ids import is_uuid4, new_id
-from .repositories import connections, devices, meetings, participants
+from .repositories import connections, devices, meetings, participants, utterances
 from .repositories.models import ConnectionEvent, Device, Meeting, Participant
 from .timeutil import utc_now
 
@@ -28,6 +28,7 @@ MAX_USER_AGENT = 512
 SHARED_SPEAKER_RANGE = (2, 3)  # docs/api.md: a shared device declares 2 or 3 speakers
 RECONNECT_VIA = ("ice_restart", "new_peer")
 DISCONNECT_REASONS = ("peer_disconnected", "peer_failed", "peer_closed", "server_restart")
+LEFT_REASONS = ("client_leave", "meeting_ended")
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,13 @@ class Attachment:
     connection_event: ConnectionEvent
     is_reconnect: bool
     meeting_started: bool
+
+
+@dataclass(frozen=True)
+class MeetingEnd:
+    meeting: Meeting
+    already_ended: bool
+    left_device_ids: list[str]
 
 
 @dataclass(frozen=True)
@@ -211,3 +219,43 @@ def reconcile_after_restart(tx: Tx, *, now: str | None = None) -> Reconciliation
     emit(tx, "server_started", "api",
          {"reconciled_devices": len(stale), "reconciled_meetings": len(touched_meetings)}, timestamp=now)
     return Reconciliation(devices=len(stale), meetings=len(touched_meetings))
+
+
+def record_device_left(tx: Tx, device_id: str, reason: str, *, now: str | None = None) -> Device | None:
+    """The phone pressed Stop, or the meeting ended: status ``left`` and audit ``device_left``.
+
+    Returns None (writing nothing) if the device has already left. A later attach of the same device_id
+    resumes as the same participant and counts as a reconnect.
+    """
+    if reason not in LEFT_REASONS:
+        raise ValidationError(f"reason must be one of {LEFT_REASONS}")
+    device = devices.require(tx.conn, device_id)
+    if device.status == "left":
+        return None
+    device = devices.update(tx.conn, device_id, status="left")
+    emit(tx, "device_left", "transport", {"device_id": device_id, "reason": reason},
+         meeting_id=device.meeting_id, timestamp=now)
+    return device
+
+
+def end_meeting(tx: Tx, meeting_id: str, *, now: str | None = None) -> MeetingEnd:
+    """Explicit meeting end. Idempotent: an ended meeting is returned unchanged with ``already_ended``.
+
+    One transaction: meeting ``ended`` with ``ended_at``, audit ``meeting_ended``, and every device that has
+    not already left becomes ``left`` (audit ``device_left``, reason ``meeting_ended``). Tearing down peers
+    and running hooks is the caller's job, after this commits.
+    """
+    meeting = meetings.require(tx.conn, meeting_id)
+    if meeting.status == "ended":
+        return MeetingEnd(meeting, True, [])
+    now = now or utc_now()
+    roster = devices.list_for_meeting(tx.conn, meeting_id)
+    meeting = meetings.update(tx.conn, meeting_id, status="ended", ended_at=now)
+    emit(tx, "meeting_ended", "api",
+         {"utterance_count": utterances.count_for_meeting(tx.conn, meeting_id), "device_count": len(roster)},
+         meeting_id=meeting_id, timestamp=now)
+    left = []
+    for device in roster:
+        if record_device_left(tx, device.device_id, "meeting_ended", now=now) is not None:
+            left.append(device.device_id)
+    return MeetingEnd(meeting, False, left)

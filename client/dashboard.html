@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meeting dashboard (minimal)</title>
+<style>
+  body { font: 15px system-ui, sans-serif; max-width: 60rem; margin: 1.5rem auto; padding: 0 1rem; }
+  table { border-collapse: collapse; width: 100%; }
+  td, th { border-bottom: 1px solid #ddd; padding: .3rem .5rem; text-align: left; }
+  pre { background: #f5f5f5; padding: .6rem; max-height: 22rem; overflow: auto; font-size: 12px; }
+  img { width: 12rem; height: 12rem; }
+  button { padding: .6rem 1rem; font: inherit; }
+</style>
+<h1 id="title">Meeting</h1>
+<p>Status: <b id="status">…</b> <button id="end">End meeting</button></p>
+<p>Join link: <code id="joinUrl">—</code></p>
+<img id="qr" alt="Join QR code" hidden>
+<h2>Devices</h2>
+<table><thead><tr><th>Name</th><th>Status</th><th>Reconnects</th><th>Last audio (ms)</th><th>Audio (s)</th></tr></thead>
+<tbody id="devices"></tbody></table>
+<h2>Events (raw feed; the real dashboard is a later task)</h2>
+<pre id="log"></pre>
+<script src="/static/dashboard.js"></script>
+</html>

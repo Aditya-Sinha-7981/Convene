@@ -78,6 +78,8 @@ There is no `ice-candidate` message and no separate `reconnect` message (ADR-16)
 
 **Reconnect:** open a new WebSocket → `join` → `joined` with `is_reconnect: true` and `peer_active` telling the client whether the server still holds a usable peer for this device. If `peer_active` is true and the client still has its `RTCPeerConnection`, it attempts an ICE restart: an `offer` with `ice_restart: true` on the same peer connection. If `peer_active` is false, the restart is refused, or it does not reach `connected` within the client's timeout, the client creates a fresh `RTCPeerConnection` and sends a plain `offer`; the server closes the old peer and answers the new one. Either way the device keeps its `device_id`, its `Participant`, and its transcript history.
 
+**ICE restart is not supported by this server (CON-04, verified).** aiortc 1.15 accepts a second offer on a connected peer but does not restart ICE: the server side keeps the old ICE connection and the new client connection fails. The server therefore never attempts a restart: an `offer` with `ice_restart: true` is answered with the non-fatal error `renegotiation_failed` (or `no_active_peer` when there is no usable peer), and the phone falls back to a fresh peer. The join page always builds a fresh `RTCPeerConnection` on every reconnect, as the DT-17 prototype did, and never sends `ice_restart`. The message field and the `via: ice_restart` audit value remain in the contract for a future server that can restart ICE. `reconnect_count` in `joined` is the value stored when the phone joined; a reconnect is counted (`device_reconnected`) when the new peer reaches `connected`, so `is_reconnect: true` with the old count is expected.
+
 **Leaving:** `leave` closes that device's peer, sets `Device.status = left`, and records `device_left`. A later `join` for the same `device_id` resumes as the same participant.
 
 **Meeting end:** the server sends `meeting_ended` to every attached socket, closes their peers, and closes the sockets normally (code 1000). The phone page shows "meeting ended" and stops retrying. A `join` for an ended meeting gets `error` `meeting_ended`.
@@ -99,7 +101,7 @@ There is no `ice-candidate` message and no separate `reconnect` message (ADR-16)
 | `renegotiation_failed` | no | the ICE-restart offer could not be applied |
 | `internal_error` | yes | an unexpected server-side failure while handling this device's message |
 
-A binary WebSocket frame is treated as `invalid_message`. (The DT-17 prototype ignored binary frames, answered a malformed `sdp` with an empty answer, and kept the socket open after every error; CON-01 recorded those in `logs/transport.md`.)
+A `join` that replaces an older socket for the same device closes the older socket normally (code 1000, reason "replaced by a newer connection"). A failure inside one device's audio receive loop is not a signaling error, but it is recorded in the same audit event (`signaling_error`, code `receive_failed`) and treated as that device's peer failing, so the phone reconnects; no other device is affected. A binary WebSocket frame is treated as `invalid_message`. (The DT-17 prototype ignored binary frames, answered a malformed `sdp` with an empty answer, and kept the socket open after every error; CON-01 recorded those in `logs/transport.md`.)
 
 ## ICE/STUN/TURN
 

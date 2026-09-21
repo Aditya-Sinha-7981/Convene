@@ -11,7 +11,7 @@ from server.errors import (DeviceConflictError, DeviceNotFoundError, MeetingEnde
                            ValidationError)
 from server.ids import new_id
 from server.repositories import audit_events, connections, devices, meetings, participants, utterances
-from tests.support.storage import T1, T2, utterance
+from tests.support.storage import T2, utterance
 
 UA = "Mozilla/5.0 (Linux; Android 14) Chrome/128.0"
 

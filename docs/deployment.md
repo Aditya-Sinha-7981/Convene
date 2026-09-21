@@ -25,7 +25,7 @@ A single config file (or `.env`) holds:
 
 - Resource-type → model mappings (`models.md`) — the one place model choice is ever configured.
 - Cloud fallback credentials (Groq/Gemini API keys), only read if a fallback is explicitly activated (ADR-06) — absence of these keys must never break the default local path.
-- Server port, data directory paths (`data/convene.db`, `data/exports/`).
+- Server port (`--port`), data directory paths (`[paths]` in `config/convene.toml`: `data/convene.db`, `data/exports/`; relative paths resolve from the repository root).
 
 ## Local models setup (one-time, before demo day)
 
@@ -34,13 +34,31 @@ A single config file (or `.env`) holds:
 - Embedding and speaker-embedding models likewise pre-cached.
 - Verify all of the above load and run **with the laptop's Wi-Fi disconnected from the internet**, matching the actual demo condition (inherited directly from DT-17's Test 0: Internet independence).
 
+## Running the server
+
+```sh
+.venv/bin/python -m server.app --cert local.pem --key local-key.pem [--port 8443] [--advertise-ip 192.168.50.10] [--config config/convene.toml]
+```
+
+The server is one FastAPI process served by uvicorn over HTTPS on `0.0.0.0` (`ADR-01`). `--advertise-ip` is the address put in join URLs and QR codes; without it the server uses the default-route interface's private IPv4 address, falling back to the hostname lookup. On macOS the detection can return nothing or the wrong interface, so pass `--advertise-ip` (the address from `ipconfig getifaddr en0`) whenever it prints a warning or the wrong address. The certificate must cover exactly that address, and must be regenerated when the hotspot assigns a new one:
+
+```sh
+mkcert -install                                    # once, then trust the CA on each phone (old_docs/HTTPS_LOCAL.md)
+mkcert -cert-file local.pem -key-file local-key.pem 192.168.50.10
+```
+
+Then open `https://<that address>:8443/` on the laptop, press **New meeting**, and have each phone scan the QR code. The dashboard page shows the join link, QR code, devices, and a raw event feed; the full dashboard is a later task.
+
 ## Startup sequence
 
-1. Start the server process.
-2. Confirm LAN address detected and displayed.
-3. Confirm HTTPS certificate loads without error.
-4. Confirm all local models load successfully (fail loudly here, not mid-meeting).
-5. Display join URL/QR code.
+Implemented, in this order, before the server accepts connections:
+
+1. Detect the LAN address (or take `--advertise-ip`) and print it. With none, print a warning; the server still starts but returns no join URL or QR code.
+2. Load the certificate and key together, and fail loudly if the certificate has expired or its subject alternative names do not include the advertised address. The message names the address and the names the certificate does cover.
+3. Open `data/convene.db`, apply pending migrations, and reconcile after a restart (devices left `connected` or `joining` in an open meeting become `disconnected` with reason `server_restart`; meetings stay `live`, so phones reconnect as the same participant).
+4. Start the WebSocket hub and the periodic metrics log line, then serve.
+
+Not yet implemented: confirming that all local models load (added by CON-05 and later; fail loudly here, not mid-meeting).
 
 ## What is explicitly not part of deployment
 

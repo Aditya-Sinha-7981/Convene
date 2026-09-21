@@ -1,7 +1,7 @@
 # logs/transport.md
 
 > Workstream: transport (CON-01 baseline, CON-04 FastAPI migration)
-> Status: CON-01 automated scope complete; **CON-01 hardware baseline blocked (no phones)**
+> Status: CON-01 automated scope complete, **hardware baseline blocked (no phones)**. CON-04 implemented and tested over loopback; **real-phone regression re-run not done (no phones)**
 
 Tracked project history. No secrets, private audio or transcripts.
 
@@ -134,3 +134,110 @@ Re-run after the FastAPI migration. The "baseline" column is **empty until the r
 * Provide two phones (Android Chrome + iPhone Safari preferred), a trusted mkcert setup and a no-uplink network, or accept the CON-01 hardware baseline as a deferred check. Stage 1 acceptance requires two phones.
 * Confirm dev dependencies (`pytest`, `pytest-asyncio`).
 * CON-02 decisions this log raises: ICE non-trickle vs trickle; where the join page route is specified; `sessionStorage` vs `localStorage` for `device_id`; mic constraints.
+
+
+---
+
+## CON-04 — FastAPI transport and meeting integration
+
+### Summary (2026-09-22)
+
+| Item | Result |
+|---|---|
+| One FastAPI + aiortc process over HTTPS on `0.0.0.0`; the `aiohttp` server is gone | Done |
+| Signaling `/ws/signal/{meeting_id}` with the full CON-02 message set, per-device isolated sessions | Done |
+| `POST /api/meetings`, `GET /api/meetings/{id}`, `POST …/devices`, `POST …/end`; served pages; `on_meeting_ended` hook | Done |
+| Dashboard hub `/ws/dashboard/{meeting_id}` as an `emit` subscriber | Done: `meeting_status`, `device_status`, `connection_event`, `device_gauges` |
+| Audio sink seam, `audio_resumed`, per-device gap and drop counters | Done |
+| LAN detection, join URL, QR, certificate-coverage startup check | Done |
+| Join page (name, consent line, persisted `device_id`, registration, reconnect, retry button) | Done |
+| Synthetic phone retargeted; integration tests | Done |
+| Automated tests | **302 passed**, four consecutive runs, about 40 s, offline. New for CON-04: 187 (`test_signaling` 40, `test_meetings_api` 34, `test_transport_integration` 28, `test_join_page` 18 under node, `test_audio_frames` 10, `test_network` 12, plus the contract and storage tests updated). The work order's three files: 102 passed |
+| Mutation check | 20 deliberate breakages of the server and the join page were each caught |
+| Real process check (`python -m server.app`, TLS, curl) | Passed (below) |
+| **CON-01 regression checklist on real phones (R1 to R9)** | **Not run: no phones, no trusted mkcert certificate, no local network in this session.** Parity with the prototype is **not** declared |
+
+Nothing here shows the transport works on a phone. The synthetic phone is aiortc over loopback: it exercises the server's protocol, identity, isolation and cleanup code, not browser WebRTC, microphone permission, HTTPS trust, Wi-Fi loss, or screen lock.
+
+### Run command and environment
+
+`.venv/bin/python -m server.app --cert local.pem --key local-key.pem [--port 8443] [--advertise-ip IP] [--config PATH]` (the prototype's flags still work; `--meeting` is gone because meetings are created through the API). macOS, Python 3.14.7. Documented in `README.md` and `docs/deployment.md`.
+
+Dependencies (the work order asked for these to be listed and confirmed; you approved adding an ASGI server):
+
+| Package | Version tested | Where |
+|---|---|---|
+| `fastapi` | 0.141.1 | `requirements.txt` |
+| `uvicorn[standard]` | 0.53.0 (with `websockets` 17.1, `uvloop` 0.22.1, `httptools` 0.8.0) | `requirements.txt` |
+| `cryptography` | 50.0.1 | `requirements.txt` (aiortc already pulls it in; now used directly to read the certificate's names) |
+| `aiohttp` | 3.14.3 | **moved to `requirements-dev.txt`**: only the test client and synthetic phone use it |
+
+No STUN/TURN, tunnel, CDN asset or analytics. FastAPI's interactive docs pages are disabled because they load assets from a CDN (`/docs`, `/redoc`, `/openapi.json` are 404, tested). `starlette`'s `TestClient` needs `httpx2`, which was not added: tests serve the real app under uvicorn on a loopback port instead.
+
+### Decisions and deviations
+
+1. **ICE restart is not supported, so the server refuses it.** aiortc 1.15 has no ICE-restart code, and an empirical check showed that a second offer on a connected peer is accepted but the server keeps the old ICE connection and the new client connection fails. An `offer` with `ice_restart: true` is answered with the non-fatal `renegotiation_failed` (or `no_active_peer`), and the page always builds a fresh peer (the work order's recommended baseline, and what the prototype did). `docs/transport.md` now says so. The message field and `via: ice_restart` remain for a future server.
+2. **Socket and peer lifetimes are separate (ADR-16, still Proposed).** Closing the signaling socket alone leaves a connected peer running and the device `connected`; status follows the peer (tested). A socket that closes with no connected peer releases the peer. The work order's sentence "or a closed socket: mark the device disconnected" is therefore followed only when there is nothing left connected. Unproven on real phones: this is exactly what R3 and R4 test.
+3. **A reconnect is counted when the new peer connects,** not at `join`. `joined.reconnect_count` is the stored value at join time and `is_reconnect` says the device has connected before. Consequence, tested both ways: if the page closes its old peer before the new one arrives, the server records `connected`, `disconnected` (reason `peer_closed`), `reconnected`; on a silent drop it records `connected`, `reconnected`.
+4. **Audio sink is async and fed through a bounded per-device queue** (250 frames, about 5 s). `push(device_id, pcm, sample_rate, t_wall)` is awaited from a per-device pump task, never from the receive loop. A slow sink fills only that device's queue; frames are dropped and counted. Tested with a sink that hangs forever for one device while another keeps streaming. Sinks must not run heavy synchronous work on the event loop.
+5. **Time base available to CON-05:** `t_wall` is the server's wall clock in UTC epoch seconds at frame receipt: includes network and jitter-buffer delay, not sample-accurate. The frame's RTP-derived `pts` is available and is not passed on yet. `audio_duration_s` sums each frame's own duration, so a sample-rate change no longer skews it (prototype finding 9).
+6. **Two audit additions** because the work order requires them to be audited and nothing in the catalog fit: `hook_failed {hook, error}` (new, in `docs/data-model.md` and `server/audit_catalog.py`), and receive-loop failures reuse `signaling_error` with code `receive_failed` (documented in `docs/transport.md`). Please confirm both.
+7. **`end_meeting` and `record_device_left`** were added to `server/registry.py` (the CON-03 hand-off said end was CON-04's). One transaction; teardown and hooks run after it commits. Hooks are cut off after 5 s and a failing or hanging hook is audited without failing the request. `summary_pending` is always `false` until CON-10.
+8. **Shutdown records nothing.** A clean stop marks sessions as closing, so devices stay `connected` in the database; the next start reconciles them (`server_restart`), which is what the restart test proves.
+9. **`GET /metrics` kept** as a read-only debug route (the work order's open question default), now snake_case (`device_id`, `audio_received`, `last_audio_age_ms`, `frames`, `dropped_frames`, `sink_errors`, `audio_gaps`); it is not in `docs/api.md`'s contract and nothing may depend on it. The periodic 5 s `METRICS` log line is kept.
+10. **DB busy maps to HTTP 500 `internal_error`** ("the database is busy; try again") because the error catalog has no 503.
+11. **Pages:** `/` is a minimal "New meeting" page and `/dashboard/{id}` a minimal raw-feed page (CON-07 replaces it). `/meetings/{id}` (post-meeting view) and `GET /api/meetings` (list) are not served yet, so the ended-meeting redirect from the dashboard lands on a 404. `docs/api.md`'s status line says exactly what exists.
+12. **Removed with the prototype:** optional command-driven STT (`STT_COMMAND`) no longer works; `server/stt.py` is untouched and unused until CON-05 replaces it. `join-<ip>.svg` is no longer written (the QR is returned by the API).
+
+### Findings
+
+* aiortc ICE restart (decision 1).
+* uvicorn's own `ws_max_size` (1 MiB) caps a frame before the application sees it; the application limit is 128 KiB and answers `invalid_message`.
+* FastAPI 0.141 wraps included routers lazily; route inspection through `app.routes` shows `_IncludedRouter`, so route checks were done against the running server.
+* A plain `http://` request to the TLS port fails at the connection (curl exit 52), as expected; a phone that opens the `http` URL sees a failed load, not a redirect. No HTTP-to-HTTPS redirect was added.
+* Two test-side issues found and fixed: aiohttp's client only processes a close frame when something reads the socket; a test that closed the phone before stopping the server measured a disconnect the real restart would not.
+
+### Where the CON-01 characterization intents moved
+
+| CON-01 test intent (prototype) | Now covered by |
+|---|---|
+| join validation, offer before join, malformed and binary frames | `test_signaling.py` (invalid device id, `not_joined`, `invalid_message`, unknown types, oversize) |
+| same identity reused, reconnect counted, second socket replaces first | `test_transport_integration.py` (reconnect both patterns, second socket), `test_signaling.py` |
+| two devices are two participants | `test_signaling.py` |
+| metrics shape, `disconnected` with no peer | `test_meetings_api.py` (gauges, null before audio), `/metrics` test |
+| cleanup on socket close, peer closed, audio task ended | `test_transport_integration.py` (socket close keeps the peer; peer close releases and records; `leave`) |
+| isolation: one phone fails, others continue | `test_transport_integration.py` (malformed message and disconnect on B; receive-loop exception on B) |
+| audio arrives through the real receive path | `test_transport_integration.py` (sink sees mono PCM), `test_audio_frames.py` (formats) |
+
+### Real-process check (`python -m server.app`, TLS, throwaway self-signed certificate; `mkcert -install` was not run)
+
+Passed: a certificate not covering the advertised address exits with `startup failed: certificate … does not cover 127.0.0.1; it covers: 192.168.1.5 …` and the mkcert command to run; with a covering certificate it printed the LAN address, `Certificate OK` and the URL, served `/` (200), `POST /api/meetings` returned a join URL and a QR (10 652 characters of SVG), the join page carries the consent line, `/docs` is 404, SIGINT exited 0 with a clean shutdown, and the database written by the real process holds `server_started` then `meeting_created`.
+
+### Regression checklist (R1 to R11) after the migration
+
+Compare each against the CON-01 baseline, which itself was never captured on phones.
+
+| # | Check | CON-04 result |
+|---|---|---|
+| R1 | Offline join with HTTPS trusted | **Not run (no phones, no trusted certificate)** |
+| R2 | One phone, 5 min | **Not run** |
+| R3 | Wi-Fi off 2 s | **Not run.** Server behavior for a silent drop is covered over loopback only |
+| R4 | Wi-Fi off 10 s | **Not run** |
+| R5 | Two phones, unique phrases | **Not run** |
+| R6 | One phone drops, others continue | **Not run.** Loopback isolation tests pass |
+| R7 | Close and reopen the tab | **Not run.** The page now keeps `device_id` in `localStorage`, so a reopened tab should resume the same device; unverified on Android Chrome and iPhone Safari |
+| R8 | Screen lock and backgrounding | **Not run** |
+| R9 | Malformed message from one phone while another streams | Loopback equivalent passed; **not run on phones** |
+| R10 | Tests retargeted to the new signaling contract | **Passed** (302 passed; intents mapped above) |
+| R11 | Tests must model the real server's disconnect handling | **Passed, and re-derived:** the tests now run the real app under uvicorn, which has no aiohttp `TestServer` cancellation artifact |
+
+Also not run and required by the work order: server restart while real phones are connected, HTTPS trust and microphone permission on each platform, and comparison with CON-01 results.
+
+### Handoff
+
+- **CON-05:** implement `AudioSink` (`server/transport/audio.py`), pass it to `create_app(sink=...)`; the queue and drop counters exist already. Add the `ModelExecution` migration as `0002_*.sql`.
+- **CON-06:** the dashboard hub's `_translate` in `server/dashboard_hub.py` is where `utterance` and `utterance_updated` are added.
+- **CON-07:** replace `client/dashboard.html`/`dashboard.js`; use the resync procedure in `docs/api.md`. `GET /api/meetings/{id}` already returns `as_of_seq`.
+- **CON-10:** subscribe with `app.state.runtime.on_meeting_ended(hook)`; keep the hook fast and start the work as a task; serve `/meetings/{id}`.
+- **CON-12:** re-run transport checks in the offline rehearsal.
+- **Docs that are now stale and were not edited (outside this task's files):** the "checked-in `server/` and `client/` are the DT-17 prototype" sentences in `AGENTS.md`, `docs/README.md` and `docs/00-AI-CONTEXT.md`.
