@@ -1,24 +1,9 @@
 <!doctype html>
-<html lang="en">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Meeting dashboard (minimal)</title>
-<style>
-  body { font: 15px system-ui, sans-serif; max-width: 60rem; margin: 1.5rem auto; padding: 0 1rem; }
-  table { border-collapse: collapse; width: 100%; }
-  td, th { border-bottom: 1px solid #ddd; padding: .3rem .5rem; text-align: left; }
-  pre { background: #f5f5f5; padding: .6rem; max-height: 22rem; overflow: auto; font-size: 12px; }
-  img { width: 12rem; height: 12rem; }
-  button { padding: .6rem 1rem; font: inherit; }
-</style>
-<h1 id="title">Meeting</h1>
-<p>Status: <b id="status">…</b> <button id="end">End meeting</button></p>
-<p>Join link: <code id="joinUrl">—</code></p>
-<img id="qr" alt="Join QR code" hidden>
-<h2>Devices</h2>
-<table><thead><tr><th>Name</th><th>Status</th><th>Reconnects</th><th>Last audio (ms)</th><th>Audio (s)</th></tr></thead>
-<tbody id="devices"></tbody></table>
-<h2>Events (raw feed; the real dashboard is a later task)</h2>
-<pre id="log"></pre>
-<script src="/static/dashboard.js"></script>
-</html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark"><title>Convene — Meeting</title><link rel="stylesheet" href="/static/dashboard.css"></head>
+<body class="dashboard-shell"><div class="cursor-glow" aria-hidden="true"></div><main class="dashboard" aria-live="polite">
+<header class="topbar entrance entrance-1"><a class="wordmark" href="/" aria-label="Convene home">CONVENE</a><div class="meeting-identity"><p class="eyebrow">Local meeting intelligence</p><h1 id="title">Loading meeting</h1></div><div class="topbar-actions"><span id="syncState" class="sync-state" role="status">Connecting…</span><button id="end" class="button button-quiet" type="button">End meeting</button></div></header>
+<section id="staleBanner" class="stale-banner" hidden role="status"><strong>Connection to server lost.</strong> The meeting view may be stale; reconnecting now.</section><section id="pageError" class="page-error" hidden role="alert"></section>
+<div class="dashboard-grid"><aside class="panel device-panel entrance entrance-2" aria-labelledby="devicesHeading"><div class="panel-heading"><div><p class="eyebrow">Device array</p><h2 id="devicesHeading">In the room</h2></div><span id="deviceCount" class="count-pill">0</span></div><div id="devices" class="device-list"></div><div class="join-card"><p class="eyebrow">Invite a phone</p><code id="joinUrl">Waiting for join link</code><img id="qr" alt="QR code for joining this meeting" hidden></div></aside>
+<section class="panel transcript-panel entrance entrance-3" aria-labelledby="transcriptHeading"><div class="panel-heading transcript-heading"><div><p class="eyebrow">Live transcript</p><h2 id="transcriptHeading">What the room is saying</h2></div><span id="meetingStatus" class="meeting-status">—</span></div><div id="transcriptScroll" class="transcript-scroll" tabindex="0" aria-label="Live meeting transcript"><div id="emptyTranscript" class="empty-state"><span class="empty-orb" aria-hidden="true"></span><p>Listening for the first voice.</p><small>Each phone arrives as its own attributed audio stream.</small></div><ol id="transcript" class="transcript" aria-live="polite" aria-relevant="additions text"></ol></div><button id="newLines" class="new-lines" type="button" hidden>New lines ↓</button></section>
+<aside class="panel intelligence-panel entrance entrance-4" aria-labelledby="intelligenceHeading"><div class="panel-heading"><div><p class="eyebrow">Meeting intelligence</p><h2 id="intelligenceHeading">Ask the room</h2></div><span class="coming-soon">Next</span></div><div class="qa-placeholder"><span class="qa-mark" aria-hidden="true">✦</span><p>Grounded Q&amp;A will appear here.</p><small>Answers will cite what was said, who said it, and when.</small></div><div class="integrity-note"><span aria-hidden="true">◎</span><p>Uncertain attribution stays visible for review. Convene does not silently guess.</p></div></aside></div></main>
+<dialog id="correctionDialog" class="correction-dialog" aria-labelledby="correctionTitle"><form id="correctionForm" method="dialog"><header><p class="eyebrow">Review attribution</p><h2 id="correctionTitle">Correct speaker</h2></header><p id="correctionLine" class="correction-line"></p><fieldset id="participantChoices" class="participant-choices"><legend>Choose a participant</legend></fieldset><label class="name-option" for="speakerName">Or name this speaker<input id="speakerName" maxlength="80" autocomplete="off" placeholder="e.g. Sam"></label><p id="correctionError" class="inline-error" role="alert" hidden></p><footer><button id="cancelCorrection" class="button button-quiet" value="cancel" type="button">Cancel</button><button id="saveCorrection" class="button button-accent" value="default" type="submit">Save correction</button></footer></form></dialog><script type="module" src="/static/dashboard.js"></script></body></html>
