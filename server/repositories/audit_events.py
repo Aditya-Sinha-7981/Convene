@@ -25,3 +25,16 @@ def list_events(conn, *, meeting_id: str | None = None, event_type: str | None =
     sql += " ORDER BY seq LIMIT ?"
     params.append(-1 if limit is None else limit)
     return [AuditEvent.from_row(r) for r in base.query_all(conn, sql, params)]
+
+
+def utterance_created_seq(conn, utterance_id: str) -> int | None:
+    row = base.query_one(conn, "SELECT seq FROM AuditEvent WHERE event_type = 'utterance_created' "
+                               "AND json_extract(payload, '$.utterance_id') = ?", (utterance_id,))
+    return row[0] if row else None
+
+
+def transcript_high_water(conn, meeting_id: str) -> int:
+    """Latest durable transcript change, used by summary/export staleness checks."""
+    row = base.query_one(conn, "SELECT COALESCE(MAX(seq), 0) FROM AuditEvent WHERE meeting_id = ? "
+                               "AND event_type IN ('utterance_created', 'utterance_corrected')", (meeting_id,))
+    return row[0]

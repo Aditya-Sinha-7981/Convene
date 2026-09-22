@@ -1,6 +1,7 @@
 """HTTP routes: the REST API and the served pages (docs/api.md). Handlers stay thin; logic is in meetings.py."""
 import json
 import logging
+from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, Request, WebSocket
@@ -8,11 +9,13 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import meetings as service
-from .errors import (DatabaseBusyError, DeviceConflictError, DeviceNotFoundError, MeetingEndedError,
-                     MeetingNotFoundError, StorageError, ValidationError)
+from .attribution.views import utterance_view
+from .errors import (AmbiguousDisplayNameError, DatabaseBusyError, DeviceConflictError, DeviceNotFoundError,
+                     MeetingEndedError, MeetingNotFoundError, ParticipantNotFoundError, StorageError,
+                     UtteranceNotFoundError, ValidationError)
 from .ids import is_uuid4
 from .timeutil import utc_now
-from .repositories import meetings as meetings_repo
+from .repositories import audit_events, meetings as meetings_repo, utterances
 from .transport.signaling import signaling_endpoint
 
 log = logging.getLogger("convene.api")
@@ -96,6 +99,49 @@ async def end_meeting(meeting_id: str, request: Request):
     return JSONResponse(payload, status_code=status)
 
 
+@router.get("/api/meetings/{meeting_id}/transcript")
+async def get_transcript(meeting_id: str, request: Request):
+    meeting_id = _meeting_id(meeting_id)
+    raw_after = request.query_params.get("after_seq")
+    if raw_after is None:
+        after_seq = 0
+    else:
+        try:
+            after_seq = int(raw_after)
+        except ValueError as exc:
+            raise ApiError(400, "invalid_request", "after_seq must be a non-negative integer") from exc
+        if after_seq < 0 or str(after_seq) != raw_after:
+            raise ApiError(400, "invalid_request", "after_seq must be a non-negative integer")
+
+    def read(tx):
+        meetings_repo.require(tx.conn, meeting_id)
+        rows = utterances.list_for_meeting(tx.conn, meeting_id)
+        threshold = _runtime(request).settings.attribution.low_confidence_threshold
+        views = [utterance_view(tx.conn, row, threshold) for row in rows]
+        if raw_after is not None:
+            views = [view for view in views if view["seq"] > after_seq]
+        return {"meeting_id": meeting_id, "utterances": views, "as_of_seq": audit_events.max_seq(tx.conn)}
+
+    return await _runtime(request).db.run(read)
+
+
+@router.post("/api/meetings/{meeting_id}/utterances/{utterance_id}/correct")
+async def correct_utterance(meeting_id: str, utterance_id: str, request: Request):
+    meeting_id = _meeting_id(meeting_id)
+    if not is_uuid4(utterance_id):
+        raise ApiError(400, "invalid_request", "utterance id must be a UUID v4")
+    body = await read_json_body(request)
+    result = await _runtime(request).attribution.correct(meeting_id, utterance_id, body)
+
+    def view(tx):
+        threshold = _runtime(request).settings.attribution.low_confidence_threshold
+        return {"utterance": utterance_view(tx.conn, result.utterance, threshold),
+                "participant": asdict(result.participant),
+                "created_participant": result.created_participant, "changed": result.changed}
+
+    return await _runtime(request).db.run(view)
+
+
 @router.get("/metrics")
 async def metrics(request: Request):
     """Read-only per-device diagnostics (not part of the contract; nothing may depend on it)."""
@@ -169,6 +215,9 @@ async def dashboard_feed(websocket: WebSocket, meeting_id: str):
 _STORAGE_ERRORS = [
     (MeetingNotFoundError, 404, "meeting_not_found"),
     (DeviceNotFoundError, 404, "device_not_found"),
+    (UtteranceNotFoundError, 404, "utterance_not_found"),
+    (ParticipantNotFoundError, 404, "participant_not_found"),
+    (AmbiguousDisplayNameError, 409, "ambiguous_display_name"),
     (MeetingEndedError, 409, "meeting_ended"),
     (DeviceConflictError, 409, "device_conflict"),
     (ValidationError, 400, "invalid_request"),

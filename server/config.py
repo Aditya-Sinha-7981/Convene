@@ -64,6 +64,22 @@ class PipelineConfig:
     priority_max_wait_s: float = 3.0         # ...but never longer than this
 
 
+@dataclass(frozen=True)
+class AttributionConfig:
+    """Device attribution is structural; 1.0 is reserved for human confirmation."""
+    device_confidence: float = 0.95
+    unresolved_confidence: float = 0.2
+    low_confidence_threshold: float = 0.8
+
+
+def _check_attribution(config: "AttributionConfig") -> None:
+    values = (config.device_confidence, config.unresolved_confidence, config.low_confidence_threshold)
+    if any(not 0.0 <= value <= 1.0 for value in values):
+        raise ValueError("confidence values must be between 0 and 1")
+    if config.device_confidence >= 1.0:
+        raise ValueError("device_confidence must be below 1.0, which is reserved for manual correction")
+
+
 def _check_pipeline(config: "PipelineConfig") -> None:
     if config.segmentation not in ("segments", "fixed"):
         raise ValueError(f"segmentation must be 'segments' or 'fixed', got {config.segmentation!r}")
@@ -80,6 +96,7 @@ class Settings:
     exports_dir: Path
     stt: SttModelConfig = SttModelConfig()
     pipeline: PipelineConfig = PipelineConfig()
+    attribution: AttributionConfig = AttributionConfig()
 
 
 def load_settings(config_path: Path | None = None, *, root: Path | None = None) -> Settings:
@@ -108,7 +125,8 @@ def load_settings(config_path: Path | None = None, *, root: Path | None = None) 
         resolved[key] = candidate if candidate.is_absolute() else root / candidate
     return Settings(root=root, database_path=resolved["database"], exports_dir=resolved["exports"],
                     stt=_section(SttModelConfig, data.get("models", {}).get("stt", {}), path, "models.stt"),
-                    pipeline=_section(PipelineConfig, data.get("pipeline", {}), path, "pipeline"))
+                    pipeline=_section(PipelineConfig, data.get("pipeline", {}), path, "pipeline"),
+                    attribution=_section(AttributionConfig, data.get("attribution", {}), path, "attribution"))
 
 
 def _section(cls, table, path: Path, name: str):
@@ -138,6 +156,8 @@ def _section(cls, table, path: Path, name: str):
         built = cls(**values)
         if cls is PipelineConfig:
             _check_pipeline(built)
+        elif cls is AttributionConfig:
+            _check_attribution(built)
     except ValueError as exc:
         raise ConfigError(f"{path}: [{name}] {exc}") from exc
     return built

@@ -1,6 +1,6 @@
 from dataclasses import asdict
 
-from ..errors import NotFoundError
+from ..errors import ParticipantNotFoundError
 from . import base
 from .models import Participant
 
@@ -20,7 +20,7 @@ def get(conn, participant_id: str) -> Participant | None:
 def require(conn, participant_id: str) -> Participant:
     participant = get(conn, participant_id)
     if participant is None:
-        raise NotFoundError(f"participant {participant_id} does not exist")
+        raise ParticipantNotFoundError(f"participant {participant_id} does not exist")
     return participant
 
 

@@ -12,7 +12,9 @@ import asyncio
 import logging
 from dataclasses import asdict
 
-from .repositories import connections, devices, meetings, participants
+from .audit import emit
+from .attribution.views import utterance_view
+from .repositories import connections, devices, meetings, participants, utterances
 from .repositories.models import AuditEvent
 from .timeutil import utc_now
 from .views import device_view, meeting_view
@@ -22,6 +24,7 @@ log = logging.getLogger("convene.hub")
 _MEETING_EVENTS = {"meeting_started", "meeting_ended"}
 _DEVICE_EVENTS = {"device_registered", "device_left"}
 _CONNECTION_EVENTS = {"device_connected", "device_reconnected", "device_disconnected", "device_audio_resumed"}
+_UTTERANCE_EVENTS = {"utterance_created": "utterance", "utterance_corrected": "utterance_updated"}
 OVERFLOW_CLOSE_CODE = 1013
 
 
@@ -51,8 +54,10 @@ class _Client:
 
 
 class DashboardHub:
-    def __init__(self, db, peers, *, gauge_interval_s: float = 1.0, client_queue: int = 256):
+    def __init__(self, db, peers, *, low_confidence_threshold: float = 0.8,
+                 gauge_interval_s: float = 1.0, client_queue: int = 256):
         self.db, self.peers = db, peers
+        self.low_confidence_threshold = low_confidence_threshold
         self.gauge_interval_s, self.client_queue = gauge_interval_s, client_queue
         self._clients: dict[str, set[_Client]] = {}
         self._events: asyncio.Queue = asyncio.Queue()
@@ -83,10 +88,17 @@ class DashboardHub:
                                                        "meeting_id": event.meeting_id, "at": utc_now(), **payload})
             except Exception:
                 log.exception("could not forward %s to dashboards", event.event_type)
+                try:
+                    await self.db.run(lambda tx: emit(
+                        tx, "hook_failed", "api",
+                        {"hook": "dashboard.push", "error": f"could not translate {event.event_type}"},
+                        meeting_id=event.meeting_id))
+                except Exception:
+                    log.exception("could not audit dashboard push failure")
 
     async def _translate(self, event: AuditEvent) -> list[tuple[str, dict]]:
         kind = event.event_type
-        if kind not in _MEETING_EVENTS | _DEVICE_EVENTS | _CONNECTION_EVENTS:
+        if kind not in _MEETING_EVENTS | _DEVICE_EVENTS | _CONNECTION_EVENTS | set(_UTTERANCE_EVENTS):
             return []
 
         def read(tx):
@@ -102,6 +114,14 @@ class DashboardHub:
                 row = connections.get(tx.conn, event.event_id)
                 if row is not None:
                     out.append(("connection_event", {"event": asdict(row)}))
+            if kind in _UTTERANCE_EVENTS:
+                row = utterances.require(tx.conn, event.payload["utterance_id"])
+                out.append((_UTTERANCE_EVENTS[kind], {"utterance": utterance_view(
+                    tx.conn, row, self.low_confidence_threshold)}))
+                if kind == "utterance_corrected" and event.payload["created_participant_id"] is not None:
+                    device = devices.require(tx.conn, row.device_id)
+                    out.append(("device_status", {"device": device_view(
+                        device, participants.list_for_device(tx.conn, row.device_id))}))
             return out
 
         return await self.db.run(read)

@@ -1,7 +1,7 @@
 """Utterance storage only: insert, get, list, update. Creating utterances from STT is CON-06."""
 from dataclasses import asdict
 
-from ..errors import NotFoundError
+from ..errors import UtteranceNotFoundError
 from . import base
 from .models import Utterance
 
@@ -22,7 +22,7 @@ def get(conn, utterance_id: str) -> Utterance | None:
 def require(conn, utterance_id: str) -> Utterance:
     utterance = get(conn, utterance_id)
     if utterance is None:
-        raise NotFoundError(f"utterance {utterance_id} does not exist")
+        raise UtteranceNotFoundError(f"utterance {utterance_id} does not exist")
     return utterance
 
 

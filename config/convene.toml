@@ -41,3 +41,8 @@ hallucination_min_strength_db = 10.0
 log_transcripts = true          # print each transcribed line on the server console (never written to a file)
 priority_high_backlog_windows = 4
 priority_max_wait_s = 3.0
+
+[attribution]
+device_confidence = 0.95
+unresolved_confidence = 0.2
+low_confidence_threshold = 0.8

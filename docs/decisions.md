@@ -259,7 +259,9 @@ ADR-15 to ADR-18 finalize the API and event contracts (`api.md`, `transport.md`,
 
 **Tradeoffs:** `corrected = 1` with a null `original_participant_id` means "started unresolved", which readers must know. A confirmation is recorded as a correction, which slightly inflates correction counts.
 
-**Status:** Proposed.
+**Status:** Locked. Accepted by the project lead for CON-06 on 2026-09-23. The initial configured values are
+device confidence `0.95`, unresolved confidence `0.2`, and low-confidence threshold `0.8`; CON-15 tunes them
+from real-phone evidence.
 
 ---
 

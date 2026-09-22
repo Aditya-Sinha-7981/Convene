@@ -13,7 +13,8 @@ audio window → device_id → participant_id (1:1, from Device/Participant tabl
 ```
 
 - `attribution_method = "device"`
-- `attribution_confidence` = a fixed high value (this is a structural guarantee, not a model output — there is no classification step to be uncertain about)
+- `attribution_confidence = 0.95`, configured as `attribution.device_confidence`. This is a structural guarantee,
+  not a model output; `1.0` remains uniquely reserved for human confirmation.
 - This path still allows manual correction (ADR-04) — cross-device audio bleed can, rarely, cause a wrong attribution even here; see "Residual risk" below.
 
 ### Path 2: shared device (2–3 people, one phone)
@@ -41,21 +42,32 @@ For every transcribed window from a shared device:
 4. If no enrolled embedding clears the threshold (unknown/unenrolled speaker, or a genuinely ambiguous window):
    - `participant_id = null`
    - `attribution_method = "generic_unresolved"`
-   - `attribution_confidence` = low (fixed low value, since there is no reference to derive a score from)
+   - `attribution_confidence = 0.2`, configured as `attribution.unresolved_confidence` (there is no reference
+     from which to derive a score)
    - The dashboard displays this as e.g. "Speaker on Phone 2" rather than inventing a name
 
 This is nearest-centroid classification against known references, not unsupervised clustering — deliberately, per ADR-03, because classifying against a known reference degrades more predictably than blind clustering does.
 
 ## Confidence and correction (applies to both paths)
 
-Every `Utterance`, regardless of path, carries `attribution_confidence`. The dashboard visually flags anything below a "trust this without checking" threshold — the exact threshold is a tuning parameter, not an architectural one, and should be set from real testing data (`testing.md`), not guessed.
+Every `Utterance`, regardless of path, carries `attribution_confidence`. The server flags values below the
+configured `attribution.low_confidence_threshold` (initially `0.8`) and always flags `generic_unresolved`.
+This initial threshold is provisional until CON-15 produces real-phone data. Clients consume the server's
+boolean and never implement their own threshold. `stt_confidence` remains a separate field: consumers can
+explain transcription uncertainty independently from attribution uncertainty, and it does not change the
+attribution `low_confidence` flag.
 
 Manual correction is a first-class action, not a special case:
 
 1. A user clicks a transcript line in the dashboard and reassigns it to a different participant (or names an unresolved generic speaker).
-2. The API sets `attribution_method = "manual_correction"`, `attribution_confidence = 1.0`, `corrected = true`, and preserves the previous `participant_id` in `original_participant_id`.
+2. The API sets `attribution_method = "manual_correction"`, `attribution_confidence = 1.0`, `corrected = true`,
+   and preserves the participant from the first correction in `original_participant_id`. Correcting to the
+   current participant is a human confirmation; repeating an already-confirmed state is an idempotent no-op.
 3. An `utterance_corrected` AuditEvent is fired, so the correction is part of the permanent record, not an invisible overwrite.
 4. Corrected utterances feed downstream (chunking, summarization, export) using the corrected attribution — the original is retained for audit purposes only, never surfaced as if it were still current.
+
+One successful VAD-bounded STT speech segment creates one utterance. Unresolved labels use the device's
+stable 1-based join order (`joined_at`, then `device_id`), for example `Speaker on Phone 2`.
 
 ## Residual risk: cross-device audio bleed
 

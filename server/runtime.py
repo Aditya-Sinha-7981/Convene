@@ -7,6 +7,7 @@ from typing import Awaitable, Callable
 
 from . import registry
 from .audit import emit
+from .attribution import AttributionService
 from .config import Settings
 from .dashboard_hub import DashboardHub
 from .db import Database
@@ -51,6 +52,7 @@ class Runtime:
         self.db: Database | None = None
         self.peers: PeerManager | None = None
         self.hub: DashboardHub | None = None
+        self.attribution: AttributionService | None = None
         self._hooks: list[tuple[str, MeetingEndedHook]] = []
         self._log_task: asyncio.Task | None = None
 
@@ -124,9 +126,13 @@ class Runtime:
         if self.stt_adapter is not None:
             await self._start_stt()
         self.peers = PeerManager(self.db, self.sink, self.transport)
-        self.hub = DashboardHub(self.db, self.peers, gauge_interval_s=self.transport.gauge_interval_s)
+        self.hub = DashboardHub(self.db, self.peers,
+                                low_confidence_threshold=self.settings.attribution.low_confidence_threshold,
+                                gauge_interval_s=self.transport.gauge_interval_s)
         self.db.subscribe(self.hub.on_audit)
         self.hub.start()
+        self.attribution = AttributionService(self.db, self.settings.attribution)
+        self.on_transcribed_window(self.attribution.accept)
         if self.transport.metrics_log_interval_s > 0:
             self._log_task = asyncio.create_task(self._log_metrics())
 
@@ -156,6 +162,8 @@ class Runtime:
         if self.pipeline is not None:
             await self.pipeline.stop()
             self.stt_adapter.close()
+        if self.attribution is not None:
+            await self.attribution.drain()
         self.db.close()
 
     async def _log_metrics(self) -> None:

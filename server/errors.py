@@ -22,6 +22,18 @@ class DeviceNotFoundError(NotFoundError):
     """`device_not_found`."""
 
 
+class UtteranceNotFoundError(NotFoundError):
+    """`utterance_not_found`."""
+
+
+class ParticipantNotFoundError(NotFoundError):
+    """`participant_not_found`."""
+
+
+class AmbiguousDisplayNameError(StorageError):
+    """`ambiguous_display_name`."""
+
+
 class MeetingEndedError(StorageError):
     """`meeting_ended`: the operation needs a meeting that has not ended."""
 
