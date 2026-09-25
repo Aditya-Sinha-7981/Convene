@@ -20,7 +20,7 @@ Do not "fix" an F6 failure by adding unrelated infrastructure — identify which
 - Default run (`pytest -m "not model"`, no weights): VAD, windowing and time base, resampling, the scheduler (fairness, overload, isolation, drain), the priority hook, the adapter contract and confidence mapping, offline model resolution, and synthetic phones through the real server with a fake model (`tests/test_vad.py`, `test_windowing.py`, `test_scheduler.py`, `test_stt_adapter.py`, `test_stt_integration.py`).
 - Real model (`pytest tests/test_stt_adapter.py -m model`, reference laptop, weights provisioned): synthetic speech fixtures transcribed within a recorded error rate, safe from worker threads, resolved and run **with any non-loopback socket or DNS lookup raising**, and two devices through the whole pipeline with each transcript staying with its own device.
 - Measurements (`scripts/measure_stt.py models|pipeline`): model comparison and latency/queue behavior at 1, 2 and 5 synthetic devices. Recorded in `logs/stt.md`.
-- None of these establish accuracy on real phone audio, cross-device bleed, or behavior with real phones. Synthetic speech is clean text-to-speech; real-phone STT and bleed checks are still required (see the single-device and cross-device tests below).
+- Automated checks do not establish accuracy on real phone audio, cross-device bleed, or behavior across devices. One real-phone run on 2026-09-25 did establish the basic path through local STT and the dashboard; real-phone STT quality, bleed, duration, and multi-device checks are still required (see the single-device and cross-device tests below).
 
 ## Test: single-device attribution baseline
 

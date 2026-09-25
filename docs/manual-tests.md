@@ -1,8 +1,11 @@
 # Manual tests (through CON-07 and CON-04B)
 
-This is the checklist for what the automated tests **cannot** establish: anything that depends on real phones, real browsers, real Wi-Fi, real microphones, and real speech. Everything built so far was tested with synthetic phones over loopback and synthetic speech. Until you run these, the transport, the reconnect behavior and the speech pipeline are **unproven on real devices**.
+This is the checklist for what the automated tests **cannot** establish: anything that depends on real phones, real browsers, real Wi-Fi, real microphones, and real speech. The initial trusted-host real-device run on 2026-09-25 passed QR join, microphone capture, local transcription, dedicated-device attribution, and live dashboard rendering for one participant phone. The remaining checks below establish reliability and boundaries; they are not implied by that first successful run.
 
 Record each result as **Passed**, **Failed** or **Not run (reason)** in `logs/transport.md` (Part A), `logs/stt.md` (Part B), and `logs/dashboard.md` (Part C), with the phone model, OS, browser and version. Do not put private audio or transcripts in those logs. If a check fails, write down exactly what you saw and which layer you think is at fault (see "Failure classes" at the end); do not add workarounds first.
+
+> The initial run did not record the phone model, OS, browser/version, duration, or network type. Capture those
+> details on the next pass; absence of them limits comparison and regression diagnosis.
 
 **What exists today, so you know what you will and will not see:**
 

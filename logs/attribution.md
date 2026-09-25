@@ -33,9 +33,11 @@ initial low-confidence threshold is `0.8`. Thresholds remain provisional until C
 
 ### Hardware checks
 
-- Single real phone, five minutes: **Not run — physical testing deferred by the project lead.**
+- Single real phone, basic path: **Passed (2026-09-25).** A dedicated phone's live STT rows appeared under its
+  registered participant on the dashboard. Duration and device/browser details were not recorded.
+- Single real phone, five minutes: **Not run.**
 - Two real phones with distinct speakers/phrases: **Not run — physical testing deferred.**
-- Correction round-trip on a real transcript: **Not run — no real transcript yet.**
+- Correction round-trip on a real transcript: **Not run — real transcript exists, but correction was not exercised.**
 - Failed synthetic STT window followed by later windows: covered by the existing automated STT suite; this does
   not prove microphone or phone behavior.
 

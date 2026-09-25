@@ -30,8 +30,10 @@
 
 ### Hardware checks
 
-- Two real phones/dashboard, Wi-Fi interruption, correction reload, restart resync, projector legibility, and
-  offline laptop page load: **Not run — awaiting the planned physical test session.**
+- **Passed (2026-09-25, one real participant phone):** the laptop dashboard received and displayed attributed local
+  STT rows after QR join and microphone permission through the trusted hostname.
+- Two real phones/dashboard, Wi-Fi interruption, correction reload, restart resync, projector legibility, reduced
+  motion/touch behavior, and offline laptop page load: **Not run.**
 
 ### Handoff
 

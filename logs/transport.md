@@ -276,6 +276,9 @@ The first version of the CON-04 summary above said "187 new tests" and `test_aud
 
 ### Hardware checks
 
-- **Not run:** public certificate issuance/path validation, explicit DNS update against the configured zone, Android
-  Chrome zero-install join, iOS Safari zero-install join, hotspot DNS behavior, DNS-rebinding/Private-DNS behavior,
-  and audio reception. These require the actual hotspot, certificate files, and phones.
+- **Passed (2026-09-25, initial real-device run):** the explicit Cloudflare DNS preflight updated the configured
+  DNS-only hostname; a participant phone opened the trusted QR join URL without a custom CA, granted microphone
+  access, and delivered audio that reached local STT and the live dashboard. The dashboard showed transcript rows
+  attributed to that device's registered participant.
+- **Not yet recorded/verified:** phone model, OS, browser/version, Wi-Fi or hotspot type, run duration, Android versus
+  iOS coverage, DNS-rebinding/Private-DNS behavior, reconnect, multi-device isolation, and screen-lock behavior.

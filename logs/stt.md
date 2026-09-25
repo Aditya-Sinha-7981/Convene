@@ -1,7 +1,7 @@
 # logs/stt.md
 
 > Workstream: local STT adapter, VAD, windowing and scheduler (CON-05)
-> Status: implemented; tested with a fake model and with the real model on the reference laptop; **not tested with real phones or real speech**. **One decision is waiting on the project lead: the window size (see "Decisions needed").**
+> Status: implemented; tested with a fake model and with the real model on the reference laptop. A first real-phone run on 2026-09-25 produced local, attributed live transcript rows; real-phone quality, duration, noise, bleed, and language coverage remain unmeasured. **One decision is waiting on the project lead: the window size (see "Decisions needed").**
 
 Tracked project history. No secrets, private audio or transcripts. The speech used here is synthetic text-to-speech.
 
@@ -22,10 +22,11 @@ Tracked project history. No secrets, private audio or transcripts. The speech us
 | Automated tests | **412 default tests pass** (110 new; 302 before), plus **6 tests marked `model` pass** on the reference laptop |
 | Mutation check | 23 deliberate breakages of the STT code were each caught (one was missed at first, see Findings) |
 | Real process, real model, network blocked | Passed (below) |
-| **Real phones: real speech, distinct phrases per device, bleed with two phones close together** | **Not run: no phones** |
+| **One real phone: real speech through the trusted-host path** | **Passed (2026-09-25):** local STT produced attributed live dashboard transcript rows. Device/browser, duration, and quantitative accuracy were not recorded. |
+| **Distinct phrases per device; bleed with two phones close together** | **Not run** |
 | Window size ~1 s | **Not changed. Measurements say it is a problem; needs the project lead** |
 
-Nothing here shows transcription works on a real phone. The synthetic phones send text-to-speech over loopback; that shows the plumbing, isolation and accounting, not accuracy on real speech, real microphones, noise, or bleed.
+The initial real-phone result establishes that real microphone audio reaches the STT pipeline and dashboard. The synthetic work still does not establish real-phone accuracy, isolation, noise handling, or bleed; those require the remaining manual checks.
 
 ## Commands
 
@@ -144,7 +145,7 @@ Queues stayed bounded in every run and every drop was counted and matched by an 
 
 ## Open items and Not run
 
-* **Not run (no phones):** real speech through real phones; distinct phrases staying with the right device on real audio; two phones close together (bleed) and the gate's behavior there; the 30 to 60 minute soak; five real phones; screen lock effects on the stream; real background noise (the VAD thresholds are unvalidated on it).
+* **Partially run:** one phone produced attributed real-speech transcript rows through the trusted-host path on 2026-09-25. **Still not run:** distinct phrases staying with the right device on real audio; two phones close together (bleed) and the gate's behavior there; the 30 to 60 minute soak; five real phones; screen lock effects on the stream; real background noise; and a measured Hindi/Hinglish pass. VAD thresholds remain unvalidated in those conditions.
 * **Not run:** contention with a reasoning or embedding job (the mechanism exists and is tested; CON-15 measures the interference); the full memory budget with the other models loaded (only `stt` is measured); a whole-machine offline start (Wi-Fi off).
 * Browser default audio processing (echo cancellation, noise suppression, AGC) changes what the gate and the model see; unmeasured.
 * A window that times out leaves its model thread busy until it returns (MLX calls cannot be interrupted).
