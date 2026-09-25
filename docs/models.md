@@ -11,7 +11,7 @@ Application code never references a model name directly (ADR-14). Every capabili
 | `stt` | Transcribe an audio window | `mlx-whisper` with `mlx-community/whisper-large-v3-turbo`, **pinned to revision `a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb`** in `config/convene.toml` (measured on the reference laptop, below) | Groq Whisper-large-v3 (free tier), not wired |
 | `embedding` | Embed transcript chunks and questions for RAG | `BAAI/bge-small-en-v1.5` via `sentence-transformers`, CPU, pinned to revision `5c38ec7c405ec4b44b94cc5a9bb96e735b38267a` in `config/convene.toml` | none needed — cheap enough to always run local |
 | `speaker_embedding` | Enrollment + runtime classification for shared devices | local speaker-embedding model (ECAPA-TDNN-class, CPU) | none — must run local, no meaningful cloud equivalent for this use case |
-| `reasoning` | Summarization + RAG answer generation | local LLM via `mlx-lm`, 7–8B instruct class, 4-bit quantized | Groq (Llama 3.3 70B, free tier) or Gemini Flash (free tier) |
+| `reasoning` | Summarization + RAG answer generation | `mlx-lm` with `mlx-community/Meta-Llama-3.1-8B-Instruct-4bit`, **pinned to revision `241a666dad6cb93c8ff213d39a7f34a36bf26db4`**, resident from startup (measured, below) | Groq (Llama 3.3 70B, free tier) or Gemini Flash (free tier), not wired |
 
 ## Target hardware
 
@@ -43,12 +43,12 @@ Measured on the reference laptop (MacBook Pro, M4 Pro, 24 GB) with `scripts/meas
 | Component | Footprint | When resident |
 |---|---|---|
 | `stt` model (`whisper-large-v3-turbo`) | **measured: 1.8 GB resident (peak), 2.4 GB peak GPU** | continuously, for the whole meeting |
-| `reasoning` model (7–8B, 4-bit) | ~4–6GB | only during summarization/QA calls, not continuously |
+| `reasoning` model (`Llama-3.1-8B-Instruct-4bit`) | **measured: 5.5 GB peak MLX memory alone** | resident for the whole meeting (CON-09: no cold load at the first question) |
 | `embedding` model (`bge-small-en-v1.5`) | **measured: about 0.4 GB added to the server's peak RSS** | continuously (loaded at startup), used after each settle window |
 | `speaker_embedding` model | ~200–500MB | only for shared-device windows |
-| **Worst case, everything loaded at once** | **~7–9GB (estimate; only the `stt` row above is measured)** | leaves 15GB+ headroom on a 24GB machine |
+| **STT + embedding + reasoning loaded, 5 phones talking, questions every 8 s** | **measured: 5.7 GB peak RSS, 7.1 GB peak MLX memory** | about 15 GB headroom on 24 GB; `speaker_embedding` (CON-13) is not yet measured |
 
-This headroom is the margin for "several phones talking at once plus a live Q&A call in flight" without swapping or stalling. If real testing shows this budget is wrong, correct this table — it is a claim to be verified, not assumed. The `reasoning`, `embedding` and `speaker_embedding` rows are still unmeasured estimates (CON-08, CON-09, CON-13). The `embedding` row is measured below (CON-08); `reasoning` and `speaker_embedding` remain estimates.
+This headroom is the margin for "several phones talking at once plus a live Q&A call in flight" without swapping or stalling. If real testing shows this budget is wrong, correct this table — it is a claim to be verified, not assumed. The `reasoning`, `embedding` and `speaker_embedding` rows are still unmeasured estimates (CON-08, CON-09, CON-13). The `embedding` (CON-08) and `reasoning` (CON-09) rows are measured below; `speaker_embedding` remains an estimate.
 
 ## Embedding model selection (measured, CON-08)
 
@@ -63,6 +63,29 @@ Measured on the reference laptop with `scripts/measure_embeddings.py` (each cand
 - **`bge-small` is pinned** (revision `5c38ec7c405ec4b44b94cc5a9bb96e735b38267a`, cosine distance on normalized vectors). The fixture does not separate the three; the input limit and cost do. MiniLM's 256-token limit would silently truncate chunks in the 300–500-token range `rag-and-qa.md` asks for, and `bge-base` is 2.7× slower, 345 MiB larger and doubles vector size for no measured gain.
 - The peak RSS includes the `torch` runtime, which `mlx-whisper` already pulls in, so `sentence-transformers` adds little to the install. In the server, running the indexer raised peak process RSS from 1.93 GB to 2.33 GB (5 synthetic phones).
 - STT latency with and without the indexer running was the same within noise (`logs/rag.md`).
+
+## Reasoning model selection (measured, CON-09)
+
+Measured on the reference laptop with `scripts/measure_reasoning.py` (each candidate in its own process, cached,
+a Q&A-sized prompt of about 1,200 tokens) and `scripts/calibrate_qa.py --honesty --repeats 3` (12 answerable and 12
+unanswerable questions over a fixture meeting, `logs/qa.md`).
+
+| Candidate | Load (cached, incl. warm-up) | Peak MLX | Prompt | Generation | Context | Grounded correct | Fabricated | Answer time median / max |
+|---|---|---|---|---|---|---|---|---|
+| `Meta-Llama-3.1-8B-Instruct-4bit` (**pinned**) | 1.7 s | 5.49 GB | 352 tok/s | 49 tok/s | 128k | 36/36 | 0/36 | 3.9 / 4.8 s |
+| `Qwen2.5-7B-Instruct-4bit` | 0.7 s | 5.00 GB | 370 tok/s | 53 tok/s | 32k | 33/36 | 0/36 | 5.2 / 6.8 s |
+
+- **Llama 3.1 8B is pinned**: both never answered an unanswerable question, but Qwen consistently declined one
+  answerable question (the invited-user count) and its prompts tokenize longer, so its answers were slower. The
+  cost is 0.5 GB more memory. The Llama weights are under the Llama 3.1 Community License.
+- An answer takes about 4 s, most of it prompt processing (five excerpts); generation is 50 tokens/s.
+- **Running with STT.** Both run on the GPU through MLX in separate threads without errors. With a question every
+  8 s while synthetic phones talk continuously, STT post-window latency rose from 1.69 / 1.69 s (median / p95) to
+  1.72 / 2.23 s with one phone, 1.97 / 2.88 s to 2.21 / 3.28 s with two, and 3.76 / 5.26 s to 4.46 / 6.70 s with
+  five; no window was dropped. MLX work cannot be preempted, so the priority gate only delays the start of a
+  generation (`stt-pipeline.md`); this is the accepted, measured cost.
+- The runtime (`mlx-lm` 0.31) upgraded `transformers` to 5.x in the environment; `sentence-transformers` 3.4 and
+  the embedding model tests still pass on it.
 
 ## Scheduling priority across resource types
 

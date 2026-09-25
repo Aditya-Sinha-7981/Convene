@@ -10,8 +10,9 @@ from server.errors import DatabaseOpenError, MigrationError, SchemaVersionError
 from tests.test_api_contract_docs import ENTITY_FIELDS, ENUMS
 
 CORE_TABLES = {"Meeting", "Device", "Participant", "Utterance", "ConnectionEvent", "AuditEvent"}
-LATEST_VERSION = 4  # 0001 core, 0002 ModelExecution, 0003/4 transcript chunks (CON-08)
-TABLES_SO_FAR = CORE_TABLES | {"ModelExecution", "TranscriptChunk", "TranscriptIndexMeta", "TranscriptChunkVector"}
+LATEST_VERSION = 5  # 0001 core, 0002 ModelExecution, 0003/4 transcript chunks (CON-08), 0005 QAQuery (CON-09)
+TABLES_SO_FAR = CORE_TABLES | {"ModelExecution", "TranscriptChunk", "TranscriptIndexMeta", "TranscriptChunkVector",
+                               "QAQuery"}
 
 
 def schema(conn):

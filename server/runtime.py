@@ -15,6 +15,7 @@ from .errors import StorageError
 from .repositories import participants
 from .pipeline.pipeline import SttPipeline
 from .rag.indexer import TranscriptIndexer
+from .rag.qa import QAService
 from .transport.audio import AudioSink, CountingSink
 from .transport.peers import PeerManager
 
@@ -41,11 +42,12 @@ class TransportConfig:
 class Runtime:
     def __init__(self, settings: Settings, *, sink: AudioSink | None = None, host: str | None = None,
                  port: int = 8443, transport: TransportConfig | None = None, stt_adapter=None, stt_loaded: bool = False,
-                 embedding_adapter=None):
+                 embedding_adapter=None, reasoning_adapter=None, reasoning_loaded: bool = False):
         if sink is not None and stt_adapter is not None:
             raise ValueError("pass either a custom audio sink or an STT adapter (the STT pipeline is the sink)")
         self.settings, self.host, self.port = settings, host, port
         self.stt_adapter, self._stt_loaded, self.embedding_adapter = stt_adapter, stt_loaded, embedding_adapter
+        self.reasoning_adapter, self._reasoning_loaded = reasoning_adapter, reasoning_loaded
         self.pipeline: SttPipeline | None = None
         self._window_callbacks: list = []
         self._names: dict[str, str] = {}
@@ -56,6 +58,7 @@ class Runtime:
         self.hub: DashboardHub | None = None
         self.attribution: AttributionService | None = None
         self.indexer: TranscriptIndexer | None = None
+        self.qa: QAService | None = None
         self._hooks: list[tuple[str, MeetingEndedHook]] = []
         self._log_task: asyncio.Task | None = None
 
@@ -146,8 +149,26 @@ class Runtime:
             self.attribution.register_post_write_hook(self.indexer.enqueue)
             self.attribution.register_correction_hook(self.indexer.corrected)
             self.on_meeting_ended(self.indexer.meeting_ended, "rag-index-close")
+        if self.reasoning_adapter is not None:
+            await self._start_reasoning()
+        # Always present so a question is always recorded; without models it answers ``failed`` with the reason.
+        self.qa = QAService(self.db, self.settings.qa, embedding=self.embedding_adapter,
+                            reasoning=self.reasoning_adapter, indexer=self.indexer,
+                            priority=self.pipeline.priority if self.pipeline else None)
         if self.transport.metrics_log_interval_s > 0:
             self._log_task = asyncio.create_task(self._log_metrics())
+
+    async def _start_reasoning(self) -> None:
+        """Load the reasoning model now and keep it resident, so the first question has no cold start."""
+        adapter = self.reasoning_adapter
+        started = time.monotonic()
+        if not self._reasoning_loaded:
+            await asyncio.get_running_loop().run_in_executor(None, adapter.load)  # raises loudly; startup fails
+        seconds = getattr(adapter, "load_seconds", None)
+        duration_ms = round((seconds if seconds is not None else time.monotonic() - started) * 1000)
+        await self.db.run(lambda tx: emit(tx, "model_load", "models", {
+            "resource_type": "reasoning", "model_identifier": adapter.model_identifier, "runtime": adapter.runtime,
+            "duration_ms": duration_ms}))
 
     async def _start_stt(self) -> None:
         """Load the model (unless the caller already did), record ``model_load``, and make the pipeline the sink."""

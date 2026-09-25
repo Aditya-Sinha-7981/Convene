@@ -732,7 +732,17 @@ def test_no_stt_flag_skips_the_model_and_a_loaded_adapter_is_handed_to_the_app(t
     fake = FakeAdapter()
     fake.load_seconds = 1.5
     monkeypatch.setattr(app_module, "build_adapter", lambda config: fake)
+    with pytest.raises(SystemExit, match="no reasoning model is pinned"):
+        app_module.main(base)  # the absent config pins no reasoning model: startup refuses, loudly
+
+    from server.rag.reasoning import FakeReasoningAdapter
+    reasoning = FakeReasoningAdapter()
+    reasoning.load_seconds = 2.5
+    monkeypatch.setattr(app_module, "build_reasoning_adapter", lambda config: reasoning)
     app_module.main(base)
     out = capsys.readouterr().out
     assert fake.loaded is True and "STT model ready (1.5 s)" in out
+    assert reasoning.loaded is True and "Reasoning model ready (2.5 s)" in out
     assert started["app"].state.runtime.stt_adapter is fake and started["app"].state.runtime._stt_loaded is True
+    assert started["app"].state.runtime.reasoning_adapter is reasoning
+    assert started["app"].state.runtime._reasoning_loaded is True

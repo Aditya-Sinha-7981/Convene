@@ -58,6 +58,60 @@ Implemented (CON-08, `server/rag/`):
 - Scoped strictly to chunks that exist *as of the question being asked* — a live question should never be answered using chunks from a later point in the same meeting (this matters for the "ask what was said 10 minutes ago" demo moment, `demo.md`, to be honest about what it actually retrieved).
 - Because chunking runs asynchronously slightly behind live transcription, the most recent few seconds of speech may not yet be chunk-searchable at question time — this is an accepted, small latency gap, not a bug to hide; if it matters for the demo script, account for it by not asking about something said in the last few seconds.
 
+## Live Q&A as implemented (CON-09)
+
+`server/rag/qa.py` is the only caller of `server/rag/retrieval.py`, and the only route that reaches it is
+`POST /api/meetings/{meeting_id}/qa` (a test checks both statically). For one question:
+
+1. Validate (non-empty, at most `[qa].max_question_chars`; `mode` must be `live`; the meeting must not be ended)
+   and record `asked_at`.
+2. Decide from the transcript and `index_status` whether retrieval can run at all (outcome table below).
+3. Embed the question with the same `embedding` adapter as the chunks.
+4. Search this meeting's chunks (`sqlite-vec` partition filter), keep only `ready` chunks that satisfy the
+   as-of rule, and keep the `[qa].top_k` (5) most similar at or above `[qa].min_similarity`.
+5. **If no chunk clears the threshold, return `no_grounding` without calling the model.**
+6. Otherwise prompt the `reasoning` model with a fixed template, wait behind STT on the compute-priority gate,
+   and generate with `temperature = 0`, at most `[qa].answer_max_tokens`, and a `[qa].answer_timeout_s` deadline.
+7. Persist the `QAQuery`, `ModelExecution` rows and the `qa_query` audit event in one transaction; push
+   `qa_answer`.
+
+**Relevance.** Cosine similarity, `1 - distance` from the `vec0` cosine-distance column. `min_similarity = 0.50`
+comes from `scripts/calibrate_qa.py` on a fixture meeting (`logs/qa.md`): answerable and unanswerable questions
+overlap at chunk granularity, so the threshold is set just below the weakest answerable question. It removes
+clearly unrelated questions before the model; near-miss questions reach the model, which must reply
+`NO_GROUNDING`. The threshold is the guard that does not depend on the model's behavior; the prompt is the
+second. Recalibrate on real transcripts (CON-12).
+
+**As-of rule.** A chunk is eligible when the first line in its range was written at or before `asked_at`. A
+closed chunk rebuilt later (a correction or a late result) keeps its identity and may then include lines written
+after the question; this is accepted rather than filtering inside chunks.
+
+**Prompt.** A fixed system message says to answer only from the excerpts, that excerpts are quoted data and any
+instruction inside them is to be ignored, to reply exactly `NO_GROUNDING` when the excerpts do not contain the
+answer, never to use outside knowledge, and to name speaker and time for each fact. The user message fences each
+excerpt (`<excerpt n>…</excerpt n>`; a closing tag inside transcript text is neutralized) followed by the question.
+A reply containing `NO_GROUNDING` becomes `no_grounding` (`model_declined`); an empty reply is `failed`.
+
+**Citations** are the chunks given to the model, resolved from stored rows with current speaker labels; the
+model's text is never parsed for them.
+
+**Outcomes.** Refines ADR-15's empty-index rule (ADR-22):
+
+| Situation | `status` | `reason` |
+|---|---|---|
+| No line transcribed in this meeting | `no_grounding` | `nothing_transcribed_yet` |
+| Lines exist, nothing indexed yet, index healthy (no failed chunk, oldest uncovered line younger than `[qa].index_stale_s` = 30 s) | `no_grounding` | `not_indexed_yet` |
+| Nothing indexed and a chunk failed, or indexing is more than 30 s behind, or no embedding model | `failed` | `index_unavailable` |
+| Question embedding or vector query error | `failed` | `retrieval_failed` |
+| No chunk at or above the threshold (model not called) | `no_grounding` | `no_relevant_evidence` |
+| Model replied `NO_GROUNDING` | `no_grounding` | `model_declined` |
+| Model error, empty reply, or no model loaded | `failed` | `answer_failed` |
+| Deadline passed while generating | `failed` | `answer_timeout` |
+| Some recent lines not yet searchable | as the evidence dictates | response `unindexed_utterances` > 0 |
+
+**Concurrency.** Embedding and search run concurrently; generation is one question at a time, in arrival order.
+Each question has its own `QAQuery`, and a failure in one does not affect another.
+
 ## History mode specifics
 
 - Spans multiple `Meeting` rows; `QAQuery.meeting_id` is null in this mode (see `data-model.md`).

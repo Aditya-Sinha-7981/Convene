@@ -38,6 +38,14 @@ class EmbeddingModelConfig:
 
 
 @dataclass(frozen=True)
+class ReasoningModelConfig:
+    """``[models.reasoning]``: the local LLM behind Q&A answers (CON-09) and summaries (CON-10), ADR-14."""
+    runtime: str = "mlx"                     # mlx (mlx-lm); cloud runtimes are manual-only and not wired (ADR-06)
+    model: str = ""                          # repository id of the model
+    revision: str = ""                       # exact pinned revision of the weights
+
+
+@dataclass(frozen=True)
 class PipelineConfig:
     """``[pipeline]``: VAD, windowing, scheduling and priority. Every value was set from measurement (logs/stt.md)."""
     target_rate: int = 16000
@@ -95,6 +103,18 @@ class RagConfig:
 
 
 @dataclass(frozen=True)
+class QaConfig:
+    """``[qa]``: live question answering. ``min_similarity`` is calibrated by scripts/calibrate_qa.py (logs/qa.md)."""
+    top_k: int = 5                           # chunks retrieved per question
+    min_similarity: float = 0.5              # cosine similarity (1 - sqlite-vec cosine distance) a chunk must reach
+    max_question_chars: int = 500
+    answer_max_tokens: int = 200
+    temperature: float = 0.0
+    answer_timeout_s: float = 30.0           # generation is stopped at this deadline and the query is failed
+    index_stale_s: float = 30.0              # uncovered speech older than this, with nothing indexed, is an index fault
+
+
+@dataclass(frozen=True)
 class NetworkConfig:
     """``[network]``: optional public hostname used in participant join URLs.
 
@@ -128,6 +148,15 @@ def _check_rag(config: "RagConfig") -> None:
         raise ValueError("retry_max_delay_s must be at least retry_delay_s")
 
 
+def _check_qa(config: "QaConfig") -> None:
+    if config.top_k < 1 or config.max_question_chars < 1 or config.answer_max_tokens < 1:
+        raise ValueError("top_k, max_question_chars and answer_max_tokens must be positive")
+    if not -1.0 <= config.min_similarity <= 1.0:
+        raise ValueError("min_similarity is a cosine similarity and must be in [-1, 1]")
+    if config.temperature < 0 or config.answer_timeout_s <= 0 or config.index_stale_s <= 0:
+        raise ValueError("temperature must be non-negative and the timeouts positive")
+
+
 def _check_pipeline(config: "PipelineConfig") -> None:
     if config.segmentation not in ("segments", "fixed"):
         raise ValueError(f"segmentation must be 'segments' or 'fixed', got {config.segmentation!r}")
@@ -144,9 +173,11 @@ class Settings:
     exports_dir: Path
     stt: SttModelConfig = SttModelConfig()
     embedding: EmbeddingModelConfig = EmbeddingModelConfig()
+    reasoning: ReasoningModelConfig = ReasoningModelConfig()
     pipeline: PipelineConfig = PipelineConfig()
     attribution: AttributionConfig = AttributionConfig()
     rag: RagConfig = RagConfig()
+    qa: QaConfig = QaConfig()
     network: NetworkConfig = NetworkConfig()
 
 
@@ -178,9 +209,12 @@ def load_settings(config_path: Path | None = None, *, root: Path | None = None) 
                         stt=_section(SttModelConfig, data.get("models", {}).get("stt", {}), path, "models.stt"),
                         embedding=_section(EmbeddingModelConfig, data.get("models", {}).get("embedding", {}), path,
                                            "models.embedding"),
+                        reasoning=_section(ReasoningModelConfig, data.get("models", {}).get("reasoning", {}), path,
+                                           "models.reasoning"),
                         pipeline=_section(PipelineConfig, data.get("pipeline", {}), path, "pipeline"),
                         attribution=_section(AttributionConfig, data.get("attribution", {}), path, "attribution"),
                         rag=_section(RagConfig, data.get("rag", {}), path, "rag"),
+                        qa=_section(QaConfig, data.get("qa", {}), path, "qa"),
                         network=_section(NetworkConfig, data.get("network", {}), path, "network"))
     if settings.rag.hard_max_tokens >= settings.embedding.max_tokens:
         raise ConfigError(f"{path}: [rag].hard_max_tokens must leave margin below [models.embedding].max_tokens")
@@ -220,6 +254,8 @@ def _section(cls, table, path: Path, name: str):
             _check_embedding(built)
         elif cls is RagConfig:
             _check_rag(built)
+        elif cls is QaConfig:
+            _check_qa(built)
     except ValueError as exc:
         raise ConfigError(f"{path}: [{name}] {exc}") from exc
     return built

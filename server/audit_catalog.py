@@ -43,7 +43,7 @@ CATALOG: dict[str, EventSpec] = {
     "enrollment_failed": _spec("speaker", "device_id", "participant_id", "reason"),
     "index_failed": _spec("rag", "utterance_id_start", "utterance_id_end", "error"),
     "qa_query": _spec("rag", "query_id", "mode", "status", "meeting_ids", "chunk_count", "duration_ms",
-                      "error_code", meeting_required=False),
+                      "error_code", "reason", "best_similarity", meeting_required=False),
     "summary_started": _spec("summary", "summary_id", "trigger"),
     "summary_generated": _spec("summary", "summary_id", "input_as_of_seq", "model_identifier", "action_item_count"),
     "summary_failed": _spec("summary", "summary_id", "error_code", "attempts"),

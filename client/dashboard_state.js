@@ -12,7 +12,23 @@ export function createState() {
     utteranceSeq: {},
     asOfSeq: 0,
     lastSeq: 0,
+    answers: {},
   };
+}
+
+// Q&A results, newest first. The HTTP response and the `qa_answer` push carry the same persisted query; they are
+// merged by `query_id` so an answer is shown once. The server decides the outcome; the client only displays it.
+export function orderedAnswers(state) {
+  return Object.values(state.answers).sort((a, b) =>
+    b.query.created_at.localeCompare(a.query.created_at) || b.query.query_id.localeCompare(a.query.query_id));
+}
+
+function putAnswer(state, result) {
+  if (!result?.query?.query_id) return state;
+  const previous = state.answers[result.query.query_id] || {};
+  return { ...state, answers: { ...state.answers, [result.query.query_id]: { ...previous, ...result,
+    reason: result.reason ?? previous.reason ?? null,
+    unindexed_utterances: result.unindexed_utterances ?? previous.unindexed_utterances ?? 0 } } };
 }
 
 export function orderedUtterances(state) {
@@ -66,6 +82,7 @@ function dashboardEvent(state, event) {
       state.utterances, state.utteranceSeq, event.utterance.utterance_id, event.utterance, seq);
     return { ...next, utterances, utteranceSeq };
   }
+  if (event.type === "qa_answer" && event.query) return putAnswer(next, { query: event.query, citations: event.citations || [] });
   // Connection events are audit evidence, but the complete Device event is the dashboard's current state.
   return next;
 }
@@ -77,6 +94,7 @@ export function reduce(state, action) {
     return { ...state, utterances: { ...state.utterances, [action.utterance.utterance_id]: action.utterance } };
   }
   if (action.type === "local_meeting" && action.meeting) return { ...state, meeting: action.meeting };
+  if (action.type === "local_answer") return putAnswer(state, action.result);
   if (action.type === "event") return dashboardEvent(state, action.event);
   return state;
 }

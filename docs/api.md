@@ -2,7 +2,7 @@
 
 Single FastAPI process (ADR-01). REST for request/response operations, WebSocket for signaling and live push feeds. This document is authoritative for endpoint shape — other docs describe *when* these are called, not their exact contracts. Stored field names come from `data-model.md` and are never renamed here; where the API adds a computed field it is listed under [Derived fields](#derived-fields).
 
-**Implementation status (through CON-07):** implemented and covered by automated loopback tests: `POST /api/meetings`, `GET /api/meetings/{meeting_id}`, `POST …/devices`, `POST …/end`, `GET …/transcript`, and `POST …/utterances/{utterance_id}/correct`; signaling and dashboard WebSockets; and the pages `/`, `/join/{meeting_id}`, `/dashboard/{meeting_id}`, and `/static/…`. The dashboard feed includes `meeting_status`, `device_status`, `connection_event`, `device_gauges`, `utterance`, and `utterance_updated`; the dashboard consumes server-computed labels and low-confidence state. `GET /api/meetings`, Q&A, summary, export, and enrollment routes remain unimplemented. `end` reports `summary_pending: false` until CON-10 starts summarization from the `on_meeting_ended` hook. None of this has been verified on real phones. A route section below describes the contract, not a claim that the route exists.
+**Implementation status (through CON-09):** implemented and covered by automated loopback tests: `POST /api/meetings`, `GET /api/meetings/{meeting_id}`, `POST …/devices`, `POST …/end`, `GET …/transcript`, and `POST …/utterances/{utterance_id}/correct`; signaling and dashboard WebSockets; and the pages `/`, `/join/{meeting_id}`, `/dashboard/{meeting_id}`, and `/static/…`. The dashboard feed includes `meeting_status`, `device_status`, `connection_event`, `device_gauges`, `utterance`, and `utterance_updated`; the dashboard consumes server-computed labels and low-confidence state. Live Q&A (`POST …/qa`, the `qa_answer` push) is implemented by CON-09. `GET /api/meetings`, history Q&A (`POST /api/qa`), summary, export, and enrollment routes remain unimplemented. `end` reports `summary_pending: false` until CON-10 starts summarization from the `on_meeting_ended` hook. None of this has been verified on real phones. A route section below describes the contract, not a claim that the route exists.
 
 **Status of decisions:** contract choices that change a documented behavior or the schema are marked **(proposed)** and recorded as ADR-15 to ADR-18 in `decisions.md`, pending project-lead confirmation. Shapes marked **provisional** belong to should-have features and are finalized by CON-13 (enrollment) and CON-14 (history).
 
@@ -501,7 +501,21 @@ Ask a live question about this meeting so far (`mode: live`). This is the only w
 
 `mode` is optional and must be `live` if present. Scope is this meeting only, as of the moment the question is asked (`rag-and-qa.md`).
 
-**Response** — `200` for all three outcomes. `query` is the persisted `QAQuery` (its `cited_chunk_ids` shown as a JSON array); `citations` are resolved from stored chunk and utterance data, never from model text, so a citation always names a real stored line. Client rule: show the answer only for `answered`; for `no_grounding` show the honest "no grounding in this meeting" message; for `failed` show a system error. Never present them alike.
+**Response** — `200` for all three outcomes. `query` is the persisted `QAQuery` (its `cited_chunk_ids` shown as a JSON array); `citations` are resolved from stored chunk and utterance data, never from model text, so a citation always names a real stored line. `cited_chunk_ids` are exactly the chunks given to the model as evidence (deterministic, not chosen by the model). Each citation lists every speaker in its chunk (`speakers`, in order of speech) and every line (`utterance_ids`), so the dashboard can highlight them. Client rule: show the answer only for `answered`; for `no_grounding` show the honest "no grounding in this meeting" message; for `failed` show a system error. Never present them alike.
+
+`reason` says why a query is `no_grounding` or `failed` (null for `answered`); it is also in the `qa_query` audit payload, and is not stored on the `QAQuery` row. `unindexed_utterances` counts lines of this meeting that were not yet searchable when the question was asked (the indexing lag, `rag-and-qa.md`).
+
+| `status` | `reason` | `error.code` | Meaning |
+|---|---|---|---|
+| `answered` | null | — | grounded answer with citations |
+| `no_grounding` | `nothing_transcribed_yet` | — | no line has been transcribed in this meeting |
+| `no_grounding` | `not_indexed_yet` | — | lines exist but none is searchable yet, and the index is healthy |
+| `no_grounding` | `no_relevant_evidence` | — | no chunk reached the relevance threshold; the model was not called |
+| `no_grounding` | `model_declined` | — | the model found no answer in the retrieved excerpts |
+| `failed` | `index_unavailable` | `retrieval_failed` | the index has failed chunks and nothing ready, has fallen behind by more than `[qa].index_stale_s`, or no embedding model is loaded |
+| `failed` | `retrieval_failed` | `retrieval_failed` | embedding the question or the vector query failed |
+| `failed` | `answer_failed` | `generation_failed` | the reasoning model failed, returned nothing, or is not loaded |
+| `failed` | `answer_timeout` | `generation_failed` | no complete answer within `[qa].answer_timeout_s` |
 
 Answered:
 
@@ -528,9 +542,12 @@ Answered:
       "speakers": ["Priya", "Sam"],
       "t_start": "2026-09-21T11:34:12.400Z",
       "t_end": "2026-09-21T11:34:18.300Z",
-      "text": "[Priya, 00:03:12] We should ship the beta on Friday."
+      "utterance_ids": ["9c2a7e10-3b4d-4f6a-8e15-7a0d5c1b2e34", "1a6d3f82-9e07-4b5c-8a14-c2e9f0b7d635"],
+      "text": "[Priya, 00:03:12] We should ship the beta on Friday.\n[Sam, 00:03:16] Friday works for me."
     }
-  ]
+  ],
+  "reason": null,
+  "unindexed_utterances": 1
 }
 ```
 
@@ -549,7 +566,9 @@ No grounding (retrieval worked and found nothing relevant):
     "created_at": "2026-09-21T11:41:20.005Z",
     "error": null
   },
-  "citations": []
+  "citations": [],
+  "reason": "no_relevant_evidence",
+  "unindexed_utterances": 0
 }
 ```
 
@@ -566,9 +585,11 @@ Failed (the system is broken, not "nothing found"):
     "cited_chunk_ids": [],
     "status": "failed",
     "created_at": "2026-09-21T11:42:10.870Z",
-    "error": { "code": "retrieval_failed", "message": "vector store query failed" }
+    "error": { "code": "retrieval_failed", "message": "searching the transcript failed" }
   },
-  "citations": []
+  "citations": [],
+  "reason": "retrieval_failed",
+  "unindexed_utterances": 0
 }
 ```
 
@@ -585,7 +606,7 @@ The most recent few seconds of speech may not yet be searchable because chunking
 | 413 | `payload_too_large` | body over 64 KiB |
 | 415 | `unsupported_media_type` | not JSON |
 
-**Side effects** — inserts a `QAQuery`; audit `qa_query`; push `qa_answer` (the requester receives the HTTP response and may also receive the push, so clients dedupe by `query_id`). Not idempotent: asking again creates a new query. Q&A never blocks live transcription; if both compete for compute, STT has priority (`stt-pipeline.md`).
+**Side effects** — inserts a `QAQuery`; audit `qa_query` (and `model_error` when a model call failed); one `ModelExecution` row for the question embedding and one for the answer generation, each with `related_id = query_id`; push `qa_answer` (the requester receives the HTTP response and may also receive the push, so clients dedupe by `query_id`). The push carries `query` and `citations` only. Not idempotent: asking again creates a new query. Q&A never blocks live transcription; if both compete for compute, STT has priority (`stt-pipeline.md`). Questions are answered one generation at a time; a second question waits for the first. If the `QAQuery` cannot be stored, the request fails with `500 internal_error` and no answer is returned.
 
 ### POST /api/qa
 
@@ -943,7 +964,7 @@ Used by the live dashboard and the post-meeting view. **Read-only:** the server 
     "cited_chunk_ids": [],
     "status": "failed",
     "created_at": "2026-09-21T11:42:10.870Z",
-    "error": { "code": "retrieval_failed", "message": "vector store query failed" }
+    "error": { "code": "retrieval_failed", "message": "searching the transcript failed" }
   },
   "citations": []
 }

@@ -67,7 +67,9 @@ Implemented, in this order, before the server accepts connections:
 5. Record `model_load` in the audit stream, start the transcription pipeline, start the WebSocket hub and the periodic metrics log line.
 6. With STT enabled, load the `embedding` model from the local cache, check it against the vector space recorded in the database (a different model or dimension stops startup with a clear error), record `model_load`, start the transcript indexer, and queue any meeting whose utterances were written but not indexed before a restart. A missing embedding model stops startup the same way a missing STT model does. Then serve.
 
-Not yet implemented: loading the `speaker_embedding` and `reasoning` models (CON-13 and CON-09/CON-10).
+7. With STT enabled, load the `reasoning` model from the local cache (`[models.reasoning]`), run a two-token warm-up, record `model_load`, and keep it resident so the first question has no cold start. A missing or unpinned reasoning model stops startup. Provision it once while online: `.venv/bin/python scripts/provision_models.py --resource reasoning`.
+
+Not yet implemented: loading the `speaker_embedding` model (CON-13).
 
 ## What is explicitly not part of deployment
 

@@ -142,6 +142,14 @@ async def correct_utterance(meeting_id: str, utterance_id: str, request: Request
     return await _runtime(request).db.run(view)
 
 
+@router.post("/api/meetings/{meeting_id}/qa")
+async def ask_question(meeting_id: str, request: Request):
+    """Live Q&A: the only route that runs retrieval (ADR-11). All three outcomes are 200 results."""
+    meeting_id = _meeting_id(meeting_id)
+    body = await read_json_body(request)
+    return await _runtime(request).qa.ask(meeting_id, body)
+
+
 @router.get("/metrics")
 async def metrics(request: Request):
     """Read-only per-device diagnostics (not part of the contract; nothing may depend on it)."""

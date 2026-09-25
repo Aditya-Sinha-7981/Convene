@@ -141,7 +141,11 @@ utterance range and contain nothing else.
 | answer | TEXT, nullable | null if retrieval found nothing/failed |
 | cited_chunk_ids | TEXT (JSON array) | |
 | status | TEXT | `answered` \| `no_grounding` \| `failed` |
-| created_at | TEXT (ISO 8601) | |
+| created_at | TEXT (ISO 8601) | the moment the question was asked (`asked_at` for the as-of rule) |
+
+`answer` is non-null exactly when `status = answered`. `cited_chunk_ids` holds the chunks given to the model as
+evidence (empty unless answered). The reason for `no_grounding`/`failed` is in the `qa_query` audit event
+(`rag-and-qa.md`, ADR-22), not on this row.
 
 ### Summary
 
@@ -234,7 +238,7 @@ The complete set. Payloads reference records by ID and never contain transcript 
 | `enrollment_completed` | `speaker` | `device_id`, `participant_id`, `enrollment_id`, `quality_flag`, `sample_duration_s` |
 | `enrollment_failed` | `speaker` | `device_id`, `participant_id`, `reason` |
 | `index_failed` | `rag` | `utterance_id_start`, `utterance_id_end`, `error` |
-| `qa_query` | `rag` | `query_id`, `mode`, `status`, `meeting_ids`, `chunk_count`, `duration_ms`, `error_code` |
+| `qa_query` | `rag` | `query_id`, `mode`, `status`, `meeting_ids`, `chunk_count`, `duration_ms`, `error_code`, `reason`, `best_similarity` |
 | `summary_started` | `summary` | `summary_id`, `trigger` |
 | `summary_generated` | `summary` | `summary_id`, `input_as_of_seq`, `model_identifier`, `action_item_count` |
 | `summary_failed` | `summary` | `summary_id`, `error_code`, `attempts` |
@@ -246,7 +250,7 @@ Payload value sets:
 - `hook_failed` records an isolated asynchronous hook or live-path callback (for example attribution post-write,
   correction re-indexing, or the summarization trigger on meeting end) that raised; the failure never rolls back
   the durable action that fired the hook. `hook` is the hook's name and `error` a short message.
-- `device_reconnected.via`: `ice_restart` \| `new_peer`. `device_disconnected.reason`: `peer_disconnected` \| `peer_failed` \| `peer_closed` \| `server_restart`. `device_left.reason`: `client_leave` \| `meeting_ended`. `stt_window_dropped.reason`: `overload`. `summary_started.trigger`: `meeting_end` \| `manual`. `qa_query.error_code`: null unless `status = failed`.
+- `device_reconnected.via`: `ice_restart` \| `new_peer`. `device_disconnected.reason`: `peer_disconnected` \| `peer_failed` \| `peer_closed` \| `server_restart`. `device_left.reason`: `client_leave` \| `meeting_ended`. `stt_window_dropped.reason`: `overload`. `summary_started.trigger`: `meeting_end` \| `manual`. `qa_query.error_code`: null unless `status = failed`, then `retrieval_failed` \| `generation_failed`. `qa_query.reason`: null for `answered`; for `no_grounding` `nothing_transcribed_yet` \| `not_indexed_yet` \| `no_relevant_evidence` \| `model_declined`; for `failed` `index_unavailable` \| `retrieval_failed` \| `answer_failed` \| `answer_timeout` (`rag-and-qa.md`). `qa_query.best_similarity`: the highest cosine similarity of any eligible chunk, or null when retrieval did not run.
 - `utterance_corrected.from` is `{participant_id, attribution_method, attribution_confidence, corrected}` as the utterance stood immediately before this correction; `to` is `{participant_id, attribution_method, attribution_confidence}` after it. `changed` is false for a confirmation (same participant); `created_participant_id` is set when the correction created a new `Participant`. The full original attribution of a first correction is therefore always recoverable from this payload, even though the `Utterance` row keeps only `original_participant_id`.
 - Device attribution uses configured confidence `0.95`, unresolved shared-device attribution uses `0.2`, and
   manual correction uses `1.0`. The initial server-owned low-confidence threshold is `0.8`; these tunable

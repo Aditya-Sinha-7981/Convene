@@ -6,7 +6,7 @@ caused it. Read-only: whatever a client sends is ignored. A client that cannot k
 and resynchronizes; one slow socket never delays another.
 
 This task pushes ``meeting_status``, ``device_status``, ``connection_event`` and ``device_gauges``; the
-tasks that produce the other event types add them here.
+tasks that produce the other event types add them here (CON-09: ``qa_query`` becomes ``qa_answer``).
 """
 import asyncio
 import logging
@@ -14,7 +14,8 @@ from dataclasses import asdict
 
 from .audit import emit
 from .attribution.views import utterance_view
-from .repositories import connections, devices, meetings, participants, utterances
+from .rag.citations import query_view, resolve_citations
+from .repositories import connections, devices, meetings, participants, qa_queries, utterances
 from .repositories.models import AuditEvent
 from .timeutil import utc_now
 from .views import device_view, meeting_view
@@ -98,11 +99,18 @@ class DashboardHub:
 
     async def _translate(self, event: AuditEvent) -> list[tuple[str, dict]]:
         kind = event.event_type
-        if kind not in _MEETING_EVENTS | _DEVICE_EVENTS | _CONNECTION_EVENTS | set(_UTTERANCE_EVENTS):
+        if kind not in _MEETING_EVENTS | _DEVICE_EVENTS | _CONNECTION_EVENTS | set(_UTTERANCE_EVENTS) | {"qa_query"}:
             return []
 
         def read(tx):
             out = []
+            if kind == "qa_query":
+                row = qa_queries.get(tx.conn, event.payload["query_id"])
+                if row is not None:
+                    view = query_view(row, event.payload["error_code"], event.payload["reason"])
+                    out.append(("qa_answer", {"query": view, "citations": resolve_citations(
+                        tx.conn, event.meeting_id, view["cited_chunk_ids"])}))
+                return out
             if kind in _MEETING_EVENTS:
                 out.append(("meeting_status", {"meeting": meeting_view(meetings.require(tx.conn, event.meeting_id))}))
             device_id = event.payload.get("device_id")

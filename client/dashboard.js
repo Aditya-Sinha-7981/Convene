@@ -1,4 +1,4 @@
-import { createState, orderedUtterances, reduce } from "/static/dashboard_state.js";
+import { createState, orderedAnswers, orderedUtterances, reduce } from "/static/dashboard_state.js";
 
 const meetingId = decodeURIComponent(location.pathname.split("/").pop());
 const byId = id => document.querySelector(id);
@@ -9,6 +9,8 @@ const ui = {
   newLines: byId("#newLines"), end: byId("#end"), dialog: byId("#correctionDialog"), form: byId("#correctionForm"),
   choices: byId("#participantChoices"), speakerName: byId("#speakerName"), correctionLine: byId("#correctionLine"),
   correctionError: byId("#correctionError"), save: byId("#saveCorrection"), cancel: byId("#cancelCorrection"),
+  qaForm: byId("#qaForm"), qaQuestion: byId("#qaQuestion"), qaAsk: byId("#qaAsk"), qaHint: byId("#qaHint"),
+  qaEmpty: byId("#qaEmpty"), qaAnswers: byId("#qaAnswers"),
 };
 let state = createState();
 let socket = null;
@@ -20,6 +22,16 @@ let activeUtterance = null;
 let firstUtterance = true;
 let unread = 0;
 const rows = new Map();
+let pendingQuestion = null; // { question, started } while one question is in flight: no double submit
+let pendingTimer = null;
+
+// Q&A: the server decides the outcome. These are only the words for each server-provided status and reason.
+const NO_GROUNDING_DETAIL = {
+  nothing_transcribed_yet: "Nothing has been transcribed in this meeting yet.",
+  not_indexed_yet: "The latest speech is still being indexed. Ask again in a few seconds.",
+  no_relevant_evidence: "No part of the transcript answers this, so Convene did not guess.",
+  model_declined: "The closest excerpts did not contain the answer, so Convene did not guess.",
+};
 
 function setError(message = "") { ui.error.hidden = !message; ui.error.textContent = message; }
 function setSync(stale, text) { ui.stale.hidden = !stale; ui.sync.textContent = text; ui.sync.classList.toggle("is-stale", stale); }
@@ -92,6 +104,78 @@ function render(event = null) {
   ui.status.className = `meeting-status ${meeting?.status || ""}`; ui.end.disabled = meeting?.status === "ended";
   if (event?.type === "device_status") renderDevices(event.device.device_id); else renderDevices();
   if (event?.type === "utterance" || event?.type === "utterance_updated") renderTranscript(event.utterance.utterance_id, true); else renderTranscript();
+  if (!event || event.type === "qa_answer" || event.type === "meeting_status") renderAnswers();
+}
+
+function highlightLines(ids) {
+  const found = ids.map(id => rows.get(id)).filter(Boolean);
+  if (!found.length) { setError("Those lines are not in the loaded transcript."); return; }
+  found[0].scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  for (const row of found) { row.classList.remove("cited"); void row.offsetWidth; row.classList.add("cited"); setTimeout(() => row.classList.remove("cited"), 3200); }
+}
+function answerCard(item) {
+  const { query, citations = [], reason = null, unindexed_utterances: unindexed = 0 } = item;
+  const card = document.createElement("li"); card.className = `qa-card ${query.status}`;
+  const head = document.createElement("div"); head.className = "qa-card-head";
+  const chip = document.createElement("span"); chip.className = "qa-status";
+  chip.textContent = { answered: "Answered", no_grounding: "Not discussed", failed: "System error" }[query.status] || query.status;
+  const when = document.createElement("time"); when.className = "qa-time"; when.textContent = timestamp(query.created_at);
+  head.append(chip, when);
+  const question = document.createElement("p"); question.className = "qa-question"; question.textContent = query.question;
+  card.append(head, question);
+  const body = document.createElement("p"); body.className = "qa-body";
+  if (query.status === "answered") {
+    body.textContent = query.answer; card.append(body);
+    const list = document.createElement("ul"); list.className = "qa-citations"; list.setAttribute("aria-label", "Sources from the transcript");
+    for (const citation of citations) {
+      const entry = document.createElement("li"); const button = document.createElement("button"); button.type = "button"; button.className = "qa-citation";
+      const who = document.createElement("strong"); who.textContent = `${citation.speakers.join(", ")} · ${timestamp(citation.t_start)}`;
+      const excerpt = document.createElement("span"); excerpt.textContent = citation.text.replace(/^\[[^\]]*\]\s*/, "").replace(/\n\[[^\]]*\]\s*/g, " … ").slice(0, 160);
+      button.append(who, excerpt); button.title = "Show these lines in the transcript"; button.onclick = () => highlightLines(citation.utterance_ids || []);
+      entry.append(button); list.append(entry);
+    }
+    card.append(list);
+  } else if (query.status === "no_grounding") {
+    body.textContent = "Not discussed in this meeting so far."; card.append(body);
+    const detail = document.createElement("small"); detail.className = "qa-detail"; detail.textContent = NO_GROUNDING_DETAIL[reason] || NO_GROUNDING_DETAIL.no_relevant_evidence; card.append(detail);
+  } else {
+    body.textContent = `Convene could not answer because of a system problem${query.error?.message ? `: ${query.error.message}` : ""}.`; card.append(body);
+    const retry = document.createElement("button"); retry.type = "button"; retry.className = "button button-quiet qa-retry"; retry.textContent = "Try again";
+    retry.onclick = () => ask(query.question); card.append(retry);
+  }
+  if (unindexed > 0 && query.status !== "failed") {
+    const note = document.createElement("small"); note.className = "qa-detail"; note.textContent = `${unindexed} recent line${unindexed === 1 ? " was" : "s were"} not searchable yet.`; card.append(note);
+  }
+  return card;
+}
+function renderAnswers() {
+  const fragment = document.createDocumentFragment();
+  if (pendingQuestion) {
+    const card = document.createElement("li"); card.className = "qa-card pending";
+    const head = document.createElement("div"); head.className = "qa-card-head";
+    const chip = document.createElement("span"); chip.className = "qa-status"; chip.textContent = "Searching the transcript";
+    const elapsed = document.createElement("span"); elapsed.className = "qa-time"; elapsed.textContent = `${Math.floor((Date.now() - pendingQuestion.started) / 1000)}s`;
+    head.append(chip, elapsed);
+    const question = document.createElement("p"); question.className = "qa-question"; question.textContent = pendingQuestion.question;
+    card.append(head, question); fragment.append(card);
+  }
+  for (const item of orderedAnswers(state)) fragment.append(answerCard(item));
+  ui.qaAnswers.replaceChildren(fragment);
+  ui.qaEmpty.hidden = Boolean(pendingQuestion) || Object.keys(state.answers).length > 0;
+  const ended = state.meeting?.status === "ended";
+  ui.qaQuestion.disabled = ended; ui.qaAsk.disabled = ended || Boolean(pendingQuestion);
+  ui.qaHint.textContent = ended ? "Live Q&A closes when the meeting ends." : "Enter to ask · the last few seconds may not be searchable yet";
+}
+async function ask(question) {
+  question = question.trim(); if (!question || pendingQuestion) return;
+  pendingQuestion = { question, started: Date.now() }; renderAnswers();
+  pendingTimer = setInterval(renderAnswers, 1000);
+  try {
+    const response = await fetch(`/api/meetings/${encodeURIComponent(meetingId)}/qa`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question, mode: "live" }) });
+    const body = await json(response);
+    if (!response.ok) throw new Error(body.error?.message || "Could not send the question.");
+    dispatch({ type: "local_answer", result: body }); ui.qaQuestion.value = "";
+  } catch (error) { setError(error.message); } finally { clearInterval(pendingTimer); pendingQuestion = null; renderAnswers(); }
 }
 
 function allParticipants() { return Object.values(state.devices).flatMap(device => device.participants || []); }
@@ -142,8 +226,10 @@ function connect() {
   socket.onerror = () => socket?.close();
 }
 
-ui.form.addEventListener("submit", correct); ui.cancel.onclick = () => ui.dialog.close(); ui.speakerName.oninput = () => { if (ui.speakerName.value.trim()) { const picked = ui.form.querySelector("input[name=participant]:checked"); if (picked) picked.checked = false; } }; ui.choices.onchange = () => { ui.speakerName.value = ""; }; ui.newLines.onclick = () => { ui.scroll.scrollTop = ui.scroll.scrollHeight; unread = 0; ui.newLines.hidden = true; };
-ui.end.onclick = async () => { if (!window.confirm("End this meeting? Phones will be disconnected.")) return; ui.end.disabled = true; try { const response = await fetch(`/api/meetings/${encodeURIComponent(meetingId)}/end`, { method: "POST" }); const body = await json(response); if (!response.ok) throw new Error(body.error?.message || "Could not end meeting."); dispatch({ type: "local_meeting", meeting: body.meeting }); render(); } catch (error) { setError(error.message); ui.end.disabled = false; } };
+ui.form.addEventListener("submit", correct);
+ui.qaForm.addEventListener("submit", event => { event.preventDefault(); ask(ui.qaQuestion.value); });
+ui.qaQuestion.addEventListener("keydown", event => { if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); ask(ui.qaQuestion.value); } }); ui.cancel.onclick = () => ui.dialog.close(); ui.speakerName.oninput = () => { if (ui.speakerName.value.trim()) { const picked = ui.form.querySelector("input[name=participant]:checked"); if (picked) picked.checked = false; } }; ui.choices.onchange = () => { ui.speakerName.value = ""; }; ui.newLines.onclick = () => { ui.scroll.scrollTop = ui.scroll.scrollHeight; unread = 0; ui.newLines.hidden = true; };
+ui.end.onclick = async () => { if (!window.confirm("End this meeting? Phones will be disconnected.")) return; ui.end.disabled = true; try { const response = await fetch(`/api/meetings/${encodeURIComponent(meetingId)}/end`, { method: "POST" }); const body = await json(response); if (!response.ok) throw new Error(body.error?.message || "Could not end meeting."); dispatch({ type: "local_meeting", meeting: body.meeting }); render(); renderAnswers(); } catch (error) { setError(error.message); ui.end.disabled = false; } };
 setInterval(() => renderDevices(), 1000);
 if (matchMedia("(hover: hover) and (pointer: fine)").matches && !matchMedia("(prefers-reduced-motion: reduce)").matches) { const glow = document.querySelector(".cursor-glow"); let targetX = innerWidth / 2, targetY = innerHeight / 2, x = targetX, y = targetY; addEventListener("pointermove", event => { targetX = event.clientX; targetY = event.clientY; }); const moveGlow = () => { x += (targetX - x) * .08; y += (targetY - y) * .08; glow.style.left = `${x}px`; glow.style.top = `${y}px`; requestAnimationFrame(moveGlow); }; moveGlow(); }
 connect();

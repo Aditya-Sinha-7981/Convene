@@ -29,12 +29,29 @@ revision = "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"
 dimension = 384
 max_tokens = 512
 
+# Q&A answers and (CON-10) summaries. Pinned after measuring candidates on the reference laptop (docs/models.md).
+[models.reasoning]
+runtime = "mlx"
+model = "mlx-community/Meta-Llama-3.1-8B-Instruct-4bit"
+revision = "241a666dad6cb93c8ff213d39a7f34a36bf26db4"
+
 [rag]
 target_tokens = 400
 hard_max_tokens = 448
 settle_delay_s = 2.0       # the open tail is re-chunked and embedded this long after new speech arrives
 retry_delay_s = 1.0        # embedding failures retry with doubling backoff...
 retry_max_delay_s = 30.0   # ...capped here
+
+# Live Q&A. min_similarity is a cosine similarity (1 - sqlite-vec cosine distance) from scripts/calibrate_qa.py:
+# just below the lowest answerable fixture question (logs/qa.md). Recalibrate on real transcripts (CON-12).
+[qa]
+top_k = 5
+min_similarity = 0.50
+max_question_chars = 500
+answer_max_tokens = 200
+temperature = 0.0
+answer_timeout_s = 30.0
+index_stale_s = 30.0
 
 # VAD, segmenting, scheduling and priority. Each value below was set from measurement on this machine with
 # synthetic audio (logs/stt.md); none has been tuned on real phone audio. CON-15 tunes them with real bleed data.

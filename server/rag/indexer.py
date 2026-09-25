@@ -14,12 +14,12 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 
 from ..audit import emit
-from ..attribution.labels import speaker_label
 from ..ids import new_id
-from ..repositories import devices, meetings, model_executions, participants, transcript_chunks, utterances
+from ..repositories import meetings, model_executions, transcript_chunks, utterances
 from ..repositories.model_executions import ModelExecution
 from ..repositories.models import TranscriptChunk
 from ..timeutil import utc_now
+from .citations import speaker_labels
 from .chunker import ChunkInput, ChunkSpec, chunk_utterances, render_line
 from .vector_store import VectorStore
 
@@ -143,11 +143,8 @@ class TranscriptIndexer:
     def _load(self, conn, meeting_id: str) -> _State:
         meeting = meetings.require(conn, meeting_id)
         rows = utterances.list_for_meeting(conn, meeting_id)
-        people = {person.participant_id: person for person in participants.list_for_meeting(conn, meeting_id)}
-        ordinals = {device.device_id: number for number, device in enumerate(devices.list_for_meeting(conn, meeting_id), 1)}
-        inputs = [ChunkInput(row.utterance_id,
-                             speaker_label(row, people.get(row.participant_id), ordinals.get(row.device_id, 0)),
-                             row.t_start, row.text) for row in rows]
+        inputs = [ChunkInput(row.utterance_id, label, row.t_start, row.text)
+                  for row, label in zip(rows, speaker_labels(conn, meeting_id, rows))]
         return _State(meeting_id, meeting.status == "ended", meeting.started_at or (rows[0].t_start if rows else ""),
                       [row.utterance_id for row in rows], inputs, transcript_chunks.list_for_meeting(conn, meeting_id))
 

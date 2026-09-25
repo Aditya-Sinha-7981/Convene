@@ -5,7 +5,7 @@ import test from "node:test";
 // The browser serves dashboard_state.js as an ES module. This repository intentionally has no package.json or
 // build system, so Node loads the same source through a data URL rather than changing the project's module mode.
 const source = await readFile(new URL("../../client/dashboard_state.js", import.meta.url), "utf8");
-const { createState, orderedUtterances, reduce } = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
+const { createState, orderedAnswers, orderedUtterances, reduce } = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
 
 const meeting = { meeting_id: "m", title: "Review", status: "live" };
 const device = { device_id: "d", meeting_id: "m", status: "connected", participants: [] };
@@ -60,4 +60,14 @@ test("unknown events are harmless and a large transcript remains ordered", () =>
       utterance: line(String(n).padStart(4, "0"), `10:00:${String(n % 60).padStart(2, "0")}`) } });
   }
   assert.equal(orderedUtterances(state).length, 1500);
+});
+
+test("a Q&A result from the response and from the push is shown once, newest first, keeping the reason", () => {
+  const query = (id, at, status) => ({ query_id: id, created_at: at, status, question: "q", answer: null, cited_chunk_ids: [] });
+  let state = reduce(createState(), { type: "local_answer", result: {
+    query: query("q1", "2026-09-26T10:00:00.000Z", "no_grounding"), citations: [], reason: "no_relevant_evidence" } });
+  state = reduce(state, { type: "event", event: { type: "qa_answer", seq: 9, query: query("q1", "2026-09-26T10:00:00.000Z", "no_grounding"), citations: [] } });
+  state = reduce(state, { type: "event", event: { type: "qa_answer", seq: 10, query: query("q2", "2026-09-26T10:01:00.000Z", "answered"), citations: [] } });
+  assert.deepEqual(orderedAnswers(state).map(item => item.query.query_id), ["q2", "q1"]);
+  assert.equal(state.answers.q1.reason, "no_relevant_evidence");
 });

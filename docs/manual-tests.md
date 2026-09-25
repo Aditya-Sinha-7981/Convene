@@ -1,4 +1,4 @@
-# Manual tests (through CON-08 and CON-04B)
+# Manual tests (through CON-09 and CON-04B)
 
 This is the checklist for what the automated tests **cannot** establish: anything that depends on real phones, real browsers, real Wi-Fi, real microphones, and real speech. The initial trusted-host real-device run on 2026-09-25 passed QR join, microphone capture, local transcription, dedicated-device attribution, and live dashboard rendering for one participant phone. The remaining checks below establish reliability and boundaries; they are not implied by that first successful run.
 
@@ -58,6 +58,7 @@ Record each result as **Passed**, **Failed** or **Not run (reason)** in `logs/tr
    uv pip install -r requirements-dev.txt
    .venv/bin/python scripts/provision_models.py        # downloads about 1.6 GB, then verifies it offline
    .venv/bin/python scripts/provision_models.py --resource embedding   # transcript search model, then verifies it
+   .venv/bin/python scripts/provision_models.py --resource reasoning   # the Q&A answer model (about 4.3 GB)
    ```
 2. Local certificate authority (needed for the phones' microphones; browsers only allow the microphone on trusted HTTPS). This changes the laptop's trust store and asks for your password:
    ```sh
@@ -187,6 +188,22 @@ sqlite3 data/convene.db "SELECT count(*) FROM TranscriptChunkVector;"   # needs 
 | D2 | Correct a line's speaker on the dashboard | Within a few seconds the chunk that holds that line shows the new name; its `chunk_index` is unchanged |
 | D3 | Stop the server (Ctrl-C) mid-meeting right after someone speaks, then start it again | Every line in the transcript is inside some chunk's range after restart |
 | D4 | End the meeting | Every chunk has `is_closed = 1`, including one created for a line that finished transcribing after **End** |
+
+## Part E: live Q&A (CON-09)
+
+Plan the demo exchange before the meeting (`demo.md`): one line someone will say, the question you will ask about
+it a few minutes later, and one question about something never said. Then, with two phones:
+
+| # | Check | Pass when |
+|---|---|---|
+| E1 | At the very start, before anyone speaks, ask anything | "Not discussed in this meeting so far" with "Nothing has been transcribed…" |
+| E2 | A few minutes after the planned line, ask the planned question | An answer that matches what was said, within about 10 s; its citation names the right speaker and time; clicking the citation highlights that line in the transcript |
+| E3 | Ask about something never said (for example a budget no one mentioned) | "Not discussed…", **never** an invented answer |
+| E4 | Ask a general-knowledge question ("What is the capital of France?") | "Not discussed…" |
+| E5 | Say a line, then immediately (within 2 s) ask about it | Either an answer or "not discussed" with a note that recent lines were not searchable yet; never an error |
+| E6 | Keep talking on both phones while a question is answered | Lines keep appearing; note any visible pause |
+| E7 | Correct a speaker, then ask about that line | The citation shows the corrected name |
+| E8 | End the meeting | The question box is disabled |
 
 ## What to write down (a template)
 

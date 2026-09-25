@@ -350,3 +350,37 @@ is necessary to invoke the existing local multilingual STT capability).
 Hindi/Hinglish quality, latency, and interaction with the VAD must be measured on real phones before a demo claim.
 
 **Status:** Accepted by the project lead for the local STT configuration on 2026-09-26; pending real-phone language validation.
+
+---
+
+### ADR-22: Live Q&A outcome reasons, as-of rule, and the relevance threshold as the primary honesty guard
+
+**Decision:**
+- **Reasons.** Every `no_grounding` or `failed` Q&A result carries a `reason` in the response and the `qa_query`
+  audit payload (`rag-and-qa.md` outcome table), not on the `QAQuery` row. `error.code` keeps the two documented
+  codes (`retrieval_failed`, `generation_failed`).
+- **Empty index (refines ADR-15, X5).** Lines with nothing indexed yet are `no_grounding` (`not_indexed_yet`) while
+  the index is healthy, and `failed` (`index_unavailable`) when a chunk has failed with nothing ready or indexing
+  is more than `[qa].index_stale_s` behind.
+- **As-of rule.** A chunk is eligible if its first line was written at or before the question.
+- **Honesty guard.** Below `[qa].min_similarity` the model is not called. The prompt's `NO_GROUNDING` instruction
+  is a second guard, not the first.
+- **Citations** are the chunks given to the model as evidence.
+- **Residency.** The reasoning model loads at startup and stays resident.
+
+**Rationale:** A just-started meeting is not broken, and a broken index must not look like "nothing relevant",
+so the reason travels with every result while the stored row stays as documented. A per-line as-of filter
+inside a chunk would split citation units for a millisecond-scale edge case. A local 7–8B model will sometimes
+answer from general knowledge despite instructions, so the guard that does not depend on it has to be retrieval.
+Deterministic citations cannot be invented by the model. A cold load at the first question would stall the demo.
+
+**Alternatives considered:** A new `QAQuery.reason` column (deferred: a schema change for information the audit
+stream already holds); per-utterance as-of filtering (rejected, above); model-selected citations (rejected:
+parsing model text is exactly what `api.md` forbids); loading the reasoning model per call (rejected: seconds of
+cold start on stage).
+
+**Tradeoffs:** At 400-token chunks, answerable and near-miss questions overlap in similarity, so near-misses
+reach the model and honesty on them depends on its instruction following (measured in `logs/qa.md`). A resident
+model holds several GB for the whole meeting (`models.md`).
+
+**Status:** Accepted (CON-09).

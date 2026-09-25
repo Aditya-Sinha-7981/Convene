@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import threading
 import time
 from dataclasses import dataclass
 from typing import Protocol, Sequence
@@ -55,8 +56,15 @@ class SentenceTransformerAdapter:
         self.dimension = config.dimension
         self._model = None
         self.load_seconds: float | None = None
+        # The indexer and question embedding (CON-09) share this adapter from different worker threads; a Hugging
+        # Face fast tokenizer must not be used concurrently, so calls are serialized. Each call takes milliseconds.
+        self._lock = threading.RLock()
 
     def load(self) -> None:
+        with self._lock:
+            self._load()
+
+    def _load(self) -> None:
         if self._model is not None:
             return
         from sentence_transformers import SentenceTransformer
@@ -80,15 +88,15 @@ class SentenceTransformerAdapter:
         self.load_seconds = time.monotonic() - began
 
     def count_tokens(self, text: str) -> int:
-        if self._model is None:
-            self.load()
-        return len(self._model.tokenizer.encode(text, add_special_tokens=True))
+        with self._lock:
+            self._load()
+            return len(self._model.tokenizer.encode(text, add_special_tokens=True))
 
     def embed(self, texts: Sequence[str]) -> list[np.ndarray]:
-        if self._model is None:
-            self.load()
-        vectors = self._model.encode(list(texts), normalize_embeddings=True, convert_to_numpy=True,
-                                     show_progress_bar=False)
+        with self._lock:
+            self._load()
+            vectors = self._model.encode(list(texts), normalize_embeddings=True, convert_to_numpy=True,
+                                         show_progress_bar=False)
         return [np.asarray(vector, dtype=np.float32) for vector in vectors]
 
 
