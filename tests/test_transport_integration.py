@@ -664,6 +664,27 @@ def test_main_binds_all_interfaces_over_tls_with_the_documented_options(tmp_path
     assert started["app"].state.runtime.host == "192.168.50.10" and started["app"].state.runtime.port == 9443
 
 
+def test_public_host_overrides_config_and_keeps_lan_address_for_dns_diagnostics(tmp_path, monkeypatch, capsys):
+    cert, key = make_certificate(tmp_path, dns=["convene.example.com"])
+    config = tmp_path / "convene.toml"
+    config.write_text("[network]\npublic_host = 'from-config.example.com'\n")
+    started = {}
+    monkeypatch.setattr(app_module.uvicorn, "run", lambda app, **kw: started.update(app=app, **kw))
+    monkeypatch.setattr(app_module.network, "resolution_warning", lambda host, address: None)
+    app_module.main(["--cert", str(cert), "--key", str(key), "--advertise-ip", "192.168.50.10",
+                     "--public-host", "convene.example.com", "--config", str(config), "--no-stt"])
+    assert started["app"].state.runtime.host == "convene.example.com"
+    assert "Public join host: convene.example.com" in capsys.readouterr().out
+
+
+def test_invalid_public_host_fails_before_server_starts(tmp_path, monkeypatch):
+    cert, key = make_certificate(tmp_path, ips=["192.168.50.10"])
+    monkeypatch.setattr(app_module.uvicorn, "run", lambda *a, **k: pytest.fail("the server must not start"))
+    with pytest.raises(SystemExit, match="--public-host must be a hostname"):
+        app_module.main(["--cert", str(cert), "--key", str(key), "--advertise-ip", "192.168.50.10",
+                         "--public-host", "192.168.50.10", "--no-stt"])
+
+
 def test_the_transport_never_configures_ice_servers():
     """ADR-10: no STUN/TURN, no public signaling."""
     import inspect

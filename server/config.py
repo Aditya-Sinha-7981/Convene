@@ -72,6 +72,16 @@ class AttributionConfig:
     low_confidence_threshold: float = 0.8
 
 
+@dataclass(frozen=True)
+class NetworkConfig:
+    """``[network]``: optional public hostname used in participant join URLs.
+
+    DNS-provider credentials deliberately do not belong here.  They are read only by the explicit operator
+    preflight script, never by the Convene server process.
+    """
+    public_host: str = ""
+
+
 def _check_attribution(config: "AttributionConfig") -> None:
     values = (config.device_confidence, config.unresolved_confidence, config.low_confidence_threshold)
     if any(not 0.0 <= value <= 1.0 for value in values):
@@ -97,6 +107,7 @@ class Settings:
     stt: SttModelConfig = SttModelConfig()
     pipeline: PipelineConfig = PipelineConfig()
     attribution: AttributionConfig = AttributionConfig()
+    network: NetworkConfig = NetworkConfig()
 
 
 def load_settings(config_path: Path | None = None, *, root: Path | None = None) -> Settings:
@@ -126,7 +137,8 @@ def load_settings(config_path: Path | None = None, *, root: Path | None = None) 
     return Settings(root=root, database_path=resolved["database"], exports_dir=resolved["exports"],
                     stt=_section(SttModelConfig, data.get("models", {}).get("stt", {}), path, "models.stt"),
                     pipeline=_section(PipelineConfig, data.get("pipeline", {}), path, "pipeline"),
-                    attribution=_section(AttributionConfig, data.get("attribution", {}), path, "attribution"))
+                    attribution=_section(AttributionConfig, data.get("attribution", {}), path, "attribution"),
+                    network=_section(NetworkConfig, data.get("network", {}), path, "network"))
 
 
 def _section(cls, table, path: Path, name: str):

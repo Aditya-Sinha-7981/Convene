@@ -62,6 +62,19 @@ async def test_create_meeting_returns_the_documented_body(http, server):
     assert "<svg" in body["qr_svg"] and body["warnings"] == []
 
 
+@pytest.mark.asyncio
+async def test_public_runtime_host_is_used_in_the_meeting_join_url_and_qr(tmp_path):
+    server = await start_server(settings_in(tmp_path), host="convene.example.com")
+    try:
+        async with ClientSession() as http:
+            status, body = await create(http, server)
+        assert status == 201
+        assert body["join_url"] == f"https://convene.example.com:{server.port}/join/{body['meeting']['meeting_id']}"
+        assert "<svg" in body["qr_svg"]
+    finally:
+        await server.stop()
+
+
 async def test_default_title_and_audit_event(http, server):
     status, body = await create(http, server)
     assert status == 201 and body["meeting"]["title"].startswith("Meeting 20")

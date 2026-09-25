@@ -1,6 +1,7 @@
 """LAN address detection, join URL and QR, and the startup certificate check."""
 import datetime
 import ssl
+import threading
 
 import pytest
 
@@ -65,6 +66,14 @@ def test_join_url_and_qr_svg():
     assert network.qr_svg(url) == svg and network.qr_svg(url + "x") != svg  # deterministic, and it encodes the URL
 
 
+def test_public_host_validation_and_hostname_join_url():
+    assert network.validate_public_host("convene.example.com") == "convene.example.com"
+    assert network.join_url("convene.example.com", 8443, "m") == "https://convene.example.com:8443/join/m"
+    for invalid in ("Convene.example.com", "https://convene.example.com", "192.168.50.10", "bad_.example", "a..b"):
+        with pytest.raises(network.HostnameError):
+            network.validate_public_host(invalid)
+
+
 def test_certificate_covering_the_address_passes(tmp_path):
     cert, key = make_certificate(tmp_path, ips=[ADDRESS], dns=["localhost"])
     network.check_certificate(cert, key, ADDRESS)
@@ -114,3 +123,39 @@ def test_a_certificate_valid_tomorrow_still_passes_with_a_clock_check(tmp_path):
     with pytest.raises(network.CertificateError, match="expired"):
         network.check_certificate(cert, key, ADDRESS, now=later)
     assert isinstance(ssl.PROTOCOL_TLS_SERVER, int)  # the check uses the same TLS stack uvicorn does
+
+
+def test_hostname_certificate_matching_wildcard_expiry_and_private_ca_warning(tmp_path):
+    cert, key = make_certificate(tmp_path, dns=["*.demo.example.com"], days=13)
+    warnings = network.check_certificate(cert, key, "convene.demo.example.com")
+    assert any("expires" in warning for warning in warnings)
+    assert any("private-CA" in warning for warning in warnings)
+    network.check_certificate(cert, key, "CONVENE.DEMO.EXAMPLE.COM")
+    for host in ("demo.example.com", "a.b.demo.example.com"):
+        with pytest.raises(network.CertificateError, match="does not cover"):
+            network.check_certificate(cert, key, host)
+
+
+def test_resolution_warning_handles_match_mismatch_error_and_timeout(monkeypatch):
+    monkeypatch.setattr(network, "resolve_hostname", lambda *a, **k: [ADDRESS])
+    assert network.resolution_warning("convene.example.com", ADDRESS) is None
+    monkeypatch.setattr(network, "resolve_hostname", lambda *a, **k: ["192.168.1.2"])
+    assert "192.168.1.2" in network.resolution_warning("convene.example.com", ADDRESS)
+    monkeypatch.setattr(network, "resolve_hostname", lambda *a, **k: (_ for _ in ()).throw(network.ResolutionError("timed out")))
+    assert "did not resolve" in network.resolution_warning("convene.example.com", ADDRESS)
+
+
+def test_resolver_timeout_is_bounded(monkeypatch):
+    started = threading.Event()
+    release = threading.Event()
+
+    def blocking(*args, **kwargs):
+        started.set()
+        release.wait(1)
+        return []
+
+    monkeypatch.setattr(network.socket, "getaddrinfo", blocking)
+    with pytest.raises(network.ResolutionError, match="timed out"):
+        network.resolve_hostname("convene.example.com", timeout_s=.01)
+    assert started.is_set()
+    release.set()

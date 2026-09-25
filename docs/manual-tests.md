@@ -1,14 +1,16 @@
-# Manual tests (through CON-05)
+# Manual tests (through CON-07 and CON-04B)
 
 This is the checklist for what the automated tests **cannot** establish: anything that depends on real phones, real browsers, real Wi-Fi, real microphones, and real speech. Everything built so far was tested with synthetic phones over loopback and synthetic speech. Until you run these, the transport, the reconnect behavior and the speech pipeline are **unproven on real devices**.
 
-Record each result as **Passed**, **Failed** or **Not run (reason)** in `logs/transport.md` (Part A) and `logs/stt.md` (Part B), with the phone model, OS, browser and version. Do not put private audio or transcripts in those logs. If a check fails, write down exactly what you saw and which layer you think is at fault (see "Failure classes" at the end); do not add workarounds first.
+Record each result as **Passed**, **Failed** or **Not run (reason)** in `logs/transport.md` (Part A), `logs/stt.md` (Part B), and `logs/dashboard.md` (Part C), with the phone model, OS, browser and version. Do not put private audio or transcripts in those logs. If a check fails, write down exactly what you saw and which layer you think is at fault (see "Failure classes" at the end); do not add workarounds first.
 
 **What exists today, so you know what you will and will not see:**
 
 - Phones join from a QR code, register, stream audio, reconnect under the same identity, and leave.
-- The laptop records every connection event in a database and shows devices and live health on a **minimal debug dashboard**.
-- Each phone's speech is transcribed and printed **on the server terminal** (`STT [Name] #n ...`). There is **no** transcript screen, no speaker-attributed transcript yet, no Q&A, no summary, no export. Those are later tasks.
+- The laptop records every connection event in a database and shows device health, reconnect counts, audio age, STT backlog, and dropped-window counters on the dashboard.
+- Each non-shared phone's speech is transcribed and stored as an utterance attributed to that phone's registered participant. It appears both on the dashboard and, when `log_transcripts = true`, in the server terminal as `STT [Name] #n ...`.
+- A dashboard utterance marked **Needs review** reflects server-provided low attribution confidence. A user can open **Review / correct** and correct the displayed speaker; the original attribution remains in the audit record.
+- Q&A, summary, and DOCX export are not implemented yet. The dashboard's “Ask the room” panel is an intentional placeholder, not a testable feature.
 
 ---
 
@@ -16,13 +18,37 @@ Record each result as **Passed**, **Failed** or **Not run (reason)** in `logs/tr
 
 - The laptop (MacBook Pro M4 Pro), this repository, and its `.venv` (see `README.md`).
 - **At least two phones**; three or more is better. Ideally one **Android with Chrome** and one **iPhone with Safari**, because they behave differently.
-- A local Wi-Fi network with **no internet**. Any of these works; write down which you used:
+- A local Wi-Fi network. For the zero-install trusted-host path, use a phone hotspot with weak-but-working internet: it is required for the operator DNS preflight and each phone's first hostname resolution. All meeting traffic then stays local. All devices must be on the same non-guest LAN, and the hotspot/router must not isolate clients. Any of these works for development; write down which you used:
+  - a normal home router (internet connected is fine for these checks);
   - a travel router with no WAN cable;
   - a phone's Personal Hotspot with mobile data **turned off** (the hotspot still lets devices talk to each other), with the laptop and the test phones joined to it (the hotspot phone itself is not a test phone);
   - the laptop's own hotspot (macOS Internet Sharing needs an uplink source, so this leaves the laptop online; only use it for the non-offline checks).
 - A quiet room, plus a fan, music or TV to make noise for Part B.
 
-## 1. One-time setup (needs internet once)
+> The trusted-host hotspot path is **not an offline test**: it intentionally needs small DNS connectivity. Do not
+> claim offline operation from it. A router with local DNS is a separate future fallback if a no-internet venue must
+> be supported.
+
+## 1. Trusted-host setup (zero-install phones)
+
+1. Complete [domain-setup.md](domain-setup.md) while online. Keep `fullchain.pem`, `privkey.pem`, and `.env` outside
+   Git; do not install an mkcert CA on the phones used for this validation.
+2. Start the hotspot, join the laptop to it, then run the operator preflight:
+   ```sh
+   .venv/bin/python scripts/update_dns.py
+   ```
+   Pass when it reports the configured hostname, current private LAN IP, and `DNS-only` without exposing a token.
+3. Start the transport-only server, replacing example paths/host with the private local certificate paths and
+   configured hostname:
+   ```sh
+   .venv/bin/python -m server.app --cert /outside/repo/fullchain.pem --key /outside/repo/privkey.pem \
+     --public-host convene.example.com --advertise-ip 172.20.10.4 --no-stt
+   ```
+   Expected: `LAN address`, `Certificate OK`, `Public join host`, and no DNS mismatch warning. Open
+   `https://<public-host>:8443/` on the laptop, create a meeting, then join a phone to the hotspot and scan its QR.
+   A phone must see no certificate warning before it grants microphone access.
+
+## 1A. Development-only mkcert setup
 
 1. Dependencies and model:
    ```sh
@@ -47,7 +73,7 @@ Record each result as **Passed**, **Failed** or **Not run (reason)** in `logs/tr
    mkcert -cert-file local.pem -key-file local-key.pem 192.168.50.10
    ```
 
-## 2. Starting the server
+## 2. Starting the server (mkcert development mode)
 
 ```sh
 # Transport only (no model): use this for Part A, and any time you only want to check phones and Wi-Fi.
@@ -65,9 +91,9 @@ Expected on the terminal: `LAN address: ...`, `Certificate OK`, (with STT) `STT 
 
 | What | How |
 |---|---|
-| Live health of each phone | the dashboard page (devices, status, reconnects, last audio age, audio seconds) |
+| Live health of each phone | the dashboard page (devices, status, reconnects, last audio age, STT queue and dropped windows) |
 | The same as JSON | `curl -sk https://192.168.50.10:8443/metrics \| python3 -m json.tool` (fields: `state`, `audio_received`, `last_audio_age_ms`, `frames`, `dropped_frames`, `audio_gaps`, and, with STT, an `stt` block: `windows_seen`, `windows_gated`, `windows_passed`, `enqueued`, `transcribed`, `empty`, `failed`, `dropped`, `suppressed`, `depth`, `oldest_age_s`, `vad_noise_floor_db`; in segment mode a "window" is one stretch of speech) |
-| What the server heard | terminal lines like `STT [Priya] #3 11:34:12.400Z +2.7s conf=0.87 (queued 0 ms, model 480 ms): We should ship the beta on Friday.` |
+| What the server heard | dashboard rows and terminal lines like `STT [Priya] #3 11:34:12.400Z +2.7s conf=0.87 (queued 0 ms, model 480 ms): We should ship the beta on Friday.` |
 | Connection history (the audit stream) | `sqlite3 data/convene.db "select seq, event_type, payload from AuditEvent order by seq desc limit 20"` (the file is `data/convene.db`) |
 | Reconnect counts | `sqlite3 data/convene.db "select d.status, d.reconnect_count, p.display_name from Device d join Participant p using(device_id)"` |
 | Model call timings | `sqlite3 data/convene.db "select duration_ms, related_id from ModelExecution order by created_at desc limit 20"` |
@@ -78,12 +104,13 @@ Expected on the terminal: `LAN address: ...`, `Certificate OK`, (with STT) `STT 
 
 ## Part A: transport and identity (CON-01 to CON-04)
 
-Run these with `--no-stt`. They are the regression checklist R1 to R9 in `logs/transport.md`, which has never been run on phones.
+Run these with `--no-stt`. For the trusted-host hotspot path, run the DNS preflight and public-host command above
+instead of the mkcert command. They are the regression checklist R1 to R9 in `logs/transport.md`, which has never been run on phones.
 
 | # | Test | How | Pass when |
 |---|---|---|---|
 | A0 | Startup refuses a wrong certificate | make a certificate for a different address and start the server with it | it exits with `certificate ... does not cover <address>` and the mkcert command to run |
-| A1 | Join with no internet (R1) | disconnect the laptop from the internet, start a meeting, join from a phone | page loads, microphone permission is granted **without** any warning or workaround, `audio_received` becomes true and `frames` rises |
+| A1 | Zero-install hotspot join (R1) | with weak internet available, run DNS preflight, start a meeting, and join from a phone with no custom CA | page loads with **no certificate warning or workaround**, microphone permission is granted, `audio_received` becomes true and `frames` rises |
 | A2 | One phone, 5 minutes (R2) | talk, pause, whisper, shout, count numbers for 5 minutes | `state` stays `connected`, `last_audio_age_ms` stays small, no manual restart. Record `audio_gaps` |
 | A3 | Wi-Fi drop, 2 s (R3) | turn the phone's Wi-Fi off for 2 s, then on | the page shows "reconnecting" then "connected"; **same** name and device; `reconnect_count` goes up by 1; audit shows `device_reconnected`; other phones unaffected |
 | A4 | Wi-Fi drop, 10 s (R4) | as A3 with 10 s | same as A3 (a short gap in audio is fine). The page retries with a growing delay (1 s, 2 s, 4 s, 8 s, 10 s); after **5 failed attempts in a row** it stops and shows a **Try again** button. Record whether a 10 s drop needed that tap |
@@ -104,12 +131,12 @@ Run these with the model (no `--no-stt`). Say the sentences at a normal pace. Wr
 | # | Test | How | Pass when |
 |---|---|---|---|
 | B0 | Start with no internet | turn the internet off, then start the server | `STT model ready`; no error; and `sudo lsof -iTCP -sTCP:ESTABLISHED -n -P \| grep -i python` shows no connection except your phones and the loopback |
-| B1 | One phone, sentences with pauses | say five sentences, pausing 1 to 2 seconds between them | **one terminal line per sentence**, about 1 to 2 seconds after you finish; the text matches what you said. Note misheard words |
+| B1 | One phone, sentences with pauses | say five sentences, pausing 1 to 2 seconds between them | **one dashboard row and terminal line per sentence**, about 1 to 2 seconds after you finish; each row carries that phone's name and the text matches what you said. Note misheard words |
 | B2 | Long run-on speech | talk for 30 seconds without stopping | a new line at least every 8 seconds, cut at a brief gap; **no words missing or repeated at the cut points** (compare with what you said) |
 | B3 | Silence | say nothing for 2 minutes | **no lines**. A line such as "Thank you." is a failure to record. Check `windows_gated` rising in `/metrics` |
 | B4 | Background noise | play a fan, music, TV or street noise near one phone, without speaking, for 2 minutes | ideally no lines. Record which noises produced false lines: this is the known weak spot (steady noise is gated; surging noise can get through) |
 | B5 | Quiet and distant speech | whisper; speak from 3 m; speak with the phone in a pocket | record which of these are picked up, and which are missed |
-| B6 | Two phones at once | two people speak different sentences at the same time | each line carries the **right name**; no line appears under the wrong person |
+| B6 | Two phones at once | two people speak different sentences at the same time | each dashboard row carries the **right name**; no row appears under the wrong person |
 | B7 | Cross-device bleed | put two phones next to each other; only person A speaks | count lines that appear under B's name (`stt.transcribed` for each device in `/metrics`). This is the misattribution measurement (F6a): record the count and how far apart the phones were |
 | B8 | Five phones talking (if you have them) | five phones, everyone talking | `stt.depth` stays small (under 5), `stt.dropped` stays 0 or tiny, lines keep appearing within a few seconds. Record the numbers |
 | B9 | Alternating speakers | two phones, people take turns about a second apart | line times (in the terminal) are in the order people spoke |
@@ -117,6 +144,27 @@ Run these with the model (no `--no-stt`). Say the sentences at a normal pace. Wr
 | B11 | Timing | with a stopwatch, note the delay from the end of a sentence to its terminal line | roughly 1 to 2 seconds; record it |
 | B12 | Resource use | Activity Monitor while five phones talk | the `python` process is around 2 GB of memory; record CPU and whether the fans run |
 | B13 | If segments misbehave | edit `config/convene.toml`: `segmentation = "fixed"` and `window_ms = 3000`, restart | the fallback still works; compare the quality with B1 and B2 and record it |
+
+## Part C: attribution, correction, and dashboard (CON-06 and CON-07)
+
+Run these with the STT model enabled, after at least B1 and B6 have succeeded. The dashboard is the place to
+judge this layer; terminal output alone cannot establish that the live user-facing view is correct.
+
+| # | Test | How | Pass when |
+|---|---|---|---|
+| C0 | Dashboard initial state | create a meeting and open its dashboard before any phone joins | the dark dashboard loads without a browser error; it says it is listening for the first voice, shows an invite QR/join link, and the device count is 0 |
+| C1 | Device health appears | join one phone, allow the microphone, and speak for 10 seconds | its name appears once in **In the room**, status becomes `connected`, **Last audio** stays low while speaking, and transcript rows appear. The dashboard should not need a reload. |
+| C2 | Dedicated-device attribution | use two phones with clearly different names; have each person say a distinct sentence, then alternate five short sentences | every row uses the name of the phone that produced the audio. This is device attribution, not acoustic guessing; any cross-device bleed is an F6a finding to record. |
+| C3 | Low-confidence honesty | inspect a naturally occurring **Needs review** row, if one exists | it has the muted badge and warning-colored speaker label; it must not look like a confirmed attribution. The standard phone join page only creates dedicated devices, so this check is normally **Not run** until the shared-device flow exists. Do not fabricate a backend response just to force the UI. |
+| C4 | Correction round trip | click a transcript row or **Review / correct**, select the other joined participant (or enter a name), then save | the row updates immediately with the new speaker and **Corrected** badge. Reload the dashboard: the corrected speaker remains. The original attribution is preserved in the audit stream. |
+| C5 | Dashboard reload and resync | while phones are speaking, reload the dashboard; then repeat after correcting a row | devices, QR, existing ordered transcript rows, correction state, and subsequent live rows are all present once; no duplicated rows and no missing correction. |
+| C6 | Device reconnect cue | with two phones streaming, run A3 on one | that device's row briefly pulses when it reconnects, its reconnect count increases, and the other device/transcript remains live. The pulse is only a cue—not the pass criterion. |
+| C7 | Transcript reading behavior | produce 15+ rows, scroll up away from the newest row, then have someone speak | the view does not yank the reader to the bottom; a **new lines** control appears. Activating it returns to the latest row. |
+| C8 | Reduced motion and touch | on the laptop enable the OS/browser reduced-motion preference and reload; open the dashboard from a touch device if practical | decorative entrances and cursor glow are absent/reduced, but device state and new rows still change immediately. The cursor glow must never appear on touch. |
+| C9 | Demo-screen legibility | view the laptop dashboard at the intended demo distance/projector setting | names, transcript text, **Needs review**, device status, and **Review / correct** are legible without zooming. If the cursor glow hurts contrast or smooth transcript updates, treat that as a dashboard issue and disable it before the demo. |
+
+Do **not** test the reserved “Ask the room” panel as if it were Q&A. CON-09 owns the real Q&A control,
+grounded answer, citations, and honest `no_grounding` state.
 
 ## What to write down (a template)
 

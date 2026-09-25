@@ -4,7 +4,7 @@ Start with [00-AI-CONTEXT.md](00-AI-CONTEXT.md) for the product, architectural r
 
 ## Status
 
-This directory describes the **planned Convene product**. The current repository contains the earlier DT-17 phone-to-laptop WebRTC transport prototype (`server/`, `client/`) and optional command-line STT. It does not yet contain the Convene dashboard, persistence, attribution, RAG, summary, or export described here. Treat those documents as implementation contracts, not as claims that the features already run.
+Convene is implemented through the live dashboard: phone-to-laptop WebRTC transport, meeting/device persistence, local STT, dedicated-device attribution, manual correction, and live device/transcript views run in the repository. Trusted-host hotspot setup is implemented but unvalidated on real phones. RAG, summary, export, shared-device enrollment/classification, and history remain planned. Treat remaining contracts as plans, not claims that their features run.
 
 The operational instructions for the current prototype are in the [root README](../README.md). Its original test and HTTPS notes are in [`old_docs/`](../old_docs/README.md). `bulwark_docs/` describes a different project; its documentation organization informed this index and plan, but its product decisions do not apply to Convene.
 
@@ -18,6 +18,6 @@ The operational instructions for the current prototype are in the [root README](
 | Audio and speaker identity | [Transport](transport.md), [STT pipeline](stt-pipeline.md), [speaker attribution](speaker-attribution.md) |
 | Models and meeting intelligence | [Models](models.md), [RAG and Q&A](rag-and-qa.md), [summarization](summarization.md) |
 | UI and output | [Frontend](frontend.md), [export](export.md) |
-| Running and verifying | [Deployment](deployment.md), [testing](testing.md), [manual tests](manual-tests.md), [demo](demo.md) |
+| Running and verifying | [Deployment](deployment.md), [network and HTTPS](network-and-https.md), [domain setup](domain-setup.md), [testing](testing.md), [manual tests](manual-tests.md), [demo](demo.md) |
 
 When a plan and a topic contract differ, follow the topic contract and update the plan. For rationale, consult `decisions.md`.

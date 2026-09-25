@@ -2,7 +2,7 @@
 
 Single FastAPI process (ADR-01). REST for request/response operations, WebSocket for signaling and live push feeds. This document is authoritative for endpoint shape — other docs describe *when* these are called, not their exact contracts. Stored field names come from `data-model.md` and are never renamed here; where the API adds a computed field it is listed under [Derived fields](#derived-fields).
 
-**Implementation status (after CON-04):** implemented and covered by automated tests over loopback: `POST /api/meetings`, `GET /api/meetings/{meeting_id}`, `POST …/devices`, `POST …/end`, both WebSockets (signaling with the full message set; the dashboard feed with `meeting_status`, `device_status`, `connection_event` and `device_gauges`), the pages `/`, `/join/{meeting_id}`, `/dashboard/{meeting_id}` and `/static/…` (the home and dashboard pages are minimal; CON-07 replaces the dashboard), plus a non-contract debug route `GET /metrics`. **Not implemented yet, and absent from the running server:** `GET /api/meetings`, transcript, correction, Q&A, summary, export and enrollment routes, the `/meetings/{meeting_id}` page (so the ended-meeting redirect from the dashboard currently lands on a 404), and the dashboard events they produce. `end` reports `summary_pending: false` until CON-10 starts summarization from the `on_meeting_ended` hook. None of it has been verified on real phones. A route section below describes the contract, not a claim that the route exists.
+**Implementation status (through CON-07):** implemented and covered by automated loopback tests: `POST /api/meetings`, `GET /api/meetings/{meeting_id}`, `POST …/devices`, `POST …/end`, `GET …/transcript`, and `POST …/utterances/{utterance_id}/correct`; signaling and dashboard WebSockets; and the pages `/`, `/join/{meeting_id}`, `/dashboard/{meeting_id}`, and `/static/…`. The dashboard feed includes `meeting_status`, `device_status`, `connection_event`, `device_gauges`, `utterance`, and `utterance_updated`; the dashboard consumes server-computed labels and low-confidence state. `GET /api/meetings`, Q&A, summary, export, and enrollment routes remain unimplemented. `end` reports `summary_pending: false` until CON-10 starts summarization from the `on_meeting_ended` hook. None of this has been verified on real phones. A route section below describes the contract, not a claim that the route exists.
 
 **Status of decisions:** contract choices that change a documented behavior or the schema are marked **(proposed)** and recorded as ADR-15 to ADR-18 in `decisions.md`, pending project-lead confirmation. Shapes marked **provisional** belong to should-have features and are finalized by CON-13 (enrollment) and CON-14 (history).
 
@@ -136,7 +136,7 @@ Create a meeting and get its join link.
 
 `title` is optional; null, empty or omitted means a default label derived from the creation time in the server's local timezone, for example `Meeting 2026-09-21 17:00`.
 
-**Response** — `201`. `join_url` is `https://<lan-address>:<port>/join/<meeting_id>`. `qr_svg` is an inline SVG document encoding `join_url` and nothing else, so the QR works without any network. The address is the configured `server.advertise_host` if set, otherwise the first detected private IPv4 address (`transport.md`, `deployment.md`). If no LAN address exists, the meeting is still created and `join_url` and `qr_svg` are `null` with `"no_lan_address"` in `warnings`.
+**Response** — `201`. `join_url` is `https://<host>:<port>/join/<meeting_id>`, where `<host>` is the configured `--public-host`/`network.public_host` in trusted-host mode, otherwise the detected or `--advertise-ip` private IPv4 address. `qr_svg` is an inline SVG document encoding `join_url` and nothing else. If neither a public host nor LAN address exists, the meeting is still created and `join_url` and `qr_svg` are `null` with `"no_lan_address"` in `warnings`.
 
 ```json
 {
@@ -253,7 +253,7 @@ Meeting detail and the dashboard's snapshot of devices and live health.
 }
 ```
 
-`join_url` and `qr_svg` are the values `POST /api/meetings` returned, so a reloaded dashboard can show the join QR again. They are `null` once the meeting has ended or when no LAN address is available.
+`join_url` and `qr_svg` are the values `POST /api/meetings` returned, so a reloaded dashboard can show the join QR again. They are `null` once the meeting has ended or when neither a configured public host nor LAN address is available.
 
 **Status codes**
 

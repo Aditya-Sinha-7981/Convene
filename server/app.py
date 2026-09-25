@@ -64,7 +64,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--key", required=True, help="TLS private key (PEM)")
     parser.add_argument("--port", type=int, default=8443)
     parser.add_argument("--advertise-ip", help="the laptop's Wi-Fi IPv4 address for join URLs and QR codes "
-                                               "(detected when omitted)")
+                                               "(detected when omitted; still used for public-host diagnostics)")
+    parser.add_argument("--public-host", help="trusted lowercase hostname for participant join URLs and QR codes; "
+                                               "overrides [network].public_host")
     parser.add_argument("--config", help="path to a convene.toml (default: config/convene.toml)")
     parser.add_argument("--no-stt", action="store_true",
                         help="transport only: do not load the STT model or transcribe (for checking phones and Wi-Fi)")
@@ -74,7 +76,9 @@ def main(argv: list[str] | None = None) -> None:
     try:
         settings = load_settings(args.config)
         address = network.detect_lan_address(args.advertise_ip)
-    except (ConfigError, ipaddress.AddressValueError) as exc:
+        configured_host = args.public_host if args.public_host is not None else settings.network.public_host
+        public_host = network.validate_public_host(configured_host) if configured_host else None
+    except (ConfigError, ipaddress.AddressValueError, network.HostnameError) as exc:
         sys.exit(f"startup failed: {exc}")
     if address is None:
         print("No LAN address detected. Pass --advertise-ip with this machine's Wi-Fi address; "
@@ -82,10 +86,17 @@ def main(argv: list[str] | None = None) -> None:
     else:
         print(f"LAN address: {address}", flush=True)
     try:
-        network.check_certificate(args.cert, args.key, address)
+        certificate_warnings = network.check_certificate(args.cert, args.key, public_host or address)
     except network.CertificateError as exc:
         sys.exit(f"startup failed: {exc}")
     print("Certificate OK", flush=True)
+    for warning in certificate_warnings:
+        print(warning, file=sys.stderr, flush=True)
+    if public_host:
+        print(f"Public join host: {public_host}", flush=True)
+        warning = network.resolution_warning(public_host, address)
+        if warning:
+            print(warning, file=sys.stderr, flush=True)
 
     adapter = None
     if args.no_stt:
@@ -100,9 +111,10 @@ def main(argv: list[str] | None = None) -> None:
         print(f"STT model ready ({adapter.load_seconds:.1f} s)", flush=True)
 
     transport = TransportConfig()
-    app = create_app(settings, host=address, port=args.port, transport=transport, stt_adapter=adapter,
+    join_host = public_host or address
+    app = create_app(settings, host=join_host, port=args.port, transport=transport, stt_adapter=adapter,
                      stt_loaded=adapter is not None)
-    where = address or "<this machine's address>"
+    where = join_host or "<this machine's address>"
     print(f"Open https://{where}:{args.port}/ on this laptop to start a meeting; phones join from the QR code it shows.",
           flush=True)
     uvicorn.run(app, host="0.0.0.0", port=args.port, ssl_certfile=args.cert, ssl_keyfile=args.key,

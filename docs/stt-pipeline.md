@@ -4,7 +4,7 @@
 
 Everything between "continuous per-device audio frames arriving from the Transport Layer" and "a transcribed window handed to the Attribution Layer." Does not include attribution itself (`speaker-attribution.md`) or model selection detail (`models.md`).
 
-**Implementation status (after CON-05, with speech segments):** implemented and covered by automated tests with a fake model and, on the reference laptop, with the real model (`pytest -m model`). Measured on the reference laptop with synthetic phones and synthetic speech (`logs/stt.md`); **not** validated with real phones or real speech. The pipeline's output is a callback (`Runtime.on_transcribed_window`); nothing turns it into an `Utterance` until CON-06.
+**Implementation status (through CON-07):** implemented and covered by automated tests with a fake model and, on the reference laptop, with the real model (`pytest -m model`). Measured on the reference laptop with synthetic phones and synthetic speech (`logs/stt.md`); **not** validated with real phones or real speech. Its output callback (`Runtime.on_transcribed_window`) now feeds CON-06's `Utterance` attribution service and the CON-07 live dashboard.
 
 ## Pipeline stages
 

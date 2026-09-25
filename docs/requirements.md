@@ -2,7 +2,7 @@
 
 ## Success criteria (demo-day definition of done)
 
-Convene is successful if, live and without a network connection to the internet required:
+Convene is successful if, live with only weak internet needed for the trusted-host DNS preflight and initial phone lookup; all meeting traffic and models remain local:
 
 1. 2–10 phones join a local Wi-Fi network and connect to the laptop server.
 2. Each phone streams live audio continuously; the laptop shows connection state and audio activity per phone.
@@ -25,7 +25,7 @@ Convene is successful if, live and without a network connection to the internet 
 | Confidence scoring + manual correction on utterances | Directly answers the "what if a label is wrong" objection, and is required for the shared-device case to be honest rather than silently wrong |
 | End-of-meeting summary + action items | Closes the pitch loop — "record it" becomes "record it and act on it" |
 | DOCX export | The tangible artifact a judge can hold; cheap once summary data exists |
-| Fully offline operation | The core differentiating claim in the pitch |
+| Local models and local meeting traffic | The core reliability and privacy claim; trusted-host joining has a small DNS-connectivity dependency (ADR-20) |
 
 ## Should-have (build only after must-haves are demo-stable)
 

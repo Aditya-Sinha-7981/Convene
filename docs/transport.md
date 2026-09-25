@@ -122,11 +122,11 @@ One device's connection failure, malformed message, or browser crash must never 
 
 ## HTTPS / secure context requirement
 
-`getUserMedia()` requires a secure context on essentially all modern mobile browsers — `http://<lan-ip>` will not be granted microphone access. The laptop serves HTTPS using a locally-trusted development certificate (`mkcert`), with the certificate covering whatever hostname/IP the phones actually connect to. Full platform-specific trust steps (Android/iOS) are operational setup, not architecture, and belong in a setup runbook rather than this document — see `deployment.md`.
+`getUserMedia()` requires a secure context on essentially all modern mobile browsers — `http://<lan-ip>` will not be granted microphone access. Development may use a locally trusted `mkcert` certificate, but the participant/demo path uses a publicly trusted DNS-01 certificate for a configured hostname, so a phone only scans and grants microphone permission. The public hostname is resolved over the hotspot's weak-but-present internet connectivity before the phone connects directly to the laptop; no media or signaling is relayed through the internet. See `network-and-https.md` and `deployment.md` for the operator runbook.
 
 ## Network addressing
 
-The server binds to `0.0.0.0:<port>`, not only `127.0.0.1`; the join URL/QR code uses the laptop's actual LAN address, detected and displayed at startup. No hard-coded IP. The join URL is `https://<lan-address>:<port>/join/<meeting_id>` and is returned by `POST /api/meetings` together with an inline QR code (`api.md`). If no LAN address is detected the server still starts, says so loudly, and returns `null` join fields with a warning rather than inventing an address; the operator supplies one through configuration.
+The server binds to `0.0.0.0:<port>`, not only `127.0.0.1`. In development, the join URL/QR uses the detected or `--advertise-ip` LAN address. In trusted-host mode, `--public-host` (or `[network].public_host`) replaces only the host in the URL: `https://<public-host>:<port>/join/<meeting_id>`. The actual LAN IP remains detected and printed for the DNS preflight check; WebRTC host candidates still use that local address. If neither public host nor LAN address is available, the server still starts, says so loudly, and returns `null` join fields with a warning rather than inventing an address.
 
 ## Metrics carried forward
 

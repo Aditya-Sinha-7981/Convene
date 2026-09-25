@@ -246,3 +246,36 @@ Also not run and required by the work order: server restart while real phones ar
 ### Correction (2026-09-22)
 
 The first version of the CON-04 summary above said "187 new tests" and `test_audio_frames` 10. Both were unchecked estimates. Counted with `pytest --collect-only`: 144 new tests, `test_audio_frames` 12. The suite total (302) and the work order's three-file count (102) were measured and were right. The summary row has been corrected in place.
+
+---
+
+## CON-04B — Trusted public hostname and hotspot DNS preflight
+
+### Implementation (2026-09-25)
+
+- Added optional trusted-host mode: `--public-host` overrides `[network].public_host`; otherwise the existing IP
+  join URL and mkcert development flow remain unchanged.
+- The server validates DNS SANs (including one-label wildcards), expiry, and OS hostname resolution. Certificate
+  mismatch/expiry remains fatal; near-expiry, private-CA-looking hostname certificates, and stale/unavailable DNS
+  are explicit warnings.
+- Added the explicit operator command `scripts/update_dns.py`. It reads ignored `.env` credentials, updates exactly
+  one DNS-only Cloudflare A record to the current private LAN IP, and is never imported or invoked by the server.
+  No secret values are logged.
+- This hotspot design needs weak internet for the operator DNS update and initial phone DNS lookup. WebRTC, page,
+  WebSocket, STT, and dashboard traffic remain local after resolution. It is not an offline claim.
+
+### Automated verification
+
+- Initial focused suite (including config coverage): **108 passed**. Final focused suite after hostname meeting-URL
+  coverage: `.venv/bin/python -m pytest tests/test_meetings_api.py tests/test_network.py tests/test_update_dns.py
+  tests/test_transport_integration.py -q` — **86 passed**.
+- `.venv/bin/python -m pytest tests -q` passed (exit 0) after the final test-only addition.
+- `.venv/bin/python scripts/update_dns.py --help` passed, validating the documented direct script launch without
+  reading `.env` or calling Cloudflare.
+- Cloudflare calls are mocked; no provider API request, real certificate, phone, or model was used by these tests.
+
+### Hardware checks
+
+- **Not run:** public certificate issuance/path validation, explicit DNS update against the configured zone, Android
+  Chrome zero-install join, iOS Safari zero-install join, hotspot DNS behavior, DNS-rebinding/Private-DNS behavior,
+  and audio reception. These require the actual hotspot, certificate files, and phones.

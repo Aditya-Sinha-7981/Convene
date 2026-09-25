@@ -15,3 +15,6 @@ join-*.svg
 
 # Local data: the SQLite database and exports hold private transcripts
 /data/
+
+*.env
+certs/

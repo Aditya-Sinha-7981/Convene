@@ -5,6 +5,11 @@
 database = "data/convene.db"
 exports = "data/exports"
 
+# Optional trusted public hostname for participant join URLs, for example "convene.example.com". Leave empty for
+# local IP + mkcert development mode. Cloudflare credentials never go in this file or the server process.
+[network]
+public_host = ""
+
 # The STT model: the ONE place it is named (ADR-14). Pinned to an exact revision, resolved from the local cache
 # only; scripts/provision_models.py downloads it once while online. Chosen on the reference laptop (M4 Pro, 24 GB):
 # distil-large-v3 was neither faster nor more accurate (logs/stt.md).

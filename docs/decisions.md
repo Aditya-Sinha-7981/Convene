@@ -299,3 +299,31 @@ from real-phone evidence.
 **Tradeoffs:** a line appears about 1.2 s after the speaker stops (pause detection plus the model call) instead of streaming every second; correctness now depends on the energy VAD detecting pauses well, which was only measured on synthetic material, so a noisy room can merge two people's speech into one segment or fail to end one (the 8 s cap bounds it). The VAD cannot tell surging noise from speech, so such noise can still yield false lines. Changing this document's fixed ~1 s windows was approved by the project lead (2026-09-22); real-phone validation is still owed (`manual-tests.md`).
 
 **Status:** Accepted by the project lead; pending validation on real phones.
+
+---
+
+### ADR-20: Trusted public hostname with operator-run dynamic DNS preflight
+
+**Decision:** Participant join URLs use one configured public hostname, covered by a publicly trusted ACME
+DNS-01 certificate. Before each hotspot session, the operator explicitly runs `scripts/update_dns.py` to set the
+DNS-only Cloudflare A record to the laptop's current private hotspot address. The server receives only the public
+hostname and certificate/key paths; it never reads Cloudflare credentials or calls a CA/DNS-provider API. It checks
+certificate coverage, expiry, and local hostname resolution at startup. The hotspot needs weak-but-working internet
+for the preflight and the phone's initial DNS lookup; WebRTC, signaling, page assets, STT, and dashboard traffic stay
+on the local network.
+
+**Rationale:** Mobile browsers require trusted HTTPS for microphone access. A public certificate removes the
+per-phone CA/profile installation that makes a QR-based join unusable, while an explicit preflight keeps a remote
+DNS mutation out of the live server process and makes the operator action visible and recoverable.
+
+**Alternatives considered:** `mkcert` on every phone (rejected for participant UX); certificate-warning bypasses
+and browser flags (rejected as insecure and unreliable); public tunnels or relays (rejected because audio/signaling
+must remain local); server-automatic Cloudflare updates (rejected because the server must not hold or use DNS
+provider credentials); a travel router with local DNS (deferred because the chosen hotspot flow accepts weak DNS
+connectivity).
+
+**Tradeoffs:** This is not a no-internet deployment: DNS rebinding protection, Private DNS/Relay, stale caches, or
+a venue with no usable connectivity can prevent initial hostname resolution. These are measured on real Android and
+iOS phones before relying on the flow. The non-standard `:8443` port remains in QR URLs.
+
+**Status:** Accepted for CON-04B implementation; pending real-phone validation.

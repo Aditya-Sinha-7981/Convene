@@ -2,7 +2,7 @@
 
 ## One-paragraph summary
 
-Convene turns any group of smartphones into a distributed, correctly-attributed meeting microphone array. Each phone is a dedicated mic for one (or a declared few) participant(s), streamed live over local Wi-Fi via WebRTC to one laptop, which transcribes, attributes, and stores every utterance, answers questions about the conversation while it is still happening, and produces a speaker-labeled summary and exportable minutes at the end — all running fully offline on a single machine, with cloud AI as an optional, manually-triggered upgrade, never a dependency.
+Convene turns any group of smartphones into a distributed, correctly-attributed meeting microphone array. Each phone is a dedicated mic for one (or a declared few) participant(s), streamed live over local Wi-Fi via WebRTC to one laptop, which transcribes, attributes, and stores every utterance, answers questions about the conversation while it is still happening, and produces a speaker-labeled summary and exportable minutes at the end. Models and meeting traffic run locally; the trusted-host hotspot join path has a small DNS-connectivity dependency (ADR-20). Cloud AI remains an optional, manually-triggered upgrade, never a dependency.
 
 ## The core insight (read this before anything else)
 
