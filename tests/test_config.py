@@ -75,7 +75,7 @@ def test_stt_and_pipeline_sections_load_with_types_checked(tmp_path):
     assert (settings.stt.model, settings.stt.revision, settings.stt.no_speech_threshold) == ("org/some-model", "abc123", 1.0)
     assert settings.pipeline.hallucination_blocklist == ("thank you.",)
     assert (settings.pipeline.window_ms, settings.pipeline.vad_margin_db, settings.pipeline.workers) == (2000, 12.0, 2)
-    assert settings.pipeline.queue_max == PipelineConfig().queue_max and SttModelConfig().language == "en"
+    assert settings.pipeline.queue_max == PipelineConfig().queue_max and SttModelConfig().language == "auto"
 
 
 @pytest.mark.parametrize("text,message", [

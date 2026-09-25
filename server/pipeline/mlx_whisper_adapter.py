@@ -81,8 +81,10 @@ class MlxWhisperAdapter:
     def _transcribe(self, audio: np.ndarray) -> dict:
         import mlx_whisper
         c = self.config
+        # mlx-whisper uses None, not the string "auto", to invoke its multilingual language detector.
+        language = None if c.language == "auto" else c.language
         return mlx_whisper.transcribe(
-            audio, path_or_hf_repo=self._path, language=c.language, verbose=None, temperature=0.0,
+            audio, path_or_hf_repo=self._path, language=language, verbose=None, temperature=0.0,
             condition_on_previous_text=False, word_timestamps=False, no_speech_threshold=c.no_speech_threshold,
             logprob_threshold=c.logprob_threshold, compression_ratio_threshold=c.compression_ratio_threshold)
 

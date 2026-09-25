@@ -12,12 +12,13 @@ public_host = ""
 
 # The STT model: the ONE place it is named (ADR-14). Pinned to an exact revision, resolved from the local cache
 # only; scripts/provision_models.py downloads it once while online. Chosen on the reference laptop (M4 Pro, 24 GB):
-# distil-large-v3 was neither faster nor more accurate (logs/stt.md).
+# distil-large-v3 was neither faster nor more accurate (logs/stt.md). "auto" uses Whisper's multilingual language
+# detector for each speech segment; set a language code such as "en" only for a deliberately monolingual run.
 [models.stt]
 runtime = "mlx"
 model = "mlx-community/whisper-large-v3-turbo"
 revision = "a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb"
-language = "en"
+language = "auto"
 
 # VAD, segmenting, scheduling and priority. Each value below was set from measurement on this machine with
 # synthetic audio (logs/stt.md); none has been tuned on real phone audio. CON-15 tunes them with real bleed data.

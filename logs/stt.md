@@ -61,6 +61,10 @@ Model weights in the Hugging Face cache (`~/.cache/huggingface/hub/models--mlx-c
 9. **Overload policy is drop oldest** (the work order's recommendation). Confirm.
 10. **Hallucination blocklist** default: "thank you", "thanks for watching", "thank you for watching", "you", "bye", "thanks", applied only below a speech fraction of 0.5. Chosen from the one stock phrase actually observed ("Thank you."); the others are Whisper's commonly reported ones and are **unverified here**.
 11. **Time base:** `t_wall` at frame receipt (UTC). Accuracy is bounded by network and jitter-buffer delay and, after a resync, by 0.25 s. The RTP media time (`pts`) is available but not passed on. A gap flushes the partial window so none straddles it. Retained audio for CON-13's speaker embeddings: **windows are not retained after transcription**; CON-13 would need to tap the sink itself.
+12. **Language mode:** the default is now `auto`, mapped to `None` for MLX Whisper's built-in multilingual detector.
+    Explicit language codes remain supported. This is an implementation/configuration change only; Hindi/Hinglish
+    quality is pending the B1a physical test in `docs/manual-tests.md`. Focused configuration/adapter tests passed
+    (48 non-model tests); the local MLX model suite also passed with direct Metal access on the reference laptop.
 
 ## Findings
 

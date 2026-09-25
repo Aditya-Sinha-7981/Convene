@@ -327,3 +327,26 @@ a venue with no usable connectivity can prevent initial hostname resolution. The
 iOS phones before relying on the flow. The non-standard `:8443` port remains in QR URLs.
 
 **Status:** Accepted for CON-04B implementation; pending real-phone validation.
+
+---
+
+### ADR-21: Auto-detect STT language; do not add translation
+
+**Decision:** The default local STT setting is `language = "auto"`. The adapter passes this as `None` to
+`mlx-whisper`, invoking its built-in multilingual language detection for each speech segment. An operator may set an
+explicit Whisper language code, such as `en`, for a known monolingual run. Convene does not translate transcripts,
+provide language-selection UI, or make any multi-language product claim.
+
+**Rationale:** The first real-device run exposed Hindi/Hinglish speech while the production configuration forced
+English. The selected Whisper model is multilingual, so auto-detection is the smallest local, offline change that
+lets the configured model attempt to transcribe the spoken language without changing transport, attribution, or API
+contracts.
+
+**Alternatives considered:** Keep English forced (rejected: it knowingly degrades non-English speech); force Hindi
+(rejected: it harms English and mixed meetings); switch STT runtimes or use an Ollama text model (rejected: neither
+is necessary to invoke the existing local multilingual STT capability).
+
+**Tradeoffs:** Detection happens per segment, so short or code-switched segments can select the wrong language.
+Hindi/Hinglish quality, latency, and interaction with the VAD must be measured on real phones before a demo claim.
+
+**Status:** Accepted by the project lead for the local STT configuration on 2026-09-26; pending real-phone language validation.

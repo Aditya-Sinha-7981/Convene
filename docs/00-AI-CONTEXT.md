@@ -45,7 +45,7 @@ Read `project-context.md`'s "core insight" section. Everything about how speaker
 
 ## What is explicitly out of scope
 
-See `requirements.md`'s "explicitly out of scope" and "non-goals" sections. In short: no accounts/auth, no cloud deployment, no third-party integrations, no multi-language support, nothing requiring a paid API tier. If a task or a piece of code starts to require any of these, stop and check `requirements.md` — it likely means the task has drifted outside what this system is meant to be.
+See `requirements.md`'s "explicitly out of scope" and "non-goals" sections. In short: no accounts/auth, no cloud deployment, no third-party integrations, no translation or multilingual product workflows, nothing requiring a paid API tier. Local STT may auto-detect spoken-language segments; that narrow capability does not broaden the product into a translation feature. If a task or a piece of code starts to require any of these, stop and check `requirements.md` — it likely means the task has drifted outside what this system is meant to be.
 
 ## If you are generating a tasks/build plan from this document set
 

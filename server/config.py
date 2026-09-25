@@ -18,7 +18,9 @@ class SttModelConfig:
     runtime: str = "mlx"                     # docs/data-model.md: mlx | groq | gemini
     model: str = ""                          # repository id of the model
     revision: str = ""                       # exact pinned revision of the weights
-    language: str = "en"
+    # ``auto`` maps to ``None`` for mlx-whisper, which selects a language for each speech segment.
+    # Any explicit Whisper language code (for example ``en``) remains available for a known monolingual run.
+    language: str = "auto"
     no_speech_threshold: float = 0.6         # a window Whisper is this sure has no speech is returned empty
     logprob_threshold: float = -1.0          # below this average log-probability the window is treated as unreliable
     compression_ratio_threshold: float = 2.4  # above this the text is repetitive (a decoding failure)

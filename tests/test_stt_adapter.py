@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import textwrap
+import types
 from dataclasses import replace
 from pathlib import Path
 
@@ -155,6 +156,22 @@ def test_build_adapter_selects_by_configured_runtime_and_rejects_cloud_runtimes(
     for cloud in ("groq", "gemini", "whatever"):
         with pytest.raises(ValueError, match="not available"):
             build_adapter(replace(CONFIG, runtime=cloud))
+
+
+@pytest.mark.parametrize(("configured", "expected"), [("auto", None), ("en", "en"), ("hi", "hi")])
+def test_language_mode_passes_auto_detection_or_the_explicit_language(configured, expected, monkeypatch):
+    """``auto`` is a config sentinel; mlx-whisper itself expects None to detect the segment language."""
+    calls = []
+    module = types.SimpleNamespace(transcribe=lambda audio, **kwargs: calls.append(kwargs) or {"segments": []})
+    monkeypatch.setitem(sys.modules, "mlx_whisper", module)
+    adapter = MlxWhisperAdapter(replace(CONFIG, language=configured))
+    adapter._path = "/local/model"
+    assert adapter._transcribe(np.zeros(10, np.float32)) == {"segments": []}
+    assert calls == [{"path_or_hf_repo": "/local/model", "language": expected, "verbose": None,
+                      "temperature": 0.0, "condition_on_previous_text": False, "word_timestamps": False,
+                      "no_speech_threshold": CONFIG.no_speech_threshold,
+                      "logprob_threshold": CONFIG.logprob_threshold,
+                      "compression_ratio_threshold": CONFIG.compression_ratio_threshold}]
 
 
 def test_the_runtime_source_has_no_download_call():
