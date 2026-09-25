@@ -20,16 +20,41 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from server.config import SttModelConfig, load_settings  # noqa: E402
+from server.rag.embedding import build_embedding_adapter  # noqa: E402
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--model", help="repository id to provision (default: [models.stt] model)")
     parser.add_argument("--revision", help="exact revision (default: [models.stt] revision, else the latest)")
+    parser.add_argument("--resource", choices=("stt", "embedding"), default="stt",
+                        help="model resource to provision (default: stt)")
     parser.add_argument("--check", action="store_true", help="verify the cached weights only; never touches the network")
     args = parser.parse_args()
 
-    config = load_settings().stt
+    settings = load_settings()
+    if args.resource == "embedding":
+        config = settings.embedding
+        model, revision = args.model or config.model, args.revision or config.revision
+        if not args.check:
+            from huggingface_hub import HfApi, snapshot_download
+            revision = args.revision or HfApi().model_info(model).sha
+            print(f"Downloading {model} at revision {revision} ...", flush=True)
+            snapshot_download(repo_id=model, revision=revision)
+        from dataclasses import replace
+        adapter = build_embedding_adapter(replace(config, model=model, revision=revision))
+        try:
+            adapter.load()
+        except RuntimeError as exc:
+            print(f"NOT PROVISIONED: {exc}", file=sys.stderr)
+            return 1
+        vector = adapter.embed(["Convene verifies a local embedding model."])[0]
+        print(f"Verified offline: loaded in {adapter.load_seconds:.1f} s; dimension {len(vector)}")
+        print("\nPin it in config/convene.toml:\n\n[models.embedding]\n"
+              f"runtime = \"sentence_transformers\"\nmodel = \"{model}\"\nrevision = \"{revision}\"")
+        return 0
+
+    config = settings.stt
     model = args.model or config.model
     revision = args.revision or (config.revision if not args.model else "")
     if not model:

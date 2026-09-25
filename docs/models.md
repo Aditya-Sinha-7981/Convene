@@ -9,7 +9,7 @@ Application code never references a model name directly (ADR-14). Every capabili
 | Resource type | Purpose | Default (local) | Fallback (cloud, manual only — ADR-06) |
 |---|---|---|---|
 | `stt` | Transcribe an audio window | `mlx-whisper` with `mlx-community/whisper-large-v3-turbo`, **pinned to revision `a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb`** in `config/convene.toml` (measured on the reference laptop, below) | Groq Whisper-large-v3 (free tier), not wired |
-| `embedding` | Embed transcript chunks and questions for RAG | local sentence-embedding model (`bge-small`-class, CPU) | none needed — cheap enough to always run local |
+| `embedding` | Embed transcript chunks and questions for RAG | `BAAI/bge-small-en-v1.5` via `sentence-transformers`, CPU, pinned to revision `5c38ec7c405ec4b44b94cc5a9bb96e735b38267a` in `config/convene.toml` | none needed — cheap enough to always run local |
 | `speaker_embedding` | Enrollment + runtime classification for shared devices | local speaker-embedding model (ECAPA-TDNN-class, CPU) | none — must run local, no meaningful cloud equivalent for this use case |
 | `reasoning` | Summarization + RAG answer generation | local LLM via `mlx-lm`, 7–8B instruct class, 4-bit quantized | Groq (Llama 3.3 70B, free tier) or Gemini Flash (free tier) |
 
@@ -48,7 +48,7 @@ Measured on the reference laptop (MacBook Pro, M4 Pro, 24 GB) with `scripts/meas
 | `speaker_embedding` model | ~200–500MB | only for shared-device windows |
 | **Worst case, everything loaded at once** | **~7–9GB (estimate; only the `stt` row above is measured)** | leaves 15GB+ headroom on a 24GB machine |
 
-This headroom is the margin for "several phones talking at once plus a live Q&A call in flight" without swapping or stalling. If real testing shows this budget is wrong, correct this table — it is a claim to be verified, not assumed. The `reasoning`, `embedding` and `speaker_embedding` rows are still unmeasured estimates (CON-08, CON-09, CON-13).
+This headroom is the margin for "several phones talking at once plus a live Q&A call in flight" without swapping or stalling. If real testing shows this budget is wrong, correct this table — it is a claim to be verified, not assumed. The `reasoning`, `embedding` and `speaker_embedding` rows are still unmeasured estimates (CON-08, CON-09, CON-13). The initial CON-08 embedding configuration is `BAAI/bge-small-en-v1.5` (384 dimensions, 512-token input), normalized vectors with cosine distance. Its real-model latency, memory, and fixture retrieval quality must be measured and recorded in `logs/rag.md` before calling the choice validated.
 
 ## Scheduling priority across resource types
 

@@ -103,3 +103,10 @@ def test_segments_are_the_default_and_fixed_windows_stay_selectable(tmp_path):
     config.write_text('[pipeline]\nsegmentation = "fixed"\nsegment_max_ms = 5000\nlog_transcripts = false')
     pipeline = load_settings(config, root=tmp_path).pipeline
     assert (pipeline.segmentation, pipeline.segment_max_ms, pipeline.log_transcripts) == ("fixed", 5000, False)
+
+
+def test_rag_cap_must_fit_the_embedding_model_limit(tmp_path):
+    config = tmp_path / "bad.toml"
+    config.write_text('[models.embedding]\nmax_tokens = 400\n\n[rag]\nhard_max_tokens = 400\n')
+    with pytest.raises(ConfigError, match="hard_max_tokens"):
+        load_settings(config, root=tmp_path)

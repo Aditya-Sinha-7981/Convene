@@ -32,9 +32,11 @@ The STT model is pinned (model and exact revision) in `[models.stt]` in `config/
 ```sh
 .venv/bin/python scripts/provision_models.py            # downloads the pinned model (about 1.6 GB), then verifies it offline
 .venv/bin/python scripts/provision_models.py --check    # later: verify only, no network
+.venv/bin/python scripts/provision_models.py --resource embedding
+.venv/bin/python scripts/provision_models.py --resource embedding --check
 ```
 
-The server never downloads anything: it resolves the pinned revision from the local Hugging Face cache with networking off, and refuses to start if it is missing. To change models, edit `[models.stt]` (see `models.md`) and provision again.
+The server never downloads anything: it resolves the pinned revision from the local Hugging Face cache with networking off, and refuses to start if it is missing. The embedding provisioning command prints the resolved revision; copy that exact value into `[models.embedding]` before the demo. To change models, edit the relevant `[models.*]` section (see `models.md`) and provision again.
 
 - `mlx-whisper` model weights downloaded/cached locally ahead of time — do not rely on a model download happening live on unreliable Wi-Fi.
 - Local `reasoning` LLM (via `mlx-lm`) weights similarly pre-downloaded and verified to load within the memory budget (`models.md`).

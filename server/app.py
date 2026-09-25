@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from . import network
 from .config import ConfigError, Settings, load_settings
 from .pipeline.mlx_whisper_adapter import build_adapter
+from .rag.embedding import build_embedding_adapter
 from .routes import CLIENT_DIR, install_error_handlers, router
 from .runtime import Runtime, TransportConfig
 from .transport.audio import AudioSink
@@ -25,7 +26,7 @@ log = logging.getLogger("convene")
 
 def create_app(settings: Settings | None = None, *, sink: AudioSink | None = None, host: str | None = None,
                port: int = 8443, transport: TransportConfig | None = None, stt_adapter=None,
-               stt_loaded: bool = False) -> FastAPI:
+               stt_loaded: bool = False, embedding_adapter=None) -> FastAPI:
     """Build the application. ``host`` and ``port`` are the address phones use (for join URLs and QR codes).
 
     Pass ``stt_adapter`` to run the transcription pipeline (``stt_loaded=True`` if it is already loaded);
@@ -34,7 +35,7 @@ def create_app(settings: Settings | None = None, *, sink: AudioSink | None = Non
     interactive API documentation pages are disabled because they load assets from a CDN.
     """
     runtime = Runtime(settings or load_settings(), sink=sink, host=host, port=port, transport=transport,
-                      stt_adapter=stt_adapter, stt_loaded=stt_loaded)
+                      stt_adapter=stt_adapter, stt_loaded=stt_loaded, embedding_adapter=embedding_adapter)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -112,8 +113,9 @@ def main(argv: list[str] | None = None) -> None:
 
     transport = TransportConfig()
     join_host = public_host or address
+    embedding = None if args.no_stt else build_embedding_adapter(settings.embedding)
     app = create_app(settings, host=join_host, port=args.port, transport=transport, stt_adapter=adapter,
-                     stt_loaded=adapter is not None)
+                     stt_loaded=adapter is not None, embedding_adapter=embedding)
     where = join_host or "<this machine's address>"
     print(f"Open https://{where}:{args.port}/ on this laptop to start a meeting; phones join from the QR code it shows.",
           flush=True)

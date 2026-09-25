@@ -109,8 +109,26 @@ Chunked, embedded units for RAG. One chunk covers a contiguous run of Utterances
 | utterance_id_end | TEXT (UUID) | FK → Utterance |
 | text | TEXT | concatenated utterance text with speaker/time metadata inline |
 | chunk_index | INTEGER | order within the meeting |
-| embedding | vector (via `sqlite-vec`) | see `rag-and-qa.md` for the embedding resource type |
+| status | TEXT | `pending` \| `ready` \| `failed`; a retryable index state, not a retrieval result |
+| error_message | TEXT, nullable | short diagnostic when `status = failed` |
+| is_closed | BOOLEAN | false for the mutable meeting tail; true once the chunk has reached a safe boundary |
 | created_at | TEXT (ISO 8601) | |
+
+`TranscriptChunk` rows are the durable text and citation records. Their vectors live in the
+`TranscriptChunkVector` `sqlite-vec` virtual table, keyed by the same `chunk_id` and partitioned by
+`meeting_id`; vectors are deliberately not duplicated in the row table. `TranscriptIndexMeta` holds the
+single active embedding model identifier and vector dimension. Startup rejects a configured model or dimension
+that differs from this record rather than mixing vector spaces. A chunk is `pending` until its vector write
+succeeds and `failed` after an embedding/vector error; its source utterances are retained for retry. The mutable
+tail is periodically closed after the configured quiet flush, so recent speech becomes searchable within bounded lag.
+
+`TranscriptChunk` rows are the durable text and citation records. Their vectors live in the
+`TranscriptChunkVector` `sqlite-vec` virtual table, keyed by the same `chunk_id` and partitioned by
+`meeting_id`; vectors are deliberately not duplicated in the row table. `TranscriptIndexMeta` holds the
+single active embedding model identifier and vector dimension. Startup rejects a configured model or dimension
+that differs from this record rather than mixing vector spaces. A chunk is `pending` until its vector write
+succeeds and `failed` after an embedding/vector error; its source utterances are retained for retry. The mutable
+tail is periodically closed after the configured quiet flush, so recent speech becomes searchable within bounded lag.
 
 ### QAQuery
 
@@ -169,7 +187,7 @@ One row per model invocation, for observability and post-hoc debugging of latenc
 | model_execution_id | TEXT (UUID) | PK |
 | resource_type | TEXT | `stt` \| `embedding` \| `speaker_embedding` \| `reasoning` |
 | model_identifier | TEXT | e.g. `mlx-community/whisper-large-v3-turbo` |
-| runtime | TEXT | `mlx` \| `groq` \| `gemini` |
+| runtime | TEXT | `mlx` \| `sentence_transformers` \| `groq` \| `gemini` |
 | duration_ms | INTEGER | |
 | related_id | TEXT, nullable | utterance_id, query_id, or summary_id depending on caller. For `stt` it is a window reference, `<device_id>/<window_id>`, because a transcribed window exists before, and often without, an `Utterance` |
 | created_at | TEXT (ISO 8601) | |

@@ -76,6 +76,24 @@ class Utterance:
 
 
 @dataclass(frozen=True, slots=True)
+class TranscriptChunk:
+    chunk_id: str
+    meeting_id: str
+    utterance_id_start: str
+    utterance_id_end: str
+    text: str
+    chunk_index: int
+    status: str
+    created_at: str
+    error_message: str | None = None
+    is_closed: bool = False
+
+    @classmethod
+    def from_row(cls, row):
+        return _load(cls, row, bools=("is_closed",))
+
+
+@dataclass(frozen=True, slots=True)
 class ConnectionEvent:
     event_id: str
     device_id: str

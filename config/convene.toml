@@ -20,6 +20,22 @@ model = "mlx-community/whisper-large-v3-turbo"
 revision = "a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb"
 language = "auto"
 
+# RAG embeddings use the same local model for transcript chunks and later questions. The revision, dimension and
+# input limit are guards against accidentally mixing vector spaces. Weights must be provisioned before a meeting.
+[models.embedding]
+runtime = "sentence_transformers"
+model = "BAAI/bge-small-en-v1.5"
+revision = "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"
+dimension = 384
+max_tokens = 512
+
+[rag]
+target_tokens = 400
+hard_max_tokens = 448
+settle_delay_s = 2.0
+quiet_flush_s = 3.0
+retry_delay_s = 1.0
+
 # VAD, segmenting, scheduling and priority. Each value below was set from measurement on this machine with
 # synthetic audio (logs/stt.md); none has been tuned on real phone audio. CON-15 tunes them with real bleed data.
 [pipeline]

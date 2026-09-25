@@ -102,6 +102,16 @@ def connect(path: str | Path, *, busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS)
         # WAL + NORMAL survives an application crash; only an OS crash or power loss can lose the
         # last committed transaction. Acceptable for a single-laptop demo.
         conn.execute("PRAGMA synchronous = NORMAL")
+        # vec0 tables are schema objects: load the extension before migrations or any query can touch one.
+        # Import here gives a clear startup failure when the declared runtime dependency is missing.
+        try:
+            import sqlite_vec
+            conn.enable_load_extension(True)
+            sqlite_vec.load(conn)
+            conn.enable_load_extension(False)
+        except (ImportError, sqlite3.Error) as exc:
+            conn.close()
+            raise DatabaseOpenError("sqlite-vec is required for transcript indexing; install requirements.txt") from exc
         conn.execute("PRAGMA user_version").fetchone()  # reads the file header; raises on a non-database
     except sqlite3.Error as exc:
         raise DatabaseOpenError(f"cannot open {path} as a SQLite database: {exc}") from exc

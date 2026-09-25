@@ -14,6 +14,7 @@ from .db import Database
 from .errors import StorageError
 from .repositories import participants
 from .pipeline.pipeline import SttPipeline
+from .rag.indexer import TranscriptIndexer
 from .transport.audio import AudioSink, CountingSink
 from .transport.peers import PeerManager
 
@@ -39,11 +40,12 @@ class TransportConfig:
 
 class Runtime:
     def __init__(self, settings: Settings, *, sink: AudioSink | None = None, host: str | None = None,
-                 port: int = 8443, transport: TransportConfig | None = None, stt_adapter=None, stt_loaded: bool = False):
+                 port: int = 8443, transport: TransportConfig | None = None, stt_adapter=None, stt_loaded: bool = False,
+                 embedding_adapter=None):
         if sink is not None and stt_adapter is not None:
             raise ValueError("pass either a custom audio sink or an STT adapter (the STT pipeline is the sink)")
         self.settings, self.host, self.port = settings, host, port
-        self.stt_adapter, self._stt_loaded = stt_adapter, stt_loaded
+        self.stt_adapter, self._stt_loaded, self.embedding_adapter = stt_adapter, stt_loaded, embedding_adapter
         self.pipeline: SttPipeline | None = None
         self._window_callbacks: list = []
         self._names: dict[str, str] = {}
@@ -53,6 +55,7 @@ class Runtime:
         self.peers: PeerManager | None = None
         self.hub: DashboardHub | None = None
         self.attribution: AttributionService | None = None
+        self.indexer: TranscriptIndexer | None = None
         self._hooks: list[tuple[str, MeetingEndedHook]] = []
         self._log_task: asyncio.Task | None = None
 
@@ -133,6 +136,16 @@ class Runtime:
         self.hub.start()
         self.attribution = AttributionService(self.db, self.settings.attribution)
         self.on_transcribed_window(self.attribution.accept)
+        # RAG ingestion is attached only to the real transcription runtime. Test/transport-only servers retain
+        # their existing no-model startup behavior; the production startup fails loudly if its local embedding
+        # weights were not provisioned.
+        if self.embedding_adapter is not None:
+            self.indexer = TranscriptIndexer(self.db, self.embedding_adapter, self.settings.rag,
+                                             priority=self.pipeline.priority if self.pipeline else None)
+            await self.indexer.start()
+            self.attribution.register_post_write_hook(self.indexer.enqueue)
+            self.attribution.register_correction_hook(self.indexer.corrected)
+            self.on_meeting_ended(self.indexer.flush, "rag-index-flush")
         if self.transport.metrics_log_interval_s > 0:
             self._log_task = asyncio.create_task(self._log_metrics())
 
@@ -164,6 +177,8 @@ class Runtime:
             self.stt_adapter.close()
         if self.attribution is not None:
             await self.attribution.drain()
+        if self.indexer is not None:
+            await self.indexer.stop()
         self.db.close()
 
     async def _log_metrics(self) -> None:

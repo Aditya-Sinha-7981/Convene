@@ -10,8 +10,8 @@ from server.errors import DatabaseOpenError, MigrationError, SchemaVersionError
 from tests.test_api_contract_docs import ENTITY_FIELDS, ENUMS
 
 CORE_TABLES = {"Meeting", "Device", "Participant", "Utterance", "ConnectionEvent", "AuditEvent"}
-LATEST_VERSION = 2  # 0001 core, 0002 ModelExecution (CON-05)
-TABLES_SO_FAR = CORE_TABLES | {"ModelExecution"}
+LATEST_VERSION = 4  # 0001 core, 0002 ModelExecution, 0003/4 transcript chunks (CON-08)
+TABLES_SO_FAR = CORE_TABLES | {"ModelExecution", "TranscriptChunk", "TranscriptIndexMeta", "TranscriptChunkVector"}
 
 
 def schema(conn):
@@ -19,7 +19,9 @@ def schema(conn):
 
 
 def tables(conn):
-    return {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")}
+    # sqlite-vec creates implementation tables alongside its declared virtual table.
+    return {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+            if not r[0].startswith("TranscriptChunkVector_")}
 
 
 def test_creates_the_schema_from_an_empty_file(tmp_path):
@@ -108,7 +110,9 @@ def test_corrupt_file_stops_startup_with_a_clear_error(tmp_path):
 def test_columns_match_the_data_model(db):
     for entity in CORE_TABLES:
         columns = {r["name"] for r in db.conn.execute(f"PRAGMA table_info({entity})")}
-        assert columns == ENTITY_FIELDS[entity], entity
+        # ``started_at`` and ``ended_at`` are documented nullable Meeting fields but API examples omit them.
+        expected = ENTITY_FIELDS[entity] | ({"started_at", "ended_at"} if entity == "Meeting" else set())
+        assert columns == expected, entity
 
 
 def test_check_enums_match_the_documented_values(db):

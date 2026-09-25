@@ -13,6 +13,13 @@ Triggered asynchronously as new `Utterance` rows are written (does not block the
 3. Each chunk's stored `text` includes inline speaker/time metadata (e.g. `[Priya, 00:12:03] ...`) so the embedding captures who-said-what, not just raw words.
 4. Chunk embedded via the `embedding` resource type (`models.md`) and written to `sqlite-vec` alongside its `TranscriptChunk` row (`data-model.md`).
 
+The current ingestion implementation uses a 400-token target and 448-token hard cap (including metadata), below
+the embedding model's 512-token limit. It holds new cross-device results for a 2-second settle window and closes a
+mutable tail after 3 seconds of quiet; the tail is always flushed at meeting end. A correction or late result only
+rebuilds the chunk range that covers it, preserving its `chunk_id` and `chunk_index` for citations. Index status
+reports ready/pending/failed chunk counts, uncovered utterance count, and current lag; failures remain retryable and
+never block transcript persistence.
+
 ## Retrieval
 
 1. Embed the incoming question (same `embedding` resource type as ingestion — embedding space must match).

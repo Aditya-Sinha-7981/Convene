@@ -28,6 +28,16 @@ class SttModelConfig:
 
 
 @dataclass(frozen=True)
+class EmbeddingModelConfig:
+    """``[models.embedding]``: one local vector space for chunks and questions (ADR-14)."""
+    runtime: str = "sentence_transformers"
+    model: str = "BAAI/bge-small-en-v1.5"
+    revision: str = "main"
+    dimension: int = 384
+    max_tokens: int = 512
+
+
+@dataclass(frozen=True)
 class PipelineConfig:
     """``[pipeline]``: VAD, windowing, scheduling and priority. Every value was set from measurement (logs/stt.md)."""
     target_rate: int = 16000
@@ -75,6 +85,16 @@ class AttributionConfig:
 
 
 @dataclass(frozen=True)
+class RagConfig:
+    """Chunk finalization bounds. The hard cap includes rendered speaker/time metadata."""
+    target_tokens: int = 400
+    hard_max_tokens: int = 448
+    settle_delay_s: float = 2.0
+    quiet_flush_s: float = 3.0
+    retry_delay_s: float = 1.0
+
+
+@dataclass(frozen=True)
 class NetworkConfig:
     """``[network]``: optional public hostname used in participant join URLs.
 
@@ -92,6 +112,22 @@ def _check_attribution(config: "AttributionConfig") -> None:
         raise ValueError("device_confidence must be below 1.0, which is reserved for manual correction")
 
 
+def _check_embedding(config: "EmbeddingModelConfig") -> None:
+    if not config.model or not config.revision:
+        raise ValueError("model and revision must be non-empty")
+    if config.dimension < 1 or config.max_tokens < 8:
+        raise ValueError("dimension must be positive and max_tokens must be at least 8")
+
+
+def _check_rag(config: "RagConfig") -> None:
+    if not 1 <= config.target_tokens <= config.hard_max_tokens:
+        raise ValueError("target_tokens must be positive and no greater than hard_max_tokens")
+    if config.hard_max_tokens >= 512:
+        raise ValueError("hard_max_tokens must leave margin below the embedding model input limit")
+    if min(config.settle_delay_s, config.quiet_flush_s, config.retry_delay_s) <= 0:
+        raise ValueError("timing values must be positive")
+
+
 def _check_pipeline(config: "PipelineConfig") -> None:
     if config.segmentation not in ("segments", "fixed"):
         raise ValueError(f"segmentation must be 'segments' or 'fixed', got {config.segmentation!r}")
@@ -107,8 +143,10 @@ class Settings:
     database_path: Path
     exports_dir: Path
     stt: SttModelConfig = SttModelConfig()
+    embedding: EmbeddingModelConfig = EmbeddingModelConfig()
     pipeline: PipelineConfig = PipelineConfig()
     attribution: AttributionConfig = AttributionConfig()
+    rag: RagConfig = RagConfig()
     network: NetworkConfig = NetworkConfig()
 
 
@@ -136,11 +174,17 @@ def load_settings(config_path: Path | None = None, *, root: Path | None = None) 
             raise ConfigError(f"{path}: paths.{key} must be a non-empty string")
         candidate = Path(value).expanduser()
         resolved[key] = candidate if candidate.is_absolute() else root / candidate
-    return Settings(root=root, database_path=resolved["database"], exports_dir=resolved["exports"],
-                    stt=_section(SttModelConfig, data.get("models", {}).get("stt", {}), path, "models.stt"),
-                    pipeline=_section(PipelineConfig, data.get("pipeline", {}), path, "pipeline"),
-                    attribution=_section(AttributionConfig, data.get("attribution", {}), path, "attribution"),
-                    network=_section(NetworkConfig, data.get("network", {}), path, "network"))
+    settings = Settings(root=root, database_path=resolved["database"], exports_dir=resolved["exports"],
+                        stt=_section(SttModelConfig, data.get("models", {}).get("stt", {}), path, "models.stt"),
+                        embedding=_section(EmbeddingModelConfig, data.get("models", {}).get("embedding", {}), path,
+                                           "models.embedding"),
+                        pipeline=_section(PipelineConfig, data.get("pipeline", {}), path, "pipeline"),
+                        attribution=_section(AttributionConfig, data.get("attribution", {}), path, "attribution"),
+                        rag=_section(RagConfig, data.get("rag", {}), path, "rag"),
+                        network=_section(NetworkConfig, data.get("network", {}), path, "network"))
+    if settings.rag.hard_max_tokens >= settings.embedding.max_tokens:
+        raise ConfigError(f"{path}: [rag].hard_max_tokens must leave margin below [models.embedding].max_tokens")
+    return settings
 
 
 def _section(cls, table, path: Path, name: str):
@@ -172,6 +216,10 @@ def _section(cls, table, path: Path, name: str):
             _check_pipeline(built)
         elif cls is AttributionConfig:
             _check_attribution(built)
+        elif cls is EmbeddingModelConfig:
+            _check_embedding(built)
+        elif cls is RagConfig:
+            _check_rag(built)
     except ValueError as exc:
         raise ConfigError(f"{path}: [{name}] {exc}") from exc
     return built
