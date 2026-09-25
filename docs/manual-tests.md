@@ -1,4 +1,4 @@
-# Manual tests (through CON-07 and CON-04B)
+# Manual tests (through CON-08 and CON-04B)
 
 This is the checklist for what the automated tests **cannot** establish: anything that depends on real phones, real browsers, real Wi-Fi, real microphones, and real speech. The initial trusted-host real-device run on 2026-09-25 passed QR join, microphone capture, local transcription, dedicated-device attribution, and live dashboard rendering for one participant phone. The remaining checks below establish reliability and boundaries; they are not implied by that first successful run.
 
@@ -57,6 +57,7 @@ Record each result as **Passed**, **Failed** or **Not run (reason)** in `logs/tr
    ```sh
    uv pip install -r requirements-dev.txt
    .venv/bin/python scripts/provision_models.py        # downloads about 1.6 GB, then verifies it offline
+   .venv/bin/python scripts/provision_models.py --resource embedding   # transcript search model, then verifies it
    ```
 2. Local certificate authority (needed for the phones' microphones; browsers only allow the microphone on trusted HTTPS). This changes the laptop's trust store and asks for your password:
    ```sh
@@ -169,6 +170,23 @@ judge this layer; terminal output alone cannot establish that the live user-faci
 
 Do **not** test the reserved “Ask the room” panel as if it were Q&A. CON-09 owns the real Q&A control,
 grounded answer, citations, and honest `no_grounding` state.
+
+## Part D: transcript indexing (CON-08)
+
+There is no Q&A screen yet (CON-09), so inspect the index in the database. Run a meeting with the STT server and
+two phones, then, with the server still running:
+
+```sh
+sqlite3 data/convene.db "SELECT chunk_index, status, is_closed, substr(text, 1, 80) FROM TranscriptChunk ORDER BY chunk_index;"
+sqlite3 data/convene.db "SELECT count(*) FROM TranscriptChunkVector;"   # needs the sqlite-vec extension; skip if it errors
+```
+
+| # | Check | Pass when |
+|---|---|---|
+| D1 | Speak on both phones for a minute | Chunk rows appear within about 3 s of a line showing on the dashboard; lines read `[Name, 00:01:23] ...`; statuses are `ready` |
+| D2 | Correct a line's speaker on the dashboard | Within a few seconds the chunk that holds that line shows the new name; its `chunk_index` is unchanged |
+| D3 | Stop the server (Ctrl-C) mid-meeting right after someone speaks, then start it again | Every line in the transcript is inside some chunk's range after restart |
+| D4 | End the meeting | Every chunk has `is_closed = 1`, including one created for a line that finished transcribing after **End** |
 
 ## What to write down (a template)
 

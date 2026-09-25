@@ -44,11 +44,25 @@ Measured on the reference laptop (MacBook Pro, M4 Pro, 24 GB) with `scripts/meas
 |---|---|---|
 | `stt` model (`whisper-large-v3-turbo`) | **measured: 1.8 GB resident (peak), 2.4 GB peak GPU** | continuously, for the whole meeting |
 | `reasoning` model (7–8B, 4-bit) | ~4–6GB | only during summarization/QA calls, not continuously |
-| `embedding` model | ~150–300MB | on new chunk creation, cheap and constant |
+| `embedding` model (`bge-small-en-v1.5`) | **measured: about 0.4 GB added to the server's peak RSS** | continuously (loaded at startup), used after each settle window |
 | `speaker_embedding` model | ~200–500MB | only for shared-device windows |
 | **Worst case, everything loaded at once** | **~7–9GB (estimate; only the `stt` row above is measured)** | leaves 15GB+ headroom on a 24GB machine |
 
-This headroom is the margin for "several phones talking at once plus a live Q&A call in flight" without swapping or stalling. If real testing shows this budget is wrong, correct this table — it is a claim to be verified, not assumed. The `reasoning`, `embedding` and `speaker_embedding` rows are still unmeasured estimates (CON-08, CON-09, CON-13). The initial CON-08 embedding configuration is `BAAI/bge-small-en-v1.5` (384 dimensions, 512-token input), normalized vectors with cosine distance. Its real-model latency, memory, and fixture retrieval quality must be measured and recorded in `logs/rag.md` before calling the choice validated.
+This headroom is the margin for "several phones talking at once plus a live Q&A call in flight" without swapping or stalling. If real testing shows this budget is wrong, correct this table — it is a claim to be verified, not assumed. The `reasoning`, `embedding` and `speaker_embedding` rows are still unmeasured estimates (CON-08, CON-09, CON-13). The `embedding` row is measured below (CON-08); `reasoning` and `speaker_embedding` remain estimates.
+
+## Embedding model selection (measured, CON-08)
+
+Measured on the reference laptop with `scripts/measure_embeddings.py` (each candidate in its own process, weights cached, networking off in the Hugging Face client). Latency is for 32 inputs of about chunk size; the fixture is eight synthetic transcript chunks, each with a paraphrased question that should rank it first.
+
+| Candidate | Dimension | Max input | Load (cached, excl. import) | Per chunk | Peak RSS | Fixture top-1 |
+|---|---|---|---|---|---|---|
+| `BAAI/bge-small-en-v1.5` (**pinned**) | 384 | 512 | 58 ms | 3.8 ms | 618 MiB | 8/8 |
+| `sentence-transformers/all-MiniLM-L6-v2` | 384 | 256 | 47 ms | 2.1 ms | 574 MiB | 8/8 |
+| `BAAI/bge-base-en-v1.5` | 768 | 512 | 47 ms | 10.3 ms | 963 MiB | 8/8 |
+
+- **`bge-small` is pinned** (revision `5c38ec7c405ec4b44b94cc5a9bb96e735b38267a`, cosine distance on normalized vectors). The fixture does not separate the three; the input limit and cost do. MiniLM's 256-token limit would silently truncate chunks in the 300–500-token range `rag-and-qa.md` asks for, and `bge-base` is 2.7× slower, 345 MiB larger and doubles vector size for no measured gain.
+- The peak RSS includes the `torch` runtime, which `mlx-whisper` already pulls in, so `sentence-transformers` adds little to the install. In the server, running the indexer raised peak process RSS from 1.93 GB to 2.33 GB (5 synthetic phones).
+- STT latency with and without the indexer running was the same within noise (`logs/rag.md`).
 
 ## Scheduling priority across resource types
 

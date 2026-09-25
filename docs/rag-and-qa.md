@@ -13,12 +13,30 @@ Triggered asynchronously as new `Utterance` rows are written (does not block the
 3. Each chunk's stored `text` includes inline speaker/time metadata (e.g. `[Priya, 00:12:03] ...`) so the embedding captures who-said-what, not just raw words.
 4. Chunk embedded via the `embedding` resource type (`models.md`) and written to `sqlite-vec` alongside its `TranscriptChunk` row (`data-model.md`).
 
-The current ingestion implementation uses a 400-token target and 448-token hard cap (including metadata), below
-the embedding model's 512-token limit. It holds new cross-device results for a 2-second settle window and closes a
-mutable tail after 3 seconds of quiet; the tail is always flushed at meeting end. A correction or late result only
-rebuilds the chunk range that covers it, preserving its `chunk_id` and `chunk_index` for citations. Index status
-reports ready/pending/failed chunk counts, uncovered utterance count, and current lag; failures remain retryable and
-never block transcript persistence.
+Implemented (CON-08, `server/rag/`):
+
+- **Format.** Each utterance is one line, `[<speaker_label>, <HH:MM:SS elapsed from Meeting.started_at>] <text>`,
+  with the current (corrected) label; generic labels such as `Speaker on Phone 2` pass through unchanged, and
+  consecutive lines by the same speaker each keep their own prefix. Tokens are counted with the model's own
+  tokenizer, including the prefix.
+- **Size.** 400-token target, 448-token hard cap, below the model's 512-token input limit. After the target, a
+  chunk breaks at the next speaker change; the cap always wins. One utterance longer than the cap is split at
+  sentence boundaries (words only for a pathological sentence) into chunks of its own.
+- **Lag.** A new utterance queues its meeting; after a 2-second settle window, so results from devices with
+  different STT latency land in time order, the open tail is re-chunked and embedded. It is searchable while still
+  open. Measured written → searchable: median 1.6–2.1 s, p95 2.1 s, with 1, 2 and 5 synthetic phones and the real
+  model (`logs/rag.md`). Target: under 3 s; the demo script should not ask about the last few seconds.
+- **Rebuild.** Every trigger (new line, correction, meeting end, retry, startup recovery) reconciles the meeting's
+  chunks against its transcript and re-embeds only chunks whose text changed. A corrected line or a late result
+  inside, or just after, a closed chunk rebuilds that chunk in place, keeping `chunk_id` and `chunk_index`.
+- **Meeting end** closes the tail after the settle window; results still in the STT queue at that moment are
+  indexed (closed) when they are written, so nothing is left unindexed.
+- **Failures** are recorded per chunk (`failed`, `index_failed` and `model_error` audit events) and retried with
+  doubling backoff (1 s up to 30 s); transcript persistence and STT never wait on indexing.
+- **Status.** `index_status(meeting_id)` returns ready/pending/failed chunk counts, the number of utterances
+  covered by ready chunks, the number not yet covered, and the age of the oldest uncovered one (`lag_s`).
+- **Vectors.** `sqlite-vec` `vec0` table with cosine distance on normalized vectors, partitioned by `meeting_id`,
+  so a live search filters by meeting inside the KNN query and other meetings cannot crowd it out.
 
 ## Retrieval
 

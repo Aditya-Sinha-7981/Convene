@@ -27,3 +27,7 @@ def update(conn, chunk_id: str, /, **changes) -> TranscriptChunk:
     chunk = get(conn, chunk_id)
     assert chunk is not None
     return chunk
+
+
+def delete(conn, chunk_id: str) -> None:
+    base.execute(conn, "DELETE FROM TranscriptChunk WHERE chunk_id = ?", (chunk_id,))

@@ -32,9 +32,9 @@ max_tokens = 512
 [rag]
 target_tokens = 400
 hard_max_tokens = 448
-settle_delay_s = 2.0
-quiet_flush_s = 3.0
-retry_delay_s = 1.0
+settle_delay_s = 2.0       # the open tail is re-chunked and embedded this long after new speech arrives
+retry_delay_s = 1.0        # embedding failures retry with doubling backoff...
+retry_max_delay_s = 30.0   # ...capped here
 
 # VAD, segmenting, scheduling and priority. Each value below was set from measurement on this machine with
 # synthetic audio (logs/stt.md); none has been tuned on real phone audio. CON-15 tunes them with real bleed data.

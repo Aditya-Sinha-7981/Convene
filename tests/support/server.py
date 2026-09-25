@@ -40,10 +40,10 @@ class RunningServer:
 
 async def start_server(settings: Settings, *, sink=None, transport: TransportConfig | None = None,
                        host: str | None = "192.168.50.10", ssl_certfile=None, ssl_keyfile=None, stt_adapter=None,
-                       stt_loaded: bool = False) -> RunningServer:
+                       stt_loaded: bool = False, embedding_adapter=None) -> RunningServer:
     transport = transport or FAST
     app = create_app(settings, sink=sink, host=host, port=0, transport=transport, stt_adapter=stt_adapter,
-                     stt_loaded=stt_loaded)
+                     stt_loaded=stt_loaded, embedding_adapter=embedding_adapter)
     config = uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning", lifespan="on",
                             ssl_certfile=ssl_certfile, ssl_keyfile=ssl_keyfile, **uvicorn_options(transport))
     server = uvicorn.Server(config)

@@ -48,6 +48,10 @@ class VectorStore:
                          (chunk_id, meeting_id, _blob(vector)))
         transcript_chunks.update(conn, chunk_id, status="ready", error_message=None)
 
+    def delete(self, conn, chunk_id: str) -> None:
+        conn.execute("DELETE FROM TranscriptChunkVector WHERE chunk_id = ?", (chunk_id,))
+        transcript_chunks.delete(conn, chunk_id)
+
     def search(self, conn, meeting_id: str, vector, limit: int) -> list[VectorHit]:
         if len(vector) != self.dimension:
             raise ValidationError(f"embedding dimension {len(vector)} differs from configured {self.dimension}")

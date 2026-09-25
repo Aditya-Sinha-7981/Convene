@@ -23,6 +23,7 @@ class ChunkInput:
     speaker_label: str
     t_start: str
     text: str
+    split: bool = False  # one sentence-split piece of an over-cap utterance
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,7 @@ class ChunkSpec:
     utterance_id_end: str
     chunk_index: int
     text: str
+    split: bool = False  # the chunk is exactly one piece of an over-cap utterance
 
 
 def approximate_tokens(text: str) -> int:
@@ -72,7 +74,8 @@ def _split_overlong(item: ChunkInput, meeting_started_at: str, hard_max_tokens: 
             current = " ".join(words)
     if current:
         pieces.append(current)
-    return [ChunkInput(item.utterance_id, item.speaker_label, item.t_start, piece) for piece in pieces]
+    return [ChunkInput(item.utterance_id, item.speaker_label, item.t_start, piece, split=len(pieces) > 1)
+            for piece in pieces]
 
 
 def chunk_utterances(utterances: Sequence[ChunkInput], meeting_started_at: str, *, target_tokens: int,
@@ -80,7 +83,8 @@ def chunk_utterances(utterances: Sequence[ChunkInput], meeting_started_at: str, 
     """Return stable chunks, preferring a speaker boundary after reaching target size.
 
     Chunks never combine text across an arbitrary mid-utterance boundary. A single over-cap utterance is
-    represented by contiguous, same-ID chunks after its sentence split; callers rebuild the same range in place.
+    represented by contiguous, same-ID chunks after its sentence split, one piece per chunk and never sharing a
+    chunk with another utterance, so chunk utterance ranges never overlap and each range can be rebuilt alone.
     """
     if not 1 <= target_tokens <= hard_max_tokens:
         raise ValueError("target_tokens must be positive and no greater than hard_max_tokens")
@@ -92,6 +96,12 @@ def chunk_utterances(utterances: Sequence[ChunkInput], meeting_started_at: str, 
     chunks: list[list[ChunkInput]] = []
     current: list[ChunkInput] = []
     for item in expanded:
+        if item.split:
+            if current:
+                chunks.append(current)
+            chunks.append([item])
+            current = []
+            continue
         candidate = "\n".join(render_line(part, meeting_started_at) for part in [*current, item])
         # Once target is reached, honor the natural speaker turn. Hard capacity always wins.
         speaker_changed = bool(current and current[-1].speaker_label != item.speaker_label)
@@ -105,5 +115,5 @@ def chunk_utterances(utterances: Sequence[ChunkInput], meeting_started_at: str, 
     if current:
         chunks.append(current)
     return [ChunkSpec(chunk[0].utterance_id, chunk[-1].utterance_id, index,
-                      "\n".join(render_line(item, meeting_started_at) for item in chunk))
+                      "\n".join(render_line(item, meeting_started_at) for item in chunk), chunk[0].split)
             for index, chunk in enumerate(chunks)]

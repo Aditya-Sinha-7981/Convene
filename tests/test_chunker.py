@@ -29,3 +29,12 @@ def test_overlong_single_utterance_splits_at_sentence_boundaries_without_losing_
     assert len(chunks) >= 2
     assert all(chunk.utterance_id_start == chunk.utterance_id_end == "a" for chunk in chunks)
     assert " ".join(chunk.text.split("] ", 1)[1] for chunk in chunks) == rows[0].text
+
+
+def test_split_pieces_never_share_a_chunk_with_neighbouring_utterances():
+    rows = [item("a", "Asha", 1, "hi"), item("b", "Asha", 2, "One two three. Four five six. Seven eight nine."),
+            item("c", "Asha", 3, "ok")]
+    chunks = chunk_utterances(rows, START, target_tokens=12, hard_max_tokens=12)
+    ranges = [(chunk.utterance_id_start, chunk.utterance_id_end, chunk.split) for chunk in chunks]
+    assert ranges[0] == ("a", "a", False) and ranges[-1] == ("c", "c", False)
+    assert all(start == end == "b" and split for start, end, split in ranges[1:-1]) and len(ranges) >= 4

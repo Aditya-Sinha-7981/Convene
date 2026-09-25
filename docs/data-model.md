@@ -108,10 +108,10 @@ Chunked, embedded units for RAG. One chunk covers a contiguous run of Utterances
 | utterance_id_start | TEXT (UUID) | FK → Utterance |
 | utterance_id_end | TEXT (UUID) | FK → Utterance |
 | text | TEXT | concatenated utterance text with speaker/time metadata inline |
-| chunk_index | INTEGER | order within the meeting |
+| chunk_index | INTEGER | unique within the meeting, in creation order (see below); stable across rebuilds |
 | status | TEXT | `pending` \| `ready` \| `failed`; a retryable index state, not a retrieval result |
 | error_message | TEXT, nullable | short diagnostic when `status = failed` |
-| is_closed | BOOLEAN | false for the mutable meeting tail; true once the chunk has reached a safe boundary |
+| is_closed | BOOLEAN | false for the one mutable meeting tail; true once the chunk has reached a safe boundary or the meeting ended |
 | created_at | TEXT (ISO 8601) | |
 
 `TranscriptChunk` rows are the durable text and citation records. Their vectors live in the
@@ -119,16 +119,16 @@ Chunked, embedded units for RAG. One chunk covers a contiguous run of Utterances
 `meeting_id`; vectors are deliberately not duplicated in the row table. `TranscriptIndexMeta` holds the
 single active embedding model identifier and vector dimension. Startup rejects a configured model or dimension
 that differs from this record rather than mixing vector spaces. A chunk is `pending` until its vector write
-succeeds and `failed` after an embedding/vector error; its source utterances are retained for retry. The mutable
-tail is periodically closed after the configured quiet flush, so recent speech becomes searchable within bounded lag.
+succeeds and `failed` after an embedding/vector error; its source utterances are retained for retry.
 
-`TranscriptChunk` rows are the durable text and citation records. Their vectors live in the
-`TranscriptChunkVector` `sqlite-vec` virtual table, keyed by the same `chunk_id` and partitioned by
-`meeting_id`; vectors are deliberately not duplicated in the row table. `TranscriptIndexMeta` holds the
-single active embedding model identifier and vector dimension. Startup rejects a configured model or dimension
-that differs from this record rather than mixing vector spaces. A chunk is `pending` until its vector write
-succeeds and `failed` after an embedding/vector error; its source utterances are retained for retry. The mutable
-tail is periodically closed after the configured quiet flush, so recent speech becomes searchable within bounded lag.
+The utterance ranges of a meeting's chunks never overlap and together cover every utterance once indexing has
+caught up. The one open chunk is the meeting tail: it is re-chunked and re-embedded (after the settle window) as
+speech arrives, so it is searchable while still open, and it closes when it reaches the target size at a speaker
+change, the hard cap, or when the meeting ends. A closed chunk keeps its `chunk_id` and `chunk_index` when a
+correction or a late result changes its text; when a rebuild no longer fits the hard cap, the overflow becomes a
+new chunk with the next `chunk_index`, so `chunk_index` is creation order and time order comes from the utterance
+range. An utterance too long for one chunk is split at sentence boundaries into several chunks that share its
+utterance range and contain nothing else.
 
 ### QAQuery
 
@@ -189,7 +189,7 @@ One row per model invocation, for observability and post-hoc debugging of latenc
 | model_identifier | TEXT | e.g. `mlx-community/whisper-large-v3-turbo` |
 | runtime | TEXT | `mlx` \| `sentence_transformers` \| `groq` \| `gemini` |
 | duration_ms | INTEGER | |
-| related_id | TEXT, nullable | utterance_id, query_id, or summary_id depending on caller. For `stt` it is a window reference, `<device_id>/<window_id>`, because a transcribed window exists before, and often without, an `Utterance` |
+| related_id | TEXT, nullable | utterance_id, query_id, or summary_id depending on caller. For `stt` it is a window reference, `<device_id>/<window_id>`, because a transcribed window exists before, and often without, an `Utterance`. For `embedding` there is one row per embedding batch and it is the batch's first `chunk_id` |
 | created_at | TEXT (ISO 8601) | |
 
 ### AuditEvent

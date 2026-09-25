@@ -23,6 +23,18 @@ from server.config import SttModelConfig, load_settings  # noqa: E402
 from server.rag.embedding import build_embedding_adapter  # noqa: E402
 
 
+def _cached_dimension(model: str, revision: str) -> int | None:
+    """The sentence-embedding dimension of a cached model, read without touching the network."""
+    import os
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    try:
+        from sentence_transformers import SentenceTransformer
+        return SentenceTransformer(model, revision=revision, local_files_only=True,
+                                   device="cpu").get_sentence_embedding_dimension()
+    except Exception:
+        return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--model", help="repository id to provision (default: [models.stt] model)")
@@ -42,7 +54,9 @@ def main() -> int:
             print(f"Downloading {model} at revision {revision} ...", flush=True)
             snapshot_download(repo_id=model, revision=revision)
         from dataclasses import replace
-        adapter = build_embedding_adapter(replace(config, model=model, revision=revision))
+        # A candidate other than the configured model may have its own dimension; verify with that one.
+        dimension = config.dimension if model == config.model else _cached_dimension(model, revision)
+        adapter = build_embedding_adapter(replace(config, model=model, revision=revision, dimension=dimension or 0))
         try:
             adapter.load()
         except RuntimeError as exc:
@@ -51,7 +65,8 @@ def main() -> int:
         vector = adapter.embed(["Convene verifies a local embedding model."])[0]
         print(f"Verified offline: loaded in {adapter.load_seconds:.1f} s; dimension {len(vector)}")
         print("\nPin it in config/convene.toml:\n\n[models.embedding]\n"
-              f"runtime = \"sentence_transformers\"\nmodel = \"{model}\"\nrevision = \"{revision}\"")
+              f"runtime = \"sentence_transformers\"\nmodel = \"{model}\"\nrevision = \"{revision}\"\n"
+              f"dimension = {len(vector)}")
         return 0
 
     config = settings.stt

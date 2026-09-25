@@ -14,6 +14,9 @@ scenario ("continuous": everyone talks all the time, the worst case; "turns": pe
 from a window's last sample arriving to its transcript, queue depth over time, gated/dropped/failed counts,
 memory and event-loop lag. The phones run in the same process as the server (they Opus-encode on the same
 CPU), so numbers include that harness cost; the loop-lag column shows whether it saturated the loop.
+With `--embedding`, the CON-08 transcript indexer runs with the real local embedding model, so the STT numbers
+can be compared with and without indexing, and each result adds the indexing lag: from an utterance being
+written to the first time a `ready` chunk covers it (sampled every 100 ms).
 """
 import argparse
 import asyncio
@@ -129,7 +132,7 @@ def speech_at_48k(offset_s: float, pause_s: float, duty: float) -> np.ndarray:
 
 
 async def run_scenario(adapter, devices: int, scenario: str, seconds: float, window_ms: int, queue_max: int,
-                       segmentation: str | None = None) -> dict:
+                       segmentation: str | None = None, embedding_adapter=None) -> dict:
     import tempfile
     from dataclasses import replace
     from datetime import datetime, timezone
@@ -138,16 +141,20 @@ async def run_scenario(adapter, devices: int, scenario: str, seconds: float, win
     from tests.support.server import settings_in, start_server
     from tests.support.synthetic_phone import SyntheticPhone
 
+    def parse(ts):
+        return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc).timestamp()
+
     settings = settings_in(Path(tempfile.mkdtemp()))
     tuned = replace(load_settings().pipeline, window_ms=window_ms, queue_max=queue_max)
     if segmentation:
         tuned = replace(tuned, segmentation=segmentation)
     settings = replace(settings, pipeline=tuned)
-    server = await start_server(settings, stt_adapter=adapter, stt_loaded=True)
+    server = await start_server(settings, stt_adapter=adapter, stt_loaded=True, embedding_adapter=embedding_adapter)
     outcomes: list[tuple[float, object]] = []
     server.runtime.on_transcribed_window(lambda o: outcomes.append((time.time(), o)))
     phones = []
     lag, depth = [], []
+    searchable: dict[str, float] = {}  # utterance_id -> seconds from written to covered by a ready chunk
     try:
         async with __import__("aiohttp").ClientSession() as http, http.post(server.base_url + "/api/meetings", json={}) as r:
             meeting_id = (await r.json())["meeting"]["meeting_id"]
@@ -174,12 +181,34 @@ async def run_scenario(adapter, devices: int, scenario: str, seconds: float, win
                 await asyncio.sleep(0.5)
                 depth.append(server.runtime.pipeline.scheduler.total_backlog())
 
+        async def index_sampler():
+            from server.repositories import transcript_chunks, utterances
+
+            def covered(tx):
+                rows = utterances.list_for_meeting(tx.conn, meeting_id)
+                position = {row.utterance_id: i for i, row in enumerate(rows)}
+                done = set()
+                for chunk in transcript_chunks.list_for_meeting(tx.conn, meeting_id):
+                    if chunk.status == "ready":
+                        done.update(r.utterance_id for r in rows[position[chunk.utterance_id_start]:
+                                                                 position[chunk.utterance_id_end] + 1])
+                return {row.utterance_id: row.created_at for row in rows if row.utterance_id in done}
+            while True:
+                await asyncio.sleep(0.1)
+                now = time.time()
+                for utterance_id, created in (await server.runtime.db.run(covered)).items():
+                    searchable.setdefault(utterance_id, now - parse(created))
+
         tasks = [asyncio.create_task(sampler()), asyncio.create_task(depth_sampler())]
+        if embedding_adapter is not None:
+            tasks.append(asyncio.create_task(index_sampler()))
         start = time.time()
         await asyncio.sleep(seconds)
         for t in tasks:
             t.cancel()
         finished = await server.runtime.pipeline.drain(meeting_id, 60)
+        if embedding_adapter is not None:
+            index_status = await server.runtime.indexer.index_status(meeting_id)
         stats = server.runtime.pipeline.scheduler.stats()
         dstats = server.runtime.pipeline.device_stats()
         drops = len(audit_events.list_events(server.runtime.db.conn, event_type="stt_window_dropped"))
@@ -187,9 +216,6 @@ async def run_scenario(adapter, devices: int, scenario: str, seconds: float, win
         for phone in phones:
             await phone.close()
         await server.stop()
-
-    def parse(ts):
-        return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc).timestamp()
 
     ok = [(when, o) for when, o in outcomes if o.status == "ok"]
     post_window = [(when - parse(o.t_end)) * 1000 for when, o in ok if when - start < seconds + 1]
@@ -199,7 +225,15 @@ async def run_scenario(adapter, devices: int, scenario: str, seconds: float, win
                   | {"gated": dstats[d]["windows_gated"], "seen": dstats[d]["windows_seen"]} for d in stats}
     pct = lambda xs, q: round(float(np.percentile(xs, q))) if xs else None  # noqa: E731
     failures = sorted({o.error for _, o in outcomes if o.status == "failed"})[:2]
+    indexing = {}
+    if embedding_adapter is not None:
+        lags = list(searchable.values())
+        indexing = {"indexing_lag_s": {"n": len(lags), "median": round(float(np.percentile(lags, 50)), 2) if lags else None,
+                                       "p95": round(float(np.percentile(lags, 95)), 2) if lags else None,
+                                       "max": round(max(lags), 2) if lags else None},
+                    "index_status_at_end": {k: index_status[k] for k in ("ready", "failed", "indexed", "pending_utterances")}}
     return {"devices": devices, "scenario": scenario, "seconds": seconds, "windows_ok": len(ok), "failure_samples": failures,
+            **indexing,
             "post_window_latency_ms": {"median": pct(post_window, 50), "p95": pct(post_window, 95), "max": pct(post_window, 100)},
             "model_ms_median": pct(model_ms, 50), "queue_wait_ms_median": pct(queue_ms, 50), "queue_wait_ms_p95": pct(queue_ms, 95),
             "queue_depth": {"max": max(depth, default=0), "mean": round(float(np.mean(depth)), 1) if depth else 0},
@@ -216,13 +250,18 @@ def measure_pipeline(args) -> None:
 
     settings = load_settings()
     print(f"model {settings.stt.model}; window {args.window_ms} ms, queue_max {args.queue_max}, "
-          f"workers {settings.pipeline.workers}", flush=True)
+          f"workers {settings.pipeline.workers}; embedding indexer {'on' if args.embedding else 'off'}", flush=True)
+    embedding = None
+    if args.embedding:
+        from server.rag.embedding import build_embedding_adapter
+        embedding = build_embedding_adapter(settings.embedding)
+        embedding.load()
     for scenario in args.scenarios:
         for devices in args.devices:
             adapter = build_adapter(settings.stt)  # the server closes its adapter on shutdown, so each run loads its own
             adapter.load()
             result = asyncio.run(run_scenario(adapter, devices, scenario, args.seconds, args.window_ms, args.queue_max,
-                                              args.segmentation))
+                                              args.segmentation, embedding))
             print(json.dumps(result), flush=True)
     print(json.dumps({"peak_rss_mb": round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024 / 1024),
                       "mlx_peak_gpu_mb": round(mx.get_peak_memory() / 1024 / 1024)}))
@@ -310,6 +349,7 @@ def main() -> None:
     pipe.add_argument("--queue-max", type=int, default=4)
     pipe.add_argument("--segmentation", choices=["segments", "fixed"], default=None,
                       help="override [pipeline] segmentation for this run")
+    pipe.add_argument("--embedding", action="store_true", help="also run the CON-08 indexer with the real embedding model")
     sub.add_parser("strategies", help="compare fixed windows with speech segments on realistic streams (real model)")
     args = parser.parse_args()
 

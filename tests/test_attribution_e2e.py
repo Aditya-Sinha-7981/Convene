@@ -45,3 +45,44 @@ async def test_two_synthetic_phones_store_distinct_attributed_lines(tmp_path):
     finally:
         await asyncio.gather(*(phone.close() for phone in phones), return_exceptions=True)
         await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_live_lines_are_indexed_and_meeting_end_closes_the_index(tmp_path):
+    from server.config import RagConfig
+    from server.rag.embedding import FakeEmbeddingAdapter
+    from server.repositories import transcript_chunks
+
+    settings = replace(settings_in(tmp_path), pipeline=replace(PipelineConfig(), segmentation="fixed"),
+                       rag=RagConfig(settle_delay_s=.05))
+    server = await start_server(settings, stt_adapter=DeviceTextAdapter(), embedding_adapter=FakeEmbeddingAdapter(384))
+    phones = []
+    try:
+        async with ClientSession() as http, http.post(server.base_url + "/api/meetings", json={}) as response:
+            meeting_id = (await response.json())["meeting"]["meeting_id"]
+        phones = [SyntheticPhone(server.base_url, meeting_id, name="A", samples=burst(440)),
+                  SyntheticPhone(server.base_url, meeting_id, name="B", samples=burst(880))]
+        await asyncio.gather(*(phone.connect() for phone in phones))
+        await asyncio.gather(*(phone.wait_connected() for phone in phones))
+        conn = server.runtime.db.conn
+        await wait_for(lambda: any(chunk.status == "ready" for chunk in transcript_chunks.list_for_meeting(conn, meeting_id)),
+                       timeout=20)
+        async with ClientSession() as http, http.post(f"{server.base_url}/api/meetings/{meeting_id}/end") as response:
+            assert response.status == 202
+        await server.runtime.pipeline.drain(meeting_id, 10)
+
+        async def closed_and_covered():
+            status = await server.runtime.indexer.index_status(meeting_id)
+            chunks = transcript_chunks.list_for_meeting(conn, meeting_id)
+            return status["pending_utterances"] == 0 and chunks and all(chunk.is_closed for chunk in chunks)
+        for _ in range(100):
+            if await closed_and_covered():
+                break
+            await asyncio.sleep(.05)
+        assert await closed_and_covered()
+        text = "\n".join(chunk.text for chunk in transcript_chunks.list_for_meeting(conn, meeting_id))
+        assert "[A, " in text and "[B, " in text
+    finally:
+        for phone in phones:
+            await phone.close()
+        await server.stop()

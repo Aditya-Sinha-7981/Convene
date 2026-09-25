@@ -64,9 +64,10 @@ Implemented, in this order, before the server accepts connections:
 2. Load the certificate and key together, and fail loudly if the certificate has expired or its subject alternative names do not include the public hostname (or advertised IP in development mode). Warn when fewer than 14 days remain, a hostname certificate appears self-signed/private-CA, or the hostname does not resolve to the current LAN address.
 3. Open `data/convene.db`, apply pending migrations, and reconcile after a restart (devices left `connected` or `joining` in an open meeting become `disconnected` with reason `server_restart`; meetings stay `live`, so phones reconnect as the same participant).
 4. Load the STT model from the local cache and run a warm-up transcription (about 1.5 s once cached). If the model is not pinned, not cached, or fails to load, print why and exit; the server never starts half-working. `--no-stt` skips this step and runs the transport only (audio is received and counted, not transcribed), for checking phones and Wi-Fi without the model.
-5. Record `model_load` in the audit stream, start the transcription pipeline, start the WebSocket hub and the periodic metrics log line, then serve.
+5. Record `model_load` in the audit stream, start the transcription pipeline, start the WebSocket hub and the periodic metrics log line.
+6. With STT enabled, load the `embedding` model from the local cache, check it against the vector space recorded in the database (a different model or dimension stops startup with a clear error), record `model_load`, start the transcript indexer, and queue any meeting whose utterances were written but not indexed before a restart. A missing embedding model stops startup the same way a missing STT model does. Then serve.
 
-Not yet implemented: loading the `embedding`, `speaker_embedding` and `reasoning` models (added by CON-08, CON-09 and CON-13).
+Not yet implemented: loading the `speaker_embedding` and `reasoning` models (CON-13 and CON-09/CON-10).
 
 ## What is explicitly not part of deployment
 

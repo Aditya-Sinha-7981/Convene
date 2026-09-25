@@ -145,7 +145,7 @@ class Runtime:
             await self.indexer.start()
             self.attribution.register_post_write_hook(self.indexer.enqueue)
             self.attribution.register_correction_hook(self.indexer.corrected)
-            self.on_meeting_ended(self.indexer.flush, "rag-index-flush")
+            self.on_meeting_ended(self.indexer.meeting_ended, "rag-index-close")
         if self.transport.metrics_log_interval_s > 0:
             self._log_task = asyncio.create_task(self._log_metrics())
 

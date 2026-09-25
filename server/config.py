@@ -89,9 +89,9 @@ class RagConfig:
     """Chunk finalization bounds. The hard cap includes rendered speaker/time metadata."""
     target_tokens: int = 400
     hard_max_tokens: int = 448
-    settle_delay_s: float = 2.0
-    quiet_flush_s: float = 3.0
-    retry_delay_s: float = 1.0
+    settle_delay_s: float = 2.0              # cross-device results settle before the tail is (re)embedded
+    retry_delay_s: float = 1.0               # first retry after an embedding failure; doubles per failure...
+    retry_max_delay_s: float = 30.0          # ...up to this
 
 
 @dataclass(frozen=True)
@@ -122,10 +122,10 @@ def _check_embedding(config: "EmbeddingModelConfig") -> None:
 def _check_rag(config: "RagConfig") -> None:
     if not 1 <= config.target_tokens <= config.hard_max_tokens:
         raise ValueError("target_tokens must be positive and no greater than hard_max_tokens")
-    if config.hard_max_tokens >= 512:
-        raise ValueError("hard_max_tokens must leave margin below the embedding model input limit")
-    if min(config.settle_delay_s, config.quiet_flush_s, config.retry_delay_s) <= 0:
+    if min(config.settle_delay_s, config.retry_delay_s) <= 0:
         raise ValueError("timing values must be positive")
+    if config.retry_max_delay_s < config.retry_delay_s:
+        raise ValueError("retry_max_delay_s must be at least retry_delay_s")
 
 
 def _check_pipeline(config: "PipelineConfig") -> None:
