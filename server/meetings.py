@@ -1,7 +1,9 @@
 """Meeting and device service over the CON-03 registry: the logic behind the REST routes (docs/api.md)."""
+from dataclasses import asdict
+
 from . import colors as palette, network, registry
 from .errors import ValidationError
-from .repositories import audit_events, devices, meetings, participants, summaries
+from .repositories import audit_events, devices, exports, meetings, participants, summaries
 from .summary.views import summary_view
 from .views import device_view, meeting_view, participant_view
 
@@ -30,15 +32,16 @@ async def get_meeting(runtime, meeting_id: str) -> dict:
         meeting = meetings.require(tx.conn, meeting_id)
         roster = devices.list_for_meeting(tx.conn, meeting_id)
         people = {d.device_id: participants.list_for_device(tx.conn, d.device_id) for d in roster}
-        return meeting, roster, people, summaries.latest_attempt(tx.conn, meeting_id), audit_events.max_seq(tx.conn)
+        return (meeting, roster, people, summaries.latest_attempt(tx.conn, meeting_id),
+                exports.latest_attempt(tx.conn, meeting_id), audit_events.max_seq(tx.conn))
 
-    meeting, roster, people, latest_summary, as_of_seq = await runtime.db.run(read)
+    meeting, roster, people, latest_summary, latest_export, as_of_seq = await runtime.db.run(read)
     url, qr, _ = _join_fields(runtime, meeting)
     return {
         "meeting": meeting_view(meeting),
         "devices": [device_view(d, people[d.device_id], runtime.peers.gauges_for_device(d.device_id)) for d in roster],
         "join_url": url, "qr_svg": qr,
-        "latest_summary": summary_view(latest_summary), "latest_export": None,  # export: CON-11
+        "latest_summary": summary_view(latest_summary), "latest_export": asdict(latest_export) if latest_export else None,
         "summary_pending": latest_summary is not None and latest_summary.status == "pending",
         "as_of_seq": as_of_seq,
     }

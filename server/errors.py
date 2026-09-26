@@ -54,6 +54,10 @@ class TranscriptEmptyError(StorageError):
     """`transcript_empty`: the meeting has no utterances to summarize."""
 
 
+class SummaryNotReadyError(StorageError):
+    """`summary_not_ready`: DOCX export requires a ready summary."""
+
+
 class DeviceConflictError(StorageError):
     """`device_conflict`: the device_id belongs to another meeting, or `is_shared` differs."""
 

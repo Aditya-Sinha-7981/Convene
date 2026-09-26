@@ -9,6 +9,7 @@ button { min-height: 36px; padding: 0 14px; border: 1px solid var(--line-strong)
 button:hover:not(:disabled) { border-color: var(--ink-2); }
 button:disabled { cursor: default; opacity: .5; }
 #summarize { border-color: transparent; background: var(--accent); color: var(--on-accent); }
+.download { display: inline-flex; align-items: center; min-height: 36px; padding: 0 14px; border-radius: 9px; background: var(--accent); color: var(--on-accent); font-size: 14px; font-weight: 600; text-decoration: none; }
 .notice { display: flex; flex-wrap: wrap; align-items: center; gap: .8rem; margin: .8rem 0; padding: 12px 14px; border-radius: 12px; font-size: 14px; }
 .notice span { flex: 1 1 16rem; }
 .notice.pending { flex-direction: column; align-items: stretch; background: var(--accent-soft); color: var(--accent-hover); }

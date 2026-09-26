@@ -6,7 +6,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, Request, WebSocket
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import meetings as service
@@ -19,6 +19,7 @@ from .ids import is_uuid4
 from .timeutil import utc_now
 from .repositories import audit_events, meetings as meetings_repo, utterances
 from .summary.views import summary_payload
+from .export.service import ExportRenderError, MIME
 from .transport.signaling import signaling_endpoint
 
 log = logging.getLogger("convene.api")
@@ -170,6 +171,26 @@ async def summarize(meeting_id: str, request: Request):
 async def get_summary(meeting_id: str, request: Request):
     meeting_id = _meeting_id(meeting_id)
     return await _runtime(request).db.run(lambda tx: summary_payload(tx.conn, meeting_id))
+
+
+@router.get("/api/meetings/{meeting_id}/export")
+async def get_export(meeting_id: str, request: Request):
+    meeting_id = _meeting_id(meeting_id)
+    if request.query_params.get("format", "docx") != "docx":
+        raise ApiError(400, "unsupported_format", "only DOCX export is supported")
+    try:
+        export = await _runtime(request).export.ensure(meeting_id)
+    except ExportRenderError as exc:
+        state = await _runtime(request).export.payload(meeting_id)
+        if state["export"] is None and state["latest_attempt"] is None:
+            raise ApiError(409, "summary_not_ready", "no ready summary exists for this meeting") from exc
+        raise ApiError(500, "export_render_failed", str(exc)) from exc
+    return FileResponse(_runtime(request).export._path(export), media_type=MIME, filename=f"{meeting_id}.docx")
+
+
+@router.get("/api/meetings/{meeting_id}/export/status")
+async def get_export_status(meeting_id: str, request: Request):
+    return await _runtime(request).export.payload(_meeting_id(meeting_id))
 
 
 @router.get("/metrics")

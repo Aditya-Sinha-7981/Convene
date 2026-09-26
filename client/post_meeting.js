@@ -4,7 +4,7 @@
 const meetingId = decodeURIComponent(location.pathname.split("/").filter(Boolean).pop());
 const api = `/api/meetings/${encodeURIComponent(meetingId)}`;
 const $ = (id) => document.getElementById(id);
-let meeting = null, participants = [], busy = false, refreshTimer = null, pollTimer = null;
+let meeting = null, participants = [], busy = false, refreshTimer = null, pollTimer = null, exportState = null;
 
 async function json(response) {
   try { return await response.json(); } catch { return {}; }
@@ -59,6 +59,18 @@ function renderSummary(body) {
 
   clearTimeout(pollTimer);  // a pushed event normally arrives first; this covers a dropped socket
   if (latest?.status === "pending") pollTimer = setTimeout(refresh, 3000);
+}
+
+function renderExport(body) {
+  exportState = body;
+  const latest = body?.latest_attempt || null, current = body?.export || null;
+  $("exportPending").hidden = latest?.status !== "pending";
+  $("exportFailed").hidden = latest?.status !== "failed";
+  $("exportFailedText").textContent = latest?.status === "failed" ? `Export failed: ${latest.error_message}.` : "";
+  $("exportStale").hidden = !(current && body.stale);
+  $("exportNone").hidden = current !== null || latest?.status === "pending";
+  $("download").hidden = current === null;
+  $("download").href = `${api}/export?format=docx`;
 }
 
 function correctionForm(utterance, row) {
@@ -128,7 +140,7 @@ function renderTranscript(lines) {
 
 async function refresh() {
   try {
-    const [detail, transcript, summary] = await Promise.all([fetch(api), fetch(`${api}/transcript`), fetch(`${api}/summary`)]);
+    const [detail, transcript, summary, exported] = await Promise.all([fetch(api), fetch(`${api}/transcript`), fetch(`${api}/summary`), fetch(`${api}/export/status`)]);
     const detailBody = await json(detail);
     if (!detail.ok) throw new Error(detailBody.error?.message || "Could not load the meeting.");
     meeting = detailBody.meeting;
@@ -140,6 +152,8 @@ async function refresh() {
     if (summary.ok) renderSummary(summaryBody);
     else if (summaryBody.error?.code === "summary_not_found") renderSummary(null);
     else throw new Error(summaryBody.error?.message || "Could not load the summary.");
+    const exportBody = await json(exported);
+    if (exported.ok) renderExport(exportBody); else renderExport(null);
   } catch (error) { setError(error.message); }
 }
 
@@ -165,7 +179,7 @@ function listen() {
   const socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/dashboard/${encodeURIComponent(meetingId)}`);
   socket.onmessage = (message) => {
     const event = JSON.parse(message.data);
-    if (["summary_ready", "summary_failed", "utterance", "utterance_updated", "meeting_status"].includes(event.type)) scheduleRefresh();
+    if (["summary_ready", "summary_failed", "export_ready", "export_failed", "utterance", "utterance_updated", "meeting_status"].includes(event.type)) scheduleRefresh();
   };
   socket.onclose = () => setTimeout(() => { listen(); refresh(); }, 2000);
 }
@@ -173,4 +187,5 @@ function listen() {
 $("retry").onclick = summarize;
 $("regenerate").onclick = summarize;
 $("summarize").onclick = summarize;
+$("exportRetry").onclick = () => { $("download").click(); };
 refresh().then(listen);
