@@ -114,6 +114,7 @@ class QaConfig:
     temperature: float = 0.0
     answer_timeout_s: float = 30.0           # generation is stopped at this deadline and the query is failed
     index_stale_s: float = 30.0              # uncovered speech older than this, with nothing indexed, is an index fault
+    history_max_meetings: int = 50           # explicit meeting_ids list limit for history Q&A (POST /api/qa)
 
 
 @dataclass(frozen=True)
@@ -175,6 +176,8 @@ def _check_qa(config: "QaConfig") -> None:
         raise ValueError("min_similarity is a cosine similarity and must be in [-1, 1]")
     if config.temperature < 0 or config.answer_timeout_s <= 0 or config.index_stale_s <= 0:
         raise ValueError("temperature must be non-negative and the timeouts positive")
+    if config.history_max_meetings < 1:
+        raise ValueError("history_max_meetings must be positive")
 
 
 def _check_summary(config: "SummaryConfig") -> None:

@@ -270,8 +270,17 @@ class TranscriptIndexer:
         return TranscriptChunk(new_id(), state.meeting_id, spec.utterance_id_start, spec.utterance_id_end, spec.text,
                                chunk_index, "pending", utc_now(), None, is_closed)
 
+    async def exclusive(self, meeting_id: str, action):
+        """Run ``action()`` with no reconciliation in progress, then forget the meeting (meeting deletion)."""
+        async with self._lock:
+            result = await action()
+            self._failures.pop(meeting_id, None)
+            return result
+
     async def _index(self, meeting_id: str, *, closing: bool = False) -> None:
         async with self._lock:
+            if await self.db.run(lambda tx: meetings.get(tx.conn, meeting_id)) is None:
+                return  # deleted while queued
             state = await self.db.run(lambda tx: self._load(tx.conn, meeting_id))
             if not state.ids:
                 return

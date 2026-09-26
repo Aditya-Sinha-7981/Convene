@@ -97,7 +97,7 @@ def test_events_outside_a_meeting_may_omit_it_and_others_may_not(db):
         event = audit.emit(tx, "server_started", "api", {"reconciled_devices": 0, "reconciled_meetings": 0})
     assert event.meeting_id is None
     optional = {t for t, s in CATALOG.items() if not s.meeting_required}
-    assert optional == {"server_started", "model_load", "model_error", "signaling_error", "qa_query"}
+    assert optional == {"server_started", "model_load", "model_error", "signaling_error", "qa_query", "meeting_deleted"}
 
 
 def test_unknown_meeting_is_a_foreign_key_error(db):

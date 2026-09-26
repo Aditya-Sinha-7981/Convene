@@ -506,3 +506,32 @@ time in a sentence is kept. Real answers must be spot-checked on the demo transc
 
 **Status:** Requested by the project lead on 2026-09-26; the real-model honesty test passes with the new prompt.
 
+---
+
+### ADR-27: Meetings can be renamed and permanently deleted by an explicit user action
+
+**Decision:** `PATCH /api/meetings/{meeting_id}` renames a meeting in any status (audit `meeting_renamed`; a DOCX
+rendered before the rename becomes stale so the next download carries the new title). `DELETE
+/api/meetings/{meeting_id}` erases a meeting and everything it owns in one transaction: devices, participants,
+utterances, connection events, chunks and vectors, summaries, action items, exports and their files, its
+`ModelExecution` rows, its Q&A queries (including multi-meeting history answers that cited its chunks, because their
+text came from it), and **every audit event carrying its `meeting_id`**. One `meeting_deleted` audit event, with no
+`meeting_id`, keeps only the deleted id and counts; it is written before the deletes so `seq` stays monotonic.
+Deletion is refused while a phone is connected (`meeting_active`) or a summary is being written
+(`summary_in_progress`). The history view asks the user to type the meeting title before deleting.
+
+**Rationale:** The project lead wants abandoned and unneeded meetings gone for good, and "delete" that leaves the
+transcript on disk would be misleading on a laptop that other people can reach (ADR-10). This narrows "one audit
+stream as the record of what happened": the stream records what happened to meetings that still exist, and the
+fact (not the content) of a deletion.
+
+**Alternatives considered:** Hiding a meeting with a `deleted_at` flag (rejected by the project lead: the content
+would stay on disk and in the database). Keeping the deleted meeting's audit rows with a null `meeting_id`
+(rejected: `meeting_created` carries the title, and the rows would be orphaned history of nothing).
+
+**Tradeoffs:** Irreversible, with no undo. Audit history for the deleted meeting is gone, so a post-hoc question
+about it can't be answered. History answers that searched the meeting but cited only other meetings are kept. There
+is still no automatic retention policy (`data-model.md`).
+
+**Status:** Requested by the project lead on 2026-09-27 (permanent erase chosen over hiding).
+

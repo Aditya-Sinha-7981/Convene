@@ -1,8 +1,10 @@
 """Scoped similarity search for an explicit question (ADR-11). Only ``server/rag/qa.py`` may import this module;
 ``tests/test_retrieval.py`` checks that statically, so no other code path can run retrieval.
 
-Scope is an explicit argument (one meeting for live mode; CON-14 adds several for history mode). Relevance is
-cosine similarity, ``1 - distance`` from the sqlite-vec cosine-distance column (``docs/rag-and-qa.md``).
+Scope is an explicit argument: exactly one meeting for live mode, an explicit list for history mode (CON-14).
+Every meeting in the scope is searched with its own partition-filtered KNN query and the hits are merged, so a
+large or closer meeting outside the scope can never crowd a requested one out of top-k. Relevance is cosine
+similarity, ``1 - distance`` from the sqlite-vec cosine-distance column (``docs/rag-and-qa.md``).
 
 As-of rule: a chunk is eligible when the first utterance in its range was written (``Utterance.created_at``) at
 or before ``asked_at``. A closed chunk rebuilt later (a correction or a late result) keeps its identity and may
@@ -34,17 +36,27 @@ class Retrieval:
 
 def search_meeting(conn, store: VectorStore, meeting_id: str, question_vector, *, top_k: int, min_similarity: float,
                    asked_at: str) -> Retrieval:
-    hits = store.search(conn, meeting_id, question_vector, top_k * OVERFETCH)
+    """Live mode: one meeting, chunks as of the question."""
+    return search_meetings(conn, store, [meeting_id], question_vector, top_k=top_k, min_similarity=min_similarity,
+                           asked_at=asked_at)
+
+
+def search_meetings(conn, store: VectorStore, meeting_ids: list[str], question_vector, *, top_k: int,
+                    min_similarity: float, asked_at: str) -> Retrieval:
+    """History mode (and live, through ``search_meeting``): the given meetings only, never an implicit default."""
+    if not meeting_ids:
+        raise ValueError("retrieval needs an explicit, non-empty meeting scope")
     eligible: list[Evidence] = []
-    for hit in hits:
-        chunk = transcript_chunks.get(conn, hit.chunk_id)
-        if chunk is None or chunk.meeting_id != meeting_id or chunk.status != "ready":
-            continue  # a failed rebuild keeps its old vector: never cite text that the vector does not describe
-        first = conn.execute("SELECT created_at FROM Utterance WHERE utterance_id = ?",
-                             (chunk.utterance_id_start,)).fetchone()
-        if first is None or first["created_at"] > asked_at:
-            continue
-        eligible.append(Evidence(chunk, 1.0 - float(hit.distance)))
+    for meeting_id in dict.fromkeys(meeting_ids):
+        for hit in store.search(conn, meeting_id, question_vector, top_k * OVERFETCH):
+            chunk = transcript_chunks.get(conn, hit.chunk_id)
+            if chunk is None or chunk.meeting_id != meeting_id or chunk.status != "ready":
+                continue  # a failed rebuild keeps its old vector: never cite text that the vector does not describe
+            first = conn.execute("SELECT created_at FROM Utterance WHERE utterance_id = ?",
+                                 (chunk.utterance_id_start,)).fetchone()
+            if first is None or first["created_at"] > asked_at:
+                continue
+            eligible.append(Evidence(chunk, 1.0 - float(hit.distance)))
     eligible.sort(key=lambda item: -item.similarity)
     kept = [item for item in eligible if item.similarity >= min_similarity][:top_k]
     return Retrieval(kept, eligible[0].similarity if eligible else None, len(eligible))

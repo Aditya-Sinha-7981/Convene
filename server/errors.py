@@ -42,6 +42,14 @@ class MeetingEndedError(StorageError):
     """`meeting_ended`: the operation needs a meeting that has not ended."""
 
 
+class MeetingNotEndedError(StorageError):
+    """`meeting_not_ended`: history Q&A named a meeting that is still running; it belongs to live Q&A."""
+
+
+class MeetingActiveError(StorageError):
+    """`meeting_active`: a phone is still connected to the meeting, so it cannot be deleted yet."""
+
+
 class SummaryNotFoundError(NotFoundError):
     """`summary_not_found`: no summary attempt exists for this meeting."""
 

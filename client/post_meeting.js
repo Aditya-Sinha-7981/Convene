@@ -1,6 +1,10 @@
 // Post-meeting view (CON-10, minimal): summary status, summary text, action items, staleness with regenerate, and
 // the transcript, which stays readable whatever happened to the summary. Everything shown comes from the server:
-// labels, owner names and staleness are never computed here (docs/frontend.md).
+// labels, owner names and staleness are never computed here (docs/frontend.md). CON-14 adds the participants and
+// a history-mode Q&A box scoped to this meeting, open once the meeting has ended.
+import { mountHistoryQA } from "/static/history_qa.js";
+import { confirmDelete, editTitle } from "/static/meeting_actions.js";
+
 const meetingId = decodeURIComponent(location.pathname.split("/").filter(Boolean).pop());
 const api = `/api/meetings/${encodeURIComponent(meetingId)}`;
 const $ = (id) => document.getElementById(id);
@@ -20,10 +24,44 @@ function clock(start, t) {
 function renderMeeting() {
   $("title").textContent = meeting.title || "Untitled meeting";
   document.title = `Convene — ${meeting.title || "Meeting summary"}`;
-  $("status").textContent = meeting.status === "ended" ? "Meeting ended" : "Meeting in progress";
-  $("live").hidden = meeting.status === "ended";
+  const ended = meeting.status === "ended";
+  $("status").textContent = ended ? "Meeting ended" : "Meeting in progress";
+  $("live").hidden = ended;
   $("live").href = `/dashboard/${encodeURIComponent(meetingId)}`;
+  // History Q&A only reads ended meetings; a running meeting's questions belong to the live dashboard.
+  $("qaLive").hidden = ended;
+  $("qaBox").hidden = !ended;
+  $("qaLiveLink").href = `/dashboard/${encodeURIComponent(meetingId)}`;
+  qa.refreshScope();
 }
+
+function renderPeople() {
+  const list = $("people");
+  list.replaceChildren();
+  for (const person of participants) {
+    const li = document.createElement("li");
+    li.dataset.color = person.color || "unknown";
+    li.textContent = person.display_name || "Unnamed";
+    list.append(li);
+  }
+  $("noPeople").hidden = participants.length > 0;
+}
+
+// A citation for this meeting highlights the lines here instead of reloading the page.
+function highlightLines(ids) {
+  const found = ids.map((id) => document.getElementById(`u-${id}`)).filter(Boolean);
+  if (!found.length) return false;
+  found[0].scrollIntoView({ behavior: "smooth", block: "center" });
+  for (const line of found) { line.classList.remove("cited"); void line.offsetWidth; line.classList.add("cited"); setTimeout(() => line.classList.remove("cited"), 3200); }
+  return true;
+}
+
+const qa = mountHistoryQA({
+  root: $("qa"),
+  scope: () => ({ meeting_ids: [meetingId], label: "This meeting only", ready: meeting?.status === "ended" }),
+  onCitation: (citation) => citation.meeting_id === meetingId && highlightLines(citation.utterance_ids || []),
+});
+let jumped = false;
 
 function renderSummary(body) {
   const latest = body?.latest_attempt || null, current = body?.summary || null;
@@ -118,6 +156,7 @@ function renderTranscript(lines) {
   list.replaceChildren();
   for (const utterance of lines) {
     const li = document.createElement("li");
+    li.id = `u-${utterance.utterance_id}`;
     const when = document.createElement("span");
     when.className = "when";
     when.textContent = clock(start, utterance.t_start);
@@ -136,6 +175,8 @@ function renderTranscript(lines) {
     list.append(li);
   }
   $("noLines").hidden = lines.length > 0;
+  // A citation link from the history view lands here as #u-<utterance_id>.
+  if (!jumped && location.hash.startsWith("#u-")) { jumped = true; highlightLines([decodeURIComponent(location.hash.slice(3))]); }
 }
 
 async function refresh() {
@@ -146,6 +187,7 @@ async function refresh() {
     meeting = detailBody.meeting;
     participants = detailBody.devices.flatMap((device) => device.participants);
     renderMeeting();
+    renderPeople();
     const transcriptBody = await json(transcript);
     if (transcript.ok) renderTranscript(transcriptBody.utterances);
     const summaryBody = await json(summary);
@@ -184,6 +226,15 @@ function listen() {
   socket.onclose = () => setTimeout(() => { listen(); refresh(); }, 2000);
 }
 
+$("rename").onclick = () => {
+  if (!meeting) return;
+  $("rename").hidden = true;
+  editTitle($("title"), meeting, (updated) => { $("rename").hidden = false; if (updated) { meeting = updated; renderMeeting(); } });
+};
+$("delete").onclick = async () => {
+  if (!meeting) return;
+  if (await confirmDelete(meeting)) location.href = "/history";
+};
 $("retry").onclick = summarize;
 $("regenerate").onclick = summarize;
 $("summarize").onclick = summarize;

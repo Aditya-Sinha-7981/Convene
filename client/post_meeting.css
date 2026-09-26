@@ -32,3 +32,15 @@ form.fix { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .4rem; }
 form.fix select, form.fix input { max-width: 100%; padding: .35rem .5rem; border: 1px solid var(--line-strong); border-radius: 8px; font: inherit; }
 #error { color: var(--danger); }
 #error:empty { display: none; }
+.pm-people { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.pm-people li { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 14px; }
+.pm-people li::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--pc, var(--idle)); }
+.pm-qa { position: static; margin-top: 2.2rem; }
+.pm-qa h2 { margin: 0; }
+#transcript li.cited { background: var(--accent-soft); box-shadow: -8px 0 0 var(--accent-soft), 8px 0 0 var(--accent-soft); }
+.pm-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.pm-title .ma-rename { flex: 1 1 100%; margin-bottom: .3rem; }
+.pm-delete { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.pm-delete h2 { margin-top: 0; }
+.pm-danger { border-color: var(--danger-line); color: var(--danger); }
+.pm-danger:hover:not(:disabled) { border-color: var(--danger); background: var(--danger-soft); }

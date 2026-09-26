@@ -136,7 +136,7 @@ utterance range and contain nothing else.
 | Field | Type | Notes |
 |---|---|---|
 | query_id | TEXT (UUID) | PK |
-| meeting_id | TEXT (UUID), nullable | null when `mode = history` spans multiple meetings |
+| meeting_id | TEXT (UUID), nullable | live meeting id, or the one selected meeting for a single-meeting history query; null only when history spans multiple meetings |
 | mode | TEXT | `live` \| `history` |
 | question | TEXT | |
 | answer | TEXT, nullable | null if retrieval found nothing/failed |
@@ -223,6 +223,8 @@ The complete set. Payloads reference records by ID and never contain transcript 
 | `meeting_created` | `api` | `title` |
 | `meeting_started` | `transport` | `first_device_id` |
 | `meeting_ended` | `api` | `utterance_count`, `device_count` |
+| `meeting_renamed` | `api` | `title` |
+| `meeting_deleted` | `api` | `deleted_meeting_id`, `utterance_count`, `device_count`, `qa_query_count` |
 | `hook_failed` | `api` | `hook`, `error` |
 | `device_registered` | `registry` | `device_id`, `is_shared`, `declared_speaker_count`, `user_agent`, `color` |
 | `device_connected` | `transport` | `device_id`, `reconnect_count` |
@@ -297,9 +299,11 @@ Payload value sets:
 
 Which values are derived from the audit stream and which are live gauges (resolving the tension between ADR-13 and values that change every second):
 
-- **Derived from `AuditEvent` / `ConnectionEvent` (durable, replayable):** device `status`, `reconnect_count`, every connection change, meeting `status`, utterance creation and correction, Q&A results, summary and export outcomes, and **staleness**. A summary is *stale* when the latest `utterance_corrected` or `utterance_created` audit event for the meeting has `seq` greater than the current summary's `summary_generated.input_as_of_seq`. An export is stale when its `export_created.input_as_of_seq` is below the same high-water mark or below a newer current summary's. No stored flag exists; nothing can disagree with the stream.
+- **Derived from `AuditEvent` / `ConnectionEvent` (durable, replayable):** device `status`, `reconnect_count`, every connection change, meeting `status`, utterance creation and correction, Q&A results, summary and export outcomes, and **staleness**. A summary is *stale* when the latest `utterance_corrected` or `utterance_created` audit event for the meeting has `seq` greater than the current summary's `summary_generated.input_as_of_seq`. An export is stale when its `export_created.input_as_of_seq` is below the same high-water mark or below a newer current summary's, or when a `meeting_renamed` event for the meeting is newer than its `export_created` event (the title is in the file). No stored flag exists; nothing can disagree with the stream.
 - **Live gauges (ephemeral, never persisted, never used to answer "what happened"):** `last_audio_age_ms`, `audio_duration_s`, `stt_backlog`, `stt_dropped_windows`. `stt_backlog` is the number of the device's windows queued for or being transcribed; `stt_dropped_windows` is how many the overload policy has dropped since the server started (each drop is also an audit event). They are computed in memory, served in `GET /api/meetings/{meeting_id}` and the `device_gauges` dashboard event (`api.md`), and reset by a server restart. A gauge never contradicts the audit stream because it describes the present instant, not history; the audit-visible consequences (a drop, a reconnect, a resumed stream) are separate events.
 
 ## Retention
 
 No automatic deletion for the hackathon build — data volumes at this scale don't need it. Retention policy is an explicit deferred item (see `requirements.md` non-goals), not an oversight.
+
+A user can permanently delete one meeting (`DELETE /api/meetings/{meeting_id}`, ADR-27). That removes every row the meeting owns, including its audit events, and the multi-meeting `QAQuery` rows that cited its chunks. It leaves one `meeting_deleted` audit event with no `meeting_id`, holding only the deleted id and counts. `meeting_deleted` is the one event whose payload names a meeting that no longer exists.

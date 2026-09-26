@@ -83,6 +83,81 @@ def create_meeting(tx: Tx, title: str | None = None, *, meeting_id: str | None =
     return meeting
 
 
+def rename_meeting(tx: Tx, meeting_id: str, title, *, now: str | None = None) -> Meeting:
+    """Set a new title (any status) and emit ``meeting_renamed``. Renaming to the same title writes nothing."""
+    if not isinstance(title, str) or not title.strip():
+        raise ValidationError("title must be a non-empty string")
+    title = " ".join(title.split())
+    if len(title) > MAX_TITLE:
+        raise ValidationError(f"title is longer than {MAX_TITLE} characters")
+    meeting = meetings.require(tx.conn, meeting_id)
+    if meeting.title == title:
+        return meeting
+    meeting = meetings.update(tx.conn, meeting_id, title=title)
+    emit(tx, "meeting_renamed", "api", {"title": title}, meeting_id=meeting_id, timestamp=now)
+    return meeting
+
+
+@dataclass(frozen=True)
+class MeetingErase:
+    utterance_count: int
+    device_count: int
+    qa_query_count: int
+    export_files: list[str]      # storage paths to remove after the transaction commits
+
+
+def erase_meeting(tx: Tx, meeting_id: str, *, now: str | None = None) -> MeetingErase:
+    """Permanently delete a meeting and everything it owns, in one transaction (explicit user action only).
+
+    Removed: devices, participants, utterances, connection events, transcript chunks and their vectors, Q&A
+    queries about it (including multi-meeting history answers that cited its chunks, since their text came from
+    it), summaries, action items, export rows, its model-execution rows and every audit event carrying its
+    ``meeting_id``. Afterwards one ``meeting_deleted`` event (no meeting_id) keeps only the id and counts.
+    The caller refuses first when a phone is connected or a summary is running, and removes the export files.
+    """
+    conn = tx.conn
+    meetings.require(conn, meeting_id)
+    ids = lambda sql: [row[0] for row in conn.execute(sql, (meeting_id,)).fetchall()]
+    chunk_ids = ids("SELECT chunk_id FROM TranscriptChunk WHERE meeting_id = ?")
+    device_ids = ids("SELECT device_id FROM Device WHERE meeting_id = ?")
+    summary_ids = ids("SELECT summary_id FROM Summary WHERE meeting_id = ?")
+    query_ids = ids("SELECT query_id FROM QAQuery WHERE meeting_id = ?")
+    if chunk_ids:
+        marks = ",".join("?" * len(chunk_ids))
+        query_ids += [row[0] for row in conn.execute(
+            f"SELECT DISTINCT q.query_id FROM QAQuery q, json_each(q.cited_chunk_ids) c "
+            f"WHERE q.meeting_id IS NULL AND c.value IN ({marks})", chunk_ids).fetchall()]
+    export_files = ids("SELECT storage_path FROM Export WHERE meeting_id = ? AND storage_path IS NOT NULL")
+    utterance_count = utterances.count_for_meeting(conn, meeting_id)
+
+    def delete_in(table: str, column: str, values: list[str]) -> None:
+        for start in range(0, len(values), 500):
+            batch = values[start:start + 500]
+            conn.execute(f"DELETE FROM {table} WHERE {column} IN ({','.join('?' * len(batch))})", batch)
+
+    # Emitted first so its seq stays above every deleted one: seq is MAX(seq) + 1, and a reused seq would make
+    # other dashboards' resync cursors skip events.
+    emit(tx, "meeting_deleted", "api", {"deleted_meeting_id": meeting_id, "utterance_count": utterance_count,
+                                        "device_count": len(device_ids), "qa_query_count": len(query_ids)},
+         timestamp=now)
+    related = chunk_ids + summary_ids + query_ids
+    delete_in("ModelExecution", "related_id", related)
+    for device_id in device_ids:  # STT rows are related to "<device_id>/<window_id>"
+        conn.execute("DELETE FROM ModelExecution WHERE related_id LIKE ?", (f"{device_id}/%",))
+    # Audit rows outside the meeting that point at a deleted query (history model errors).
+    for query_id in query_ids:
+        conn.execute("DELETE FROM AuditEvent WHERE meeting_id IS NULL AND event_type IN ('model_error', 'qa_query') "
+                     "AND (json_extract(payload, '$.related_id') = ? OR json_extract(payload, '$.query_id') = ?)",
+                     (query_id, query_id))
+    delete_in("QAQuery", "query_id", query_ids)
+    for table in ("ActionItem", "Export", "Summary"):
+        conn.execute(f"DELETE FROM {table} WHERE meeting_id = ?", (meeting_id,))
+    delete_in("TranscriptChunkVector", "chunk_id", chunk_ids)
+    for table in ("TranscriptChunk", "ConnectionEvent", "AuditEvent", "Utterance", "Participant", "Device", "Meeting"):
+        conn.execute(f"DELETE FROM {table} WHERE meeting_id = ?", (meeting_id,))
+    return MeetingErase(utterance_count, len(device_ids), len(query_ids), export_files)
+
+
 def register_device(tx: Tx, meeting_id: str, device_id: str, display_name: str | None, is_shared: bool = False,
                     declared_speaker_count: int | None = None, user_agent: str | None = None, *,
                     color: str | None = None, now: str | None = None) -> Registration:

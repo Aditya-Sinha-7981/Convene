@@ -1,8 +1,9 @@
 """Meeting and device service over the CON-03 registry: the logic behind the REST routes (docs/api.md)."""
 from dataclasses import asdict
+from pathlib import Path
 
 from . import colors as palette, network, registry
-from .errors import ValidationError
+from .errors import MeetingActiveError, SummaryInProgressError, ValidationError
 from .repositories import audit_events, devices, exports, meetings, participants, summaries
 from .summary.views import summary_view
 from .views import device_view, meeting_view, participant_view
@@ -47,6 +48,51 @@ async def get_meeting(runtime, meeting_id: str) -> dict:
     }
 
 
+async def list_history(runtime, *, status=None, q=None, from_at=None, to_at=None, limit=50, offset=0) -> dict:
+    """The history list (CON-14): newest first, with participant count and summary/export flags."""
+    def read(tx):
+        filters = {"status": status, "q": q, "from_at": from_at, "to_at": to_at}
+        result = []
+        for meeting in meetings.list_meetings(tx.conn, **filters, limit=limit, offset=offset):
+            count = tx.conn.execute("SELECT COUNT(*) FROM Participant WHERE meeting_id = ?",
+                                    (meeting.meeting_id,)).fetchone()[0]
+            result.append({**meeting_view(meeting), "participant_count": count,
+                           "has_summary": summaries.current(tx.conn, meeting.meeting_id) is not None,
+                           "has_export": exports.current(tx.conn, meeting.meeting_id) is not None})
+        return {"meetings": result, "total": meetings.count_meetings(tx.conn, **filters)}
+    return await runtime.db.run(read)
+
+
+async def rename_meeting(runtime, meeting_id: str, body: dict) -> dict:
+    if set(body) - {"title"} or "title" not in body:
+        raise ValidationError("send exactly {\"title\": \"...\"}")
+    meeting = await runtime.db.run(lambda tx: registry.rename_meeting(tx, meeting_id, body["title"]))
+    return {"meeting": meeting_view(meeting)}
+
+
+async def delete_meeting(runtime, meeting_id: str) -> dict:
+    """Permanent deletion (explicit user action). Refused while a phone is connected or a summary is running."""
+    def check(tx):
+        meetings.require(tx.conn, meeting_id)
+        active = [d for d in devices.list_for_meeting(tx.conn, meeting_id) if d.status in ("connected", "joining")]
+        if active:
+            raise MeetingActiveError(f"{len(active)} phone(s) are still connected; end the meeting first")
+    await runtime.db.run(check)
+    if _summary_running(runtime, meeting_id):
+        raise SummaryInProgressError("a summary is being written for this meeting; delete it when that finishes")
+
+    async def erase():
+        return await runtime.db.run(lambda tx: registry.erase_meeting(tx, meeting_id))
+    result = await (runtime.indexer.exclusive(meeting_id, erase) if runtime.indexer is not None else erase())
+    for stored in result.export_files:  # after commit; a leftover file is only disk space, never shown again
+        try:
+            (runtime.settings.exports_dir / Path(stored).name).unlink(missing_ok=True)
+        except OSError:
+            pass
+    return {"deleted": {"meeting_id": meeting_id, "utterance_count": result.utterance_count,
+                        "device_count": result.device_count, "qa_query_count": result.qa_query_count}}
+
+
 async def register_device(runtime, meeting_id: str, body: dict, user_agent: str | None) -> tuple[int, dict]:
     is_shared = body.get("is_shared", False)
     if not isinstance(is_shared, bool):
@@ -89,4 +135,4 @@ def _summary_running(runtime, meeting_id: str) -> bool:
     return runtime.summary is not None and runtime.summary.running(meeting_id) is not None
 
 
-__all__ = ["create_meeting", "get_meeting", "register_device", "colors", "end_meeting", "participant_view"]
+__all__ = ["create_meeting", "get_meeting", "list_history", "rename_meeting", "delete_meeting", "register_device", "colors", "end_meeting", "participant_view"]

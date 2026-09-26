@@ -6,12 +6,13 @@
 <title>Convene — Meeting summary</title>
 <link rel="icon" href="/static/brand/logo-mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/history.css">
 <link rel="stylesheet" href="/static/post_meeting.css">
 </head>
 <body>
-<header class="pm-bar"><a class="brand" href="/"><img src="/static/brand/logo.svg" alt="Convene home"></a><p class="meta"><span id="status">Loading…</span> <a id="live" hidden>Open the live dashboard</a></p></header>
+<header class="pm-bar"><a class="brand" href="/"><img src="/static/brand/logo.svg" alt="Convene home"></a><p class="meta"><a href="/history">Past meetings</a> · <span id="status">Loading…</span> <a id="live" hidden>Open the live dashboard</a></p></header>
 <main class="pm">
-<h1 id="title">Meeting summary</h1>
+<div class="pm-title"><h1 id="title">Meeting summary</h1><button id="rename" class="link" type="button">Rename</button></div>
 <p id="error" role="alert"></p>
 
 <h2>Summary</h2>
@@ -33,10 +34,34 @@
 <ul id="actions"></ul>
 <p id="noActions" class="muted" hidden>No action items.</p>
 
+<h2>Participants</h2>
+<ul id="people" class="pm-people"></ul>
+<p id="noPeople" class="muted" hidden>No one joined this meeting.</p>
+
+<section class="hq-panel pm-qa" id="qa" aria-labelledby="qaHeading">
+<div class="hq-panel-head"><h2 id="qaHeading">Ask about this meeting</h2></div>
+<p id="qaLive" class="hq-empty muted" hidden>This meeting is still running. Ask questions from the <a id="qaLiveLink">live dashboard</a>; history search opens once it ends.</p>
+<div id="qaBox">
+<form class="hq-form" data-qa-form>
+<p class="hq-scope" aria-live="polite"><span class="hq-scope-tag">History</span><span data-qa-scope></span></p>
+<textarea data-qa-question rows="2" maxlength="500" placeholder="e.g. Who owns the release notes?" aria-label="Question about this meeting"></textarea>
+<div class="hq-actions"><span class="hq-hint" data-qa-hint></span><button class="btn btn-primary" type="submit" data-qa-ask>Ask</button></div>
+<p class="hx-error" data-qa-error role="alert"></p>
+</form>
+<p class="hq-empty muted" data-qa-empty>Answers come only from this meeting's transcript, with the speaker and time for every source.</p>
+<ol class="hq-answers" data-qa-answers aria-live="polite"></ol>
+</div>
+</section>
+
 <h2>Transcript</h2>
 <p id="noLines" class="muted" hidden>Nothing was transcribed.</p>
 <ol id="transcript"></ol>
 
+<section class="pm-delete" aria-labelledby="deleteHeading">
+<h2 id="deleteHeading">Delete meeting</h2>
+<p class="muted">Permanently erase this meeting's transcript, summary, DOCX and questions. This cannot be undone.</p>
+<button id="delete" type="button" class="pm-danger">Delete meeting…</button>
+</section>
 </main>
 <script type="module" src="/static/post_meeting.js"></script>
 </body>

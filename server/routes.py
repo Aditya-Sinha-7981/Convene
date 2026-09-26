@@ -3,6 +3,7 @@ import json
 import logging
 import re
 from dataclasses import asdict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, Request, WebSocket
@@ -12,7 +13,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from . import meetings as service
 from .attribution.views import utterance_view
 from .errors import (AmbiguousDisplayNameError, ColorTakenError, DatabaseBusyError, DeviceConflictError, DeviceNotFoundError,
-                     MeetingEndedError, MeetingNotFoundError, ParticipantNotFoundError, StorageError,
+                     MeetingActiveError, MeetingEndedError, MeetingNotEndedError, MeetingNotFoundError, ParticipantNotFoundError, StorageError,
                      SummaryInProgressError, SummaryNotFoundError, TranscriptEmptyError, UtteranceNotFoundError,
                      ValidationError)
 from .ids import is_uuid4
@@ -88,6 +89,57 @@ async def get_meeting(meeting_id: str, request: Request):
     return await service.get_meeting(_runtime(request), _meeting_id(meeting_id))
 
 
+@router.patch("/api/meetings/{meeting_id}")
+async def rename_meeting(meeting_id: str, request: Request):
+    body = await read_json_body(request)
+    return await service.rename_meeting(_runtime(request), _meeting_id(meeting_id), body)
+
+
+@router.delete("/api/meetings/{meeting_id}")
+async def delete_meeting(meeting_id: str, request: Request):
+    """Permanent: the meeting and everything it owns are erased (docs/api.md)."""
+    return await service.delete_meeting(_runtime(request), _meeting_id(meeting_id))
+
+
+def _bound(value: str | None, name: str, *, end_of_day: bool) -> str | None:
+    """An inclusive ``created_at`` bound: an ISO 8601 date (the whole day) or date-time, as canonical UTC."""
+    if value is None or value == "":
+        return None
+    try:
+        if len(value) == 10:
+            day = datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            moment = day + timedelta(days=1, milliseconds=-1) if end_of_day else day
+        else:
+            moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if moment.tzinfo is None:
+                raise ValueError("no time zone")
+    except ValueError as exc:
+        raise ApiError(400, "invalid_request", f"{name} must be an ISO 8601 date or UTC date-time") from exc
+    return moment.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+@router.get("/api/meetings")
+async def list_meetings(request: Request):
+    """History list (CON-14). An empty result is an empty list, never an error."""
+    params = request.query_params
+    status = params.get("status")
+    if status not in (None, "created", "live", "ended"):
+        raise ApiError(400, "invalid_request", "status must be created, live, or ended")
+    try:
+        limit, offset = int(params.get("limit", "50")), int(params.get("offset", "0"))
+    except ValueError as exc:
+        raise ApiError(400, "invalid_request", "limit and offset must be integers") from exc
+    if not 1 <= limit <= 200 or offset < 0:
+        raise ApiError(400, "invalid_request", "limit must be 1..200 and offset must be non-negative")
+    q = (params.get("q") or "").strip() or None
+    if q is not None and len(q) > 200:
+        raise ApiError(400, "invalid_request", "q is longer than 200 characters")
+    from_at = _bound(params.get("from"), "from", end_of_day=False)
+    to_at = _bound(params.get("to"), "to", end_of_day=True)
+    return await service.list_history(_runtime(request), status=status, q=q, from_at=from_at, to_at=to_at,
+                                      limit=limit, offset=offset)
+
+
 @router.post("/api/meetings/{meeting_id}/devices")
 async def register_device(meeting_id: str, request: Request):
     body = await read_json_body(request)
@@ -157,6 +209,13 @@ async def ask_question(meeting_id: str, request: Request):
     meeting_id = _meeting_id(meeting_id)
     body = await read_json_body(request)
     return await _runtime(request).qa.ask(meeting_id, body)
+
+
+@router.post("/api/qa")
+async def ask_history(request: Request):
+    """History Q&A (CON-14): scope is in the body, ended meetings only. Never used for live questions."""
+    body = await read_json_body(request)
+    return await _runtime(request).qa.ask_history(body)
 
 
 @router.post("/api/meetings/{meeting_id}/summarize")
@@ -234,6 +293,12 @@ async def home():
     return _page("home.html")
 
 
+@router.get("/history")
+async def history_page():
+    """Past meetings and cross-meeting Q&A (CON-14)."""
+    return _page("history.html")
+
+
 @router.get("/join/{meeting_id}")
 async def join_page(meeting_id: str, request: Request):
     return _page("index.html") if await _existing_meeting(request, meeting_id) else _not_found_page()
@@ -292,6 +357,8 @@ _STORAGE_ERRORS = [
     (AmbiguousDisplayNameError, 409, "ambiguous_display_name"),
     (ColorTakenError, 409, "color_taken"),
     (MeetingEndedError, 409, "meeting_ended"),
+    (MeetingNotEndedError, 409, "meeting_not_ended"),
+    (MeetingActiveError, 409, "meeting_active"),
     (DeviceConflictError, 409, "device_conflict"),
     (ValidationError, 400, "invalid_request"),
     (DatabaseBusyError, 500, "internal_error"),
