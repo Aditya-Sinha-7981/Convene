@@ -191,7 +191,8 @@ async function start() {
   }
   try {
     const device = await register();
-    if (typeof window.conveneRegistered === "function") window.conveneRegistered(device);  // visual layer only
+    // Visual layer only: the page switches to its live view and draws the microphone level from this stream.
+    if (typeof window.conveneRegistered === "function") window.conveneRegistered(device, stream);
   } catch (error) {
     stream.getTracks().forEach(track => track.stop());
     stream = null;

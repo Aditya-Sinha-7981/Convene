@@ -311,6 +311,17 @@ async def test_pages_are_served_locally(http, server):
     assert "audio is being transcribed" in text and 'id="name"' in text  # consent line and name input
 
 
+async def test_pages_link_versioned_assets_so_a_changed_file_gets_a_new_url(http, server):
+    meeting_id = await make_meeting(http, server)
+    async with http.get(f"{server.base_url}/join/{meeting_id}") as response:
+        html = await response.text()
+    assert re.search(r'src="/static/app\.js\?v=\d+"', html) and re.search(r'href="/static/theme\.css\?v=\d+"', html)
+    assert 'src="/static/app.js"' not in html
+    version = re.search(r'/static/app\.js\?v=(\d+)', html).group(1)
+    async with http.get(f"{server.base_url}/static/app.js?v={version}") as response:
+        assert response.status == 200
+
+
 async def test_client_files_are_revalidated_so_a_phone_never_runs_stale_script(http, server):
     for path in ("/static/app.js", "/static/join_ui.js", "/static/brand/logo.svg"):
         async with http.get(server.base_url + path) as response:

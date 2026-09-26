@@ -19,6 +19,11 @@
   <figure class="mascot" id="guide"><div class="mascot-art"><img id="guideArt" src="/static/brand/mascot.svg" alt=""></div><figcaption class="mascot-line" id="guideLine">Hi! Add your name and I'll start listening.</figcaption></figure>
   <div id="guideWalk" hidden></div>
 </div>
+<section class="live-view" id="liveView" hidden>
+  <div class="orb"><canvas id="orbCanvas" aria-hidden="true"></canvas><span class="orb-avatar" id="orbAvatar"></span></div>
+  <p class="orb-state" id="orbState" role="status">Listening…</p>
+  <p class="orb-who" id="orbWho"></p>
+</section>
 <div class="join-form"><label for="name">Your name</label><input id="name" class="field" maxlength="80" autocomplete="name" placeholder="e.g. Priya">
 <fieldset class="color-picker" id="colorPicker"><legend>Your colour <span>(optional)</span></legend><div class="swatches" id="swatches"></div><p class="color-hint" id="colorHint">Skip it and we'll pick one no one else has.</p></fieldset>
 <button id="start" class="btn btn-primary">Join and start microphone</button><button id="stop" class="btn btn-secondary" disabled>Stop microphone</button><button id="retry" class="btn btn-secondary" hidden>Try again</button></div>
@@ -26,5 +31,6 @@
 <p id="detail" role="status"></p>
 </section></main>
 <script src="/static/brand.js"></script>
+<script src="/static/mic_orb.js"></script>
 <script src="/static/join_ui.js"></script>
 <script src="/static/app.js"></script></body></html>

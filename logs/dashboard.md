@@ -78,3 +78,15 @@ first after 45–75 s, then every 4–7 min) and the homepage (max 3); on the ph
 
 **Verified.** Full suite 600 passed; screenshots of collapsed/open sources, pop-in, locked picker and phone quirk line,
 no console errors. **Not run:** the colour fix on the real phone (needs a server restart and one fresh join).
+
+## 2026-09-26 — Stale script on phones, live microphone view
+
+A second real join (after the server restart) was still registered with a server-picked colour: the phone kept its
+heuristically cached `app.js`, which `Cache-Control: no-cache` cannot evict. Pages now link every `/static` asset
+with `?v=<mtime_ns>`, so a changed file always has a new URL (test added). A Pixel 7 emulation with touch taps
+confirmed the current picker sends the tapped colour.
+
+Join page live view: after registration the form is replaced by a microphone orb (`client/mic_orb.js`, Web Audio
+AnalyserNode on the sent stream, not connected to output) in the participant's colour. Verified in headless Chromium
+with a fake microphone: "Hearing you", dimmed while reconnecting, back to the form on stop. **Not run:** real iOS
+Safari and Android Chrome (AudioContext unlock on tap, battery cost over a long meeting).

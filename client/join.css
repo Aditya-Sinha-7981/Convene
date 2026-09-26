@@ -62,3 +62,18 @@ body { min-height: 100vh; min-height: 100dvh; }
 
 @media (max-width: 360px) { .swatches { gap: 6px; } .join-bar .brand img { height: 22px; } }
 .color-picker.is-set legend span { display: none; }
+
+/* Live view: after joining, the form gives way to the microphone orb. Stop and Try again stay available. */
+.is-live .join-card > header, .is-live .join-form > label, .is-live #name, .is-live .color-picker, .is-live #start { display: none; }
+.is-live .join-guide { margin-bottom: 6px; background: none; padding: 0 0 4px; }
+.is-live .join-guide .mascot-art { display: none; }
+.is-live .join-guide .mascot { justify-content: center; }
+.live-view { display: grid; justify-items: center; margin: 0 0 18px; }
+.orb { position: relative; width: min(280px, 74vw); aspect-ratio: 1; }
+.orb canvas { display: block; width: 100%; height: 100%; }
+.orb-avatar { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.orb-avatar .avatar { width: 34%; height: 34%; background: none; }
+.live-view[data-state="connecting"] .orb, .live-view[data-state="problem"] .orb { opacity: .55; }
+.orb-state { margin: 2px 0 0; color: var(--ink); font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
+.live-view[data-state="problem"] .orb-state { color: var(--danger); }
+.orb-who { margin: 4px 0 0; color: var(--muted); font-size: 14px; }

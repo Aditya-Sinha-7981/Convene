@@ -1,11 +1,12 @@
 """HTTP routes: the REST API and the served pages (docs/api.md). Handlers stay thin; logic is in meetings.py."""
 import json
 import logging
+import re
 from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, Request, WebSocket
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import meetings as service
@@ -180,8 +181,20 @@ async def metrics(request: Request):
 # -- pages ----------------------------------------------------------------------------------
 
 
-def _page(name: str) -> FileResponse:
-    return FileResponse(CLIENT_DIR / name, headers={"Cache-Control": "no-store"})
+# Every /static script and stylesheet a page links gets ?v=<modification time>, so a changed file has a new URL and
+# a phone cannot keep running an old cached copy under a fresh page (a chosen colour was once never sent that way).
+_ASSET_URL = re.compile(r'((?:src|href)="/static/)([^"?#]+)"')
+
+
+def _versioned(match: re.Match) -> str:
+    asset = CLIENT_DIR / match.group(2)
+    version = asset.stat().st_mtime_ns if asset.is_file() and CLIENT_DIR in asset.resolve().parents else 0
+    return f'{match.group(1)}{match.group(2)}?v={version}"'
+
+
+def _page(name: str) -> HTMLResponse:
+    html = _ASSET_URL.sub(_versioned, (CLIENT_DIR / name).read_text(encoding="utf-8"))
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 
 async def _existing_meeting(request: Request, meeting_id: str):

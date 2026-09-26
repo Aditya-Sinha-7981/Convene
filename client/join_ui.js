@@ -76,8 +76,43 @@
   refresh();
   if (joined) picker.classList.add("is-set");
 
-  window.conveneRegistered = device => {
+  // -- Live view: once registered with a microphone, the form gives way to the orb ------------------------------
+  const liveView = document.querySelector("#liveView");
+  const orbCanvas = document.querySelector("#orbCanvas");
+  const orbAvatar = document.querySelector("#orbAvatar");
+  const orbState = document.querySelector("#orbState");
+  const orbWho = document.querySelector("#orbWho");
+  let orb = null, orbTimer = null;
+  document.querySelector("#start").addEventListener("click", () => window.ConveneOrb?.unlock(), true);
+
+  function enterLive(me, stream) {
+    const avatar = Brand.avatar(me?.color, me?.participant_id);
+    orbAvatar.replaceChildren(avatar);
+    orbWho.textContent = me ? `${me.display_name} · ${me.color || "your colour"}` : "";
+    document.body.classList.add("is-live");
+    liveView.hidden = false;
+    orb?.stop();
+    orb = window.ConveneOrb?.start(orbCanvas, stream, getComputedStyle(avatar).getPropertyValue("--pc").trim() || "#4338ca");
+    clearInterval(orbTimer);
+    orbTimer = setInterval(updateOrbState, 250);
+    updateOrbState();
+  }
+  function leaveLive() {
+    document.body.classList.remove("is-live");
+    liveView.hidden = true;
+    orb?.stop(); orb = null; clearInterval(orbTimer);
+  }
+  function updateOrbState() {
+    const state = pill.dataset.state;
+    orb?.setActive(state === "connected");
+    liveView.dataset.state = state;
+    if (state !== "connected") orbState.textContent = state === "problem" ? "Not connected" : "Connecting…";
+    else orbState.textContent = orb && orb.level > .12 ? "Hearing you" : "Listening…";
+  }
+
+  window.conveneRegistered = (device, stream) => {
     const me = device?.participants?.[0];
+    enterLive(me, stream);
     if (!me?.color) return;
     const asked = swatches.querySelector("input:checked")?.value;
     note = asked && asked !== me.color ? `You joined this meeting before, so you keep ${me.color}.` : "";
@@ -140,6 +175,7 @@
     if (pose === "you" && mine) { guideArt.hidden = true; art.append(Brand.avatar(mine)); }
     if (value === "could not join" && !mine) { joined = false; refresh(); }  // e.g. colour_taken: show what is free now
     if (state === "connected") scheduleQuirk(true); else clearTimeout(quirkTimer);
+    if (pose === "off") leaveLive();  // stopped, or the meeting ended: back to the join form
   }
   new MutationObserver(apply).observe(status, { childList: true, characterData: true, subtree: true });
   apply();

@@ -130,10 +130,11 @@ const scenarios = {
     const page = makePage();
     page.els["input[name=color]:checked"] = { value: "teal" };
     const seen = [];
-    page.window.conveneRegistered = device => seen.push(device);
+    page.window.conveneRegistered = (device, stream) => seen.push({ device, stream });
     await page.join("Priya");
     assert.equal(page.fetches[0].init.body.color, "teal");
     assert.equal(seen.length, 1);
+    assert.ok(seen[0].stream.getAudioTracks().length === 1);  // the live view's level meter reads this stream
   },
 
   async "happy path: microphone, registration, join, offer, answer, connected"() {

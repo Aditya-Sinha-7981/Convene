@@ -16,6 +16,10 @@ Functional and legible beats visually elaborate (`requirements.md`). The fronten
 - "Are you the only person using this phone?" toggle → if no, "how many people?" and a per-person enrollment flow (record a short sample each) before the page proceeds to `connected` state — see `speaker-attribution.md`.
 - A one-line consent notice ("this session's audio is being transcribed") — cheap, avoids an awkward question, per `project-context.md`'s "what else is missing" discussion.
 - Connection-state indicator, reconnect happens automatically and silently unless it fails repeatedly, in which case show a clear retry action.
+- Once registered with a microphone, the page switches to a live view: the name field, colour picker and Join button
+  give way to an orb in the participant's colour, with their avatar in the middle, that swells and ripples with the
+  microphone level (read locally from the stream being sent; never played back) and says "Hearing you" or
+  "Listening…". Stop microphone stays; stopping returns to the form.
 - A guide (brand mascot and a one-line message) follows the connection status. While connecting or reconnecting the
   mascot walks across its track; once live it shows the participant's own avatar. It never covers the controls.
 - The phone surface is deliberately light: locally served system fonts and small local SVGs, but no remote assets,
