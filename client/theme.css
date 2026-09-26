@@ -43,9 +43,9 @@ button { cursor: pointer; }
 [hidden] { display: none !important; }
 a { color: var(--accent); }
 
-/* Logo */
-.brand { display: inline-flex; align-items: center; gap: 9px; color: var(--ink); font-weight: 700; font-size: 17px; letter-spacing: -.02em; text-decoration: none; }
-.brand-mark { width: 26px; height: 26px; flex: none; }
+/* Logo: the traced monogram and wordmark (client/brand/logo.svg), in the brand colour. */
+.brand { display: inline-flex; align-items: center; text-decoration: none; }
+.brand img { display: block; height: 30px; width: auto; }
 
 /* Buttons */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 20px; border: 1px solid transparent; border-radius: 10px; font-size: 15px; font-weight: 600; text-decoration: none; white-space: nowrap; transition: background-color .15s ease, border-color .15s ease, transform .15s ease, box-shadow .15s ease; }
@@ -61,34 +61,61 @@ a { color: var(--accent); }
 .field::placeholder { color: #8a8693; }
 .field:focus { border-color: var(--accent); outline: 0; box-shadow: 0 0 0 3px var(--accent-soft); }
 
-/* Mascot: a small microphone character, only used in low-stakes waiting/empty states (join page, empty Q&A). */
+/* Participant colours (ADR-25). The server stores the key; this is the only place its hex value lives. The brand
+   indigo is deliberately absent: it belongs to Convene's own mascot, logo and actions. */
+[data-color="lime"] { --pc: #4d7c0f; }
+[data-color="green"] { --pc: #15803d; }
+[data-color="teal"] { --pc: #0f766e; }
+[data-color="cyan"] { --pc: #0e7490; }
+[data-color="sky"] { --pc: #0369a1; }
+[data-color="azure"] { --pc: #2563eb; }
+[data-color="violet"] { --pc: #7c3aed; }
+[data-color="plum"] { --pc: #701a75; }
+[data-color="magenta"] { --pc: #a21caf; }
+[data-color="pink"] { --pc: #be185d; }
+[data-color="slate"] { --pc: #475569; }
+[data-color="charcoal"] { --pc: #27272a; }
+[data-color="brand"] { --pc: var(--accent); }
+[data-color="unknown"] { --pc: var(--idle); }
+
+/* Avatar: the mascot's head in a participant's colour, inside a tinted circle. */
+.avatar { display: inline-grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 50%; background: color-mix(in srgb, var(--pc, var(--idle)) 13%, #fff); color: var(--pc, var(--idle)); }
+.avatar svg { width: 76%; height: 76%; }
+.avatar[data-color="unknown"] { background: var(--bg-2); box-shadow: inset 0 0 0 1.5px var(--line-strong); }
+.pc-text { color: color-mix(in srgb, var(--pc, var(--ink)) 85%, #000); }
+
+/* Brand mascot and speech bubble, for waiting and empty states. */
 .mascot { display: flex; align-items: center; gap: 12px; margin: 0; }
-.mascot-art { width: 56px; height: 56px; flex: none; color: var(--accent); }
-.mascot-art svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.mascot-art { flex: none; width: 52px; }
+.mascot-art img { display: block; width: 100%; height: auto; }
 .mascot-line { position: relative; margin: 0; padding: 9px 13px; border: 1px solid var(--line); border-radius: 12px 12px 12px 4px; background: var(--surface); color: var(--ink-2); font-size: 14px; line-height: 1.4; }
-.m-body { fill: var(--accent); transition: fill .3s ease; }
-.m-stand { fill: none; stroke: var(--line-strong); stroke-width: 3; stroke-linecap: round; }
-.m-face { fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
-.m-eye { fill: #fff; }
-.m-pupil { fill: var(--ink); transition: transform .3s ease; }
-.m-waves { fill: none; stroke: var(--accent); stroke-width: 2.4; stroke-linecap: round; opacity: 0; transition: opacity .3s ease; }
-.m-eyes-happy, .m-eyes-closed, .m-brows, .m-mouth-o, .m-mouth-flat { display: none; }
-[data-mood="thinking"] .m-pupil { transform: translate(1.4px, -1.6px); }
-[data-mood="thinking"] .m-mouth-smile { display: none; }
-[data-mood="thinking"] .m-mouth-flat { display: inline; }
-[data-mood="listening"] .m-eyes-open { display: none; }
-[data-mood="listening"] .m-eyes-happy { display: inline; }
-[data-mood="listening"] .m-waves { opacity: 1; }
-[data-mood="worried"] .m-brows, [data-mood="worried"] .m-mouth-o { display: inline; }
-[data-mood="worried"] .m-mouth-smile { display: none; }
-[data-mood="worried"] .m-pupil { transform: translateY(1px); }
-[data-mood="off"] .m-body { fill: var(--idle); }
-[data-mood="off"] .m-eyes-open, [data-mood="off"] .m-mouth-smile { display: none; }
-[data-mood="off"] .m-eyes-closed, [data-mood="off"] .m-mouth-flat { display: inline; }
-[data-mood="curious"] .m-pupil { transform: translate(1.6px, .4px); }
-.mascot-art.m-bump svg { animation: m-bump .45s cubic-bezier(.3, 1.6, .5, 1); transform-origin: 50% 90%; }
-@keyframes m-bump { 0% { transform: scale(1); } 35% { transform: scale(1.07, .93); } 70% { transform: scale(.97, 1.04); } 100% { transform: scale(1); } }
+.mascot.is-off .mascot-art { filter: grayscale(1); opacity: .55; }
+
+/* Walking mascot: only while Convene is doing something (connecting a phone, writing the summary). It walks
+   across its track and back; with reduced motion it stands still. */
+.walk-track { position: relative; height: 46px; }
+.walker { position: absolute; bottom: 0; left: 0; width: 41px; height: 46px; animation: walk-across 7s linear infinite; }
+.walker-frames { width: 100%; height: 100%; overflow: hidden; }
+.walker-frames img { display: block; width: 400%; height: 100%; animation: walk-steps .56s steps(4) infinite; }
+@keyframes walk-steps { to { transform: translateX(-100%); } }
+@keyframes walk-across {
+  0% { left: 0; transform: scaleX(1); }
+  49.99% { left: calc(100% - 41px); transform: scaleX(1); }
+  50% { left: calc(100% - 41px); transform: scaleX(-1); }
+  100% { left: 0; transform: scaleX(-1); }
+}
 
 @media (prefers-reduced-motion: reduce) {
+  .walker { left: 50%; margin-left: -20px; animation: none; }
+  .walker-frames img { animation: none; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
+
+/* Mascot pop-in (client/popins.js): peeks up from the bottom-right corner with one line, then leaves. */
+.popin { position: fixed; right: 16px; bottom: 0; z-index: 30; display: flex; align-items: flex-end; gap: 8px; max-width: min(340px, calc(100vw - 32px)); pointer-events: none; transform: translateY(110%); transition: transform .45s cubic-bezier(.3, 1.3, .5, 1); }
+.popin.is-in { pointer-events: auto; cursor: pointer; transform: translateY(0); }
+.popin.is-still { transition: opacity .2s ease; transform: none; opacity: 0; }
+.popin.is-still.is-in { opacity: 1; }
+.popin-line { margin: 0 0 30px; padding: 9px 13px; border: 1px solid var(--line); border-radius: 12px 12px 4px 12px; background: var(--surface); box-shadow: var(--shadow); color: var(--ink-2); font-size: 14px; line-height: 1.4; }
+.popin-mascot { display: block; width: 52px; height: auto; margin-bottom: -4px; }
+@media (max-width: 720px) { .popin-mascot { width: 42px; } .popin-line { font-size: 13px; margin-bottom: 24px; } }

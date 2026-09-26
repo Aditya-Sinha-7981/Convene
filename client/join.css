@@ -1,37 +1,64 @@
-/* Phone join page. Mobile-first; no images or web fonts, so it loads instantly on the meeting Wi-Fi. */
+/* Phone join page. Mobile-first; only small local SVGs, so it loads instantly on the meeting Wi-Fi. */
 body { min-height: 100vh; min-height: 100dvh; }
-.join-bar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: rgba(247, 245, 240, .94); }
-.join-bar .brand { font-size: 16px; }
-.join-bar .brand-mark { width: 24px; height: 24px; }
+.join-bar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: rgba(247, 245, 240, .94); }
+.join-bar .brand img { height: 26px; }
 
 .join-status { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 13px; }
 .join-status p { margin: 0; white-space: nowrap; }
 #status { color: var(--ink); font-weight: 650; text-transform: capitalize; }
 .status-orb { position: relative; width: 9px; height: 9px; flex: none; border-radius: 50%; background: var(--idle); }
 .join-status[data-state="connecting"] .status-orb { background: var(--surface); box-shadow: inset 0 0 0 2px var(--accent); }
-.join-status[data-state="connecting"] .status-orb::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; animation: orb-ping 1.6s ease-out infinite; }
 .join-status[data-state="connected"] { border-color: var(--accent-line); background: var(--accent-soft); }
 .join-status[data-state="connected"] .status-orb { background: var(--accent); }
 .join-status[data-state="connected"] #status { color: var(--accent-hover); }
 .join-status[data-state="problem"] { border-color: var(--danger-line); background: var(--danger-soft); }
 .join-status[data-state="problem"] .status-orb { background: var(--danger); }
 .join-status[data-state="problem"] #status { color: var(--danger); }
-@keyframes orb-ping { 0% { transform: scale(.6); opacity: .7; } 100% { transform: scale(1.5); opacity: 0; } }
 
 .join-page { display: grid; justify-items: center; padding: 20px 16px 40px; }
-.join-card { width: min(100%, 440px); padding: 26px 22px 22px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); box-shadow: var(--shadow); animation: join-enter .4s ease-out both; }
+.join-card { width: min(100%, 460px); padding: 26px 22px 22px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); box-shadow: var(--shadow); animation: join-enter .4s ease-out both; }
 .join-kicker { margin: 0 0 8px; color: var(--accent); font-size: 13px; font-weight: 650; }
 .join-card h1 { margin: 0; font-size: clamp(26px, 7.5vw, 32px); font-weight: 750; line-height: 1.15; letter-spacing: -.03em; }
 .join-intro { margin: 10px 0 20px; color: var(--muted); font-size: 15px; }
-.join-mascot { margin: 0 0 20px; padding: 12px; border-radius: 14px; background: var(--bg); }
-.join-mascot .mascot-line { font-size: 14px; }
+
+.join-guide { display: grid; gap: 6px; margin: 0 0 20px; padding: 12px 14px; border-radius: 14px; background: var(--bg); }
+.join-guide .mascot-art { width: 48px; }
+.join-guide .mascot-art .avatar { width: 48px; height: 48px; }
+#guideWalk { padding: 0 2px; }
+.join-guide .mascot.is-walking .mascot-art { display: none; }
 
 .join-form { display: grid; gap: 10px; }
-.join-form label { color: var(--ink-2); font-size: 14px; font-weight: 600; }
-.join-form input { font-size: 17px; }
+.join-form > label, .color-picker legend { color: var(--ink-2); font-size: 14px; font-weight: 600; }
+.join-form input.field { font-size: 17px; }
 .join-form .btn { width: 100%; min-height: 50px; font-size: 16px; }
+
+.color-picker { margin: 6px 0 4px; padding: 0; border: 0; min-width: 0; }
+.color-picker legend { padding: 0; margin-bottom: 8px; }
+.color-picker legend span { color: var(--muted); font-weight: 500; }
+.swatches { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.swatch { position: relative; display: grid; place-items: center; cursor: pointer; }
+.swatch .avatar { position: relative; }
+.swatch input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: inherit; }
+.swatch .avatar { width: 100%; max-width: 46px; height: auto; aspect-ratio: 1; transition: transform .15s ease, box-shadow .15s ease; }
+.swatch:hover .avatar { transform: scale(1.06); }
+.swatch input:focus-visible + .avatar { outline: 3px solid var(--accent-line); outline-offset: 2px; }
+.swatch input:checked + .avatar { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--pc); }
+.swatch:has(input:disabled) { cursor: not-allowed; }
+.swatch input:disabled + .avatar { background: var(--bg-2); color: #bdb8ae; transform: none; }
+.swatch input:disabled:not(:checked) + .avatar::after { content: ""; position: absolute; width: 60%; height: 2px; border-radius: 1px; background: #bdb8ae; transform: rotate(-45deg); }
+.color-hint { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+/* Once joined, the picker collapses to the person's own colour. */
+.color-picker.is-set { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.color-picker.is-set legend { width: 100%; }
+.color-picker.is-set .swatches { display: flex; }
+.color-picker.is-set .swatch:not(:has(input:checked)) { display: none; }
+.color-picker.is-set .swatch { cursor: default; }
+.color-picker.is-set .swatch .avatar { width: 40px; max-width: none; box-shadow: none; background: color-mix(in srgb, var(--pc) 13%, #fff); color: var(--pc); }
+.color-picker.is-set .color-hint { margin: 0; }
+
 #consent { margin: 18px 0 0; padding: 11px 13px; border-radius: 10px; background: var(--bg); color: var(--ink-2); font-size: 13px; line-height: 1.5; }
 #detail { min-height: 1.4em; margin: 12px 0 0; color: var(--muted); font-size: 14px; }
 @keyframes join-enter { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
-@media (max-width: 360px) { .join-bar .brand span, .join-bar .brand { font-size: 0; } .join-bar .brand-mark { width: 26px; height: 26px; } }
+@media (max-width: 360px) { .swatches { gap: 6px; } .join-bar .brand img { height: 22px; } }
+.color-picker.is-set legend span { display: none; }

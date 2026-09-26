@@ -8,7 +8,7 @@ from server.attribution.service import AttributionService
 from server.config import AttributionConfig
 from server.errors import MeetingEndedError, ValidationError
 from server import registry
-from server.rag.qa import QAService, SYSTEM_PROMPT
+from server.rag.qa import QAService, SYSTEM_PROMPT, clean_answer
 from server.rag.reasoning import FakeReasoningAdapter
 from server.repositories import audit_events, model_executions, qa_queries, transcript_chunks
 from tests.support.qa import QA, TopicEmbedding, indexed, seed_meeting
@@ -342,3 +342,20 @@ def test_the_generation_deadline_covers_decoding_and_waiting_for_an_earlier_answ
     assert time.monotonic() - began < .3
     holder.join()
     assert adapter.generate(messages, max_tokens=2, temperature=0.0, timeout=5).text == "xx"
+
+
+@pytest.mark.parametrize(("raw", "shown"), [
+    ("Friday, if QA signs off by Wednesday (Sam, 00:09:20). Lee owns the rollback plan [Lee, 00:10:02].",
+     "Friday, if QA signs off by Wednesday. Lee owns the rollback plan."),
+    ("Lee owns it (excerpt 2).", "Lee owns it."),
+    ("The launch is at 10:30 on Friday.", "The launch is at 10:30 on Friday."),  # a time in the answer itself stays
+    ("(Priya, 00:12:03)", "(Priya, 00:12:03)"),                             # never cleaned down to nothing
+])
+def test_inline_source_references_are_removed_from_answers(raw, shown):
+    """Sources are shown separately (ADR-26), so the answer text carries none."""
+    assert clean_answer(raw) == shown
+
+
+def test_the_prompt_asks_for_plain_answers_without_inline_sources():
+    assert "do not add times" in SYSTEM_PROMPT and "shown to the reader separately" in SYSTEM_PROMPT
+    assert SYSTEM_PROMPT.index("NO_GROUNDING") < SYSTEM_PROMPT.index("do not add times")

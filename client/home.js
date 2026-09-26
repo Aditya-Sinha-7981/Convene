@@ -64,6 +64,10 @@ if (!reduceMotion && "IntersectionObserver" in window) {
     el.classList.remove("caret");
   }
 
+  // Colours match the device list; the shared phone's two people are told apart only once someone is sure.
+  const COLOR = { Priya: "teal", Sam: "pink", Jordan: "sky", Lee: "violet" };
+  for (const el of sim.querySelectorAll(".avatar")) el.innerHTML = window.ConveneBrand.HEAD;
+
   function reset() {
     lines.replaceChildren(); question.textContent = ""; answer.replaceChildren();
     live.dataset.on = "false"; live.querySelector("span").textContent = "Waiting";
@@ -73,40 +77,51 @@ if (!reduceMotion && "IntersectionObserver" in window) {
     devices[i].classList.add("on"); devices[i].querySelector("small").textContent = label;
     live.dataset.on = "true"; live.querySelector("span").textContent = "Live";
   }
-  function addLine(who, cls = "") {
-    const li = document.createElement("li"); li.className = `sim-line ${cls}`;
-    const name = document.createElement("span"); name.className = "who"; name.textContent = who;
+  // A chat line: avatar, then a bubble with the name, the words and an optional tag. `cont` continues the
+  // previous bubble from the same speaker, as on the dashboard.
+  function addLine(who, cls = "", cont = false) {
+    const li = document.createElement("li"); li.className = `sim-line ${cls}${cont ? " cont" : ""}`;
+    const avatar = window.ConveneBrand.avatar(COLOR[who.replace("?", "")]);
+    const bubble = document.createElement("div"); bubble.className = "bubble";
+    const name = document.createElement("span"); name.className = "who pc-text"; name.textContent = who;
     const text = document.createElement("span"); text.className = "what";
-    li.append(name, text); lines.append(li); return li;
+    li.dataset.color = COLOR[who.replace("?", "")];
+    bubble.append(name, text); li.append(avatar, bubble); lines.append(li); return text;
   }
-  function tag(li, text) { const t = document.createElement("span"); t.className = "tag"; t.textContent = text; li.append(t); return t; }
+  function tag(text, label) { const t = document.createElement("span"); t.className = "tag"; t.textContent = label; text.after(t); return t; }
   function showAnswer() {
-    answer.replaceChildren(document.createTextNode("Lee said they'll own the QA sign-off, due Wednesday."), document.createElement("br"));
-    const cite = document.createElement("cite"); cite.textContent = "Lee · 10:04"; answer.append(cite);
+    const bubble = document.createElement("div"); bubble.className = "bubble";
+    bubble.append(document.createTextNode("Lee said they'll own the QA sign-off, due Wednesday."), document.createElement("br"));
+    const cite = document.createElement("cite"); cite.textContent = "Lee · 10:04"; bubble.append(cite);
+    answer.replaceChildren(window.ConveneBrand.avatar("brand"), bubble);
   }
 
   async function play(speed) {
     const t = ms => wait(ms * speed);
+    const typeIn = (el, text) => type(el, text, 22 * speed);
     reset(); await t(500);
     connect(0); await t(420); connect(1); await t(420); connect(2, "Jordan, Lee"); await t(650);
-    await type(addLine("Priya").lastChild, "Let's lock the pilot launch date today.", 22 * speed); await t(650);
-    await type(addLine("Sam").lastChild, "Friday works if QA signs off by Wednesday.", 22 * speed); await t(650);
+    await typeIn(addLine("Priya"), "Let's lock the pilot launch date today."); await t(600);
+    await typeIn(addLine("Sam"), "Friday works if QA signs off by Wednesday."); await t(350);
+    await typeIn(addLine("Sam", "", true), "The build is already in staging."); await t(650);
     const unsure = addLine("Jordan?", "review");
-    await type(unsure.lastChild, "I'll own the QA sign-off.", 22 * speed);
+    await typeIn(unsure, "I'll own the QA sign-off.");
     const badge = tag(unsure, "Needs review"); await t(1500);
-    const who = unsure.querySelector(".who");
-    who.classList.add("swap"); await t(200); who.textContent = "Lee";
-    unsure.classList.replace("review", "fixed"); badge.textContent = "Corrected"; await t(1100);
-    unsure.classList.add("settled"); await t(500);
+    const row = unsure.closest(".sim-line"), who = row.querySelector(".who");
+    who.classList.add("swap"); await t(200);
+    who.textContent = "Lee"; row.dataset.color = COLOR.Lee; row.querySelector(".avatar").dataset.color = COLOR.Lee;
+    row.classList.replace("review", "fixed"); badge.textContent = "Corrected"; await t(1100);
+    row.classList.add("settled"); await t(500);
     await type(question, "Who owns the QA sign-off?", 30 * speed); await t(700);
     showAnswer();
   }
 
   function finalState() {
     reset(); connect(0); connect(1); connect(2, "Jordan, Lee");
-    addLine("Priya").lastChild.textContent = "Let's lock the pilot launch date today.";
-    addLine("Sam").lastChild.textContent = "Friday works if QA signs off by Wednesday.";
-    const fixed = addLine("Lee"); fixed.lastChild.textContent = "I'll own the QA sign-off."; tag(fixed, "Corrected");
+    addLine("Priya").textContent = "Let's lock the pilot launch date today.";
+    addLine("Sam").textContent = "Friday works if QA signs off by Wednesday.";
+    addLine("Sam", "", true).textContent = "The build is already in staging.";
+    const fixed = addLine("Lee"); fixed.textContent = "I'll own the QA sign-off."; tag(fixed, "Corrected");
     question.textContent = "Who owns the QA sign-off?"; showAnswer();
   }
 
@@ -114,3 +129,10 @@ if (!reduceMotion && "IntersectionObserver" in window) {
   if ("IntersectionObserver" in window) new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; }).observe(sim);
   (async () => { for (;;) { await play(1); await wait(5200); } })();
 })();
+
+// -- The mascot pops in a few times while someone reads the page ---------------------------------------------------
+window.ConvenePopins?.start({
+  lines: ["No more 'wait, who said that?'", "Your phone's a mic now. Weird, right?",
+          "I promise I won't put words in your mouth.", "No cloud. No sign-up. Just the room."],
+  first: [9000, 14000], every: [45000, 70000], max: 3,
+});

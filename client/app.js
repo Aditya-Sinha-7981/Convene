@@ -89,11 +89,18 @@ function retry() {
   retryDelay = Math.min(retryDelay * 2, 10000);
 }
 
+// The optional colour picker (ADR-25): a palette key, or null to let the server pick an unused one.
+function chosenColor() {
+  const picked = document.querySelector("input[name=color]:checked");
+  return picked ? picked.value : null;
+}
+
 async function register() {
   const response = await fetch(`/api/meetings/${encodeURIComponent(meetingId)}/devices`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ device_id: deviceId, display_name: nameInput.value.trim(), is_shared: false }),
+    body: JSON.stringify({ device_id: deviceId, display_name: nameInput.value.trim(), is_shared: false,
+                           color: chosenColor() }),
   });
   let body = {};
   try { body = await response.json(); } catch { /* not JSON */ }
@@ -183,7 +190,8 @@ async function start() {
     return;
   }
   try {
-    await register();
+    const device = await register();
+    if (typeof window.conveneRegistered === "function") window.conveneRegistered(device);  // visual layer only
   } catch (error) {
     stream.getTracks().forEach(track => track.stop());
     stream = null;

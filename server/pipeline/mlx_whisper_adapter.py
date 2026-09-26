@@ -78,15 +78,25 @@ class MlxWhisperAdapter:
     def close(self) -> None:
         self._path = None
 
+    def decode_options(self) -> dict:
+        """Every segment is decoded in English mode, so only English or Latin-script text can come out (ADR-24).
+
+        With Hindi allowed, the code-mixed prompt makes Whisper write Hindi speech as romanized Hindi ("kya kar rahe
+        ho") instead of translating it; on English speech the output was identical with and without the prompt
+        (logs/stt.md). No per-segment language detection runs: it would cost a second encoder pass per segment.
+        """
+        if "hi" in self.config.languages:
+            return {"language": "en", "initial_prompt": self.config.hindi_prompt}
+        return {"language": "en"}
+
     def _transcribe(self, audio: np.ndarray) -> dict:
         import mlx_whisper
         c = self.config
-        # mlx-whisper uses None, not the string "auto", to invoke its multilingual language detector.
-        language = None if c.language == "auto" else c.language
         return mlx_whisper.transcribe(
-            audio, path_or_hf_repo=self._path, language=language, verbose=None, temperature=0.0,
-            condition_on_previous_text=False, word_timestamps=False, no_speech_threshold=c.no_speech_threshold,
-            logprob_threshold=c.logprob_threshold, compression_ratio_threshold=c.compression_ratio_threshold)
+            audio, path_or_hf_repo=self._path, **self.decode_options(), verbose=None,
+            temperature=0.0, condition_on_previous_text=False, word_timestamps=False,
+            no_speech_threshold=c.no_speech_threshold, logprob_threshold=c.logprob_threshold,
+            compression_ratio_threshold=c.compression_ratio_threshold)
 
     def transcribe_window(self, device_id: str, window_id: int, audio: np.ndarray) -> SttResult:
         if self._path is None:

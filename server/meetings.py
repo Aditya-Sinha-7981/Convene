@@ -1,5 +1,5 @@
 """Meeting and device service over the CON-03 registry: the logic behind the REST routes (docs/api.md)."""
-from . import network, registry
+from . import colors as palette, network, registry
 from .errors import ValidationError
 from .repositories import audit_events, devices, meetings, participants, summaries
 from .summary.views import summary_view
@@ -55,9 +55,18 @@ async def register_device(runtime, meeting_id: str, body: dict, user_agent: str 
     if not isinstance(device_id, str):
         raise ValidationError("device_id must be a UUID v4 string")
     registration = await runtime.db.run(lambda tx: registry.register_device(
-        tx, meeting_id, device_id, body.get("display_name"), is_shared, count, user_agent))
+        tx, meeting_id, device_id, body.get("display_name"), is_shared, count, user_agent, color=body.get("color")))
     view = device_view(registration.device, registration.participants)
     return (201 if registration.created else 200), {"device": view}
+
+
+async def colors(runtime, meeting_id: str) -> dict:
+    """The participant palette and which keys this meeting already uses, for the join page's picker (ADR-25)."""
+    def read(tx):
+        meetings.require(tx.conn, meeting_id)
+        return set(participants.colors_in_meeting(tx.conn, meeting_id))
+    used = await runtime.db.run(read)
+    return {"colors": [{"color": key, "taken": key in used} for key in palette.PALETTE]}
 
 
 async def end_meeting(runtime, meeting_id: str) -> tuple[int, dict]:
@@ -77,4 +86,4 @@ def _summary_running(runtime, meeting_id: str) -> bool:
     return runtime.summary is not None and runtime.summary.running(meeting_id) is not None
 
 
-__all__ = ["create_meeting", "get_meeting", "register_device", "end_meeting", "participant_view"]
+__all__ = ["create_meeting", "get_meeting", "register_device", "colors", "end_meeting", "participant_view"]

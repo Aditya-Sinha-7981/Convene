@@ -7,7 +7,8 @@ import pytest
 
 from server import registry
 from server.db import Database
-from server.errors import (DeviceConflictError, DeviceNotFoundError, MeetingEndedError, MeetingNotFoundError,
+from server.colors import PALETTE, choose
+from server.errors import (ColorTakenError, DeviceConflictError, DeviceNotFoundError, MeetingEndedError, MeetingNotFoundError,
                            ValidationError)
 from server.ids import new_id
 from server.repositories import audit_events, connections, devices, meetings, participants, utterances
@@ -65,8 +66,47 @@ def test_new_non_shared_device_gets_exactly_one_participant_and_does_not_start_t
     assert (person.display_name, person.enrollment_status, person.device_id) == ("Priya", "not_required", reg.device.device_id)
     assert meetings.get(db.conn, m.meeting_id).status == "created"  # registration alone does not start it
     event = audit_events.list_events(db.conn, event_type="device_registered")[0]
+    assert person.color in PALETTE
     assert event.payload == {"device_id": reg.device.device_id, "is_shared": False,
-                             "declared_speaker_count": 1, "user_agent": UA}
+                             "declared_speaker_count": 1, "user_agent": UA, "color": person.color}
+
+
+# --- participant colours (ADR-25) -----------------------------------------------------------
+
+
+def test_a_chosen_colour_is_stored_and_kept_on_rejoin(db):
+    m = make_meeting(db)
+    first = register(db, m.meeting_id, "Priya", color="teal")
+    again = register(db, m.meeting_id, "Priya", device_id=first.device.device_id, color="pink")
+    assert first.participants[0].color == again.participants[0].color == "teal"
+
+
+def test_a_colour_already_used_in_the_meeting_is_refused_but_free_in_another_meeting(db):
+    m, other = make_meeting(db), make_meeting(db)
+    register(db, m.meeting_id, "Priya", color="teal")
+    with pytest.raises(ColorTakenError):
+        register(db, m.meeting_id, "Sam", color="teal")
+    assert register(db, other.meeting_id, "Sam", color="teal").participants[0].color == "teal"
+    assert len(devices.list_for_meeting(db.conn, m.meeting_id)) == 1  # the refused phone wrote nothing
+
+
+def test_skipping_the_picker_assigns_unused_colours_until_all_are_used(db):
+    m = make_meeting(db)
+    assigned = [register(db, m.meeting_id, f"P{i}").participants[0].color for i in range(len(PALETTE))]
+    assert sorted(assigned) == sorted(PALETTE)
+    assert register(db, m.meeting_id, "Extra").participants[0].color in PALETTE  # 13th person: a repeat, not a failure
+
+
+@pytest.mark.parametrize("color", ["indigo", "#4338ca", "", 5])
+def test_colours_outside_the_palette_are_rejected(db, color):
+    m = make_meeting(db)
+    with pytest.raises(ValidationError):
+        register(db, m.meeting_id, "Priya", color=color)
+
+
+def test_choose_prefers_the_least_used_colour():
+    taken = list(PALETTE) + [k for k in PALETTE if k != "slate"]
+    assert choose(taken, None) == "slate"
 
 
 def test_registering_the_same_device_again_is_an_idempotent_replay(db):

@@ -34,6 +34,10 @@ class AmbiguousDisplayNameError(StorageError):
     """`ambiguous_display_name`."""
 
 
+class ColorTakenError(StorageError):
+    """The requested participant colour is already used in this meeting (ADR-25)."""
+
+
 class MeetingEndedError(StorageError):
     """`meeting_ended`: the operation needs a meeting that has not ended."""
 

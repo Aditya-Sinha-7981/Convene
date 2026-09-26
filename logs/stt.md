@@ -187,3 +187,29 @@ Model call about 0.55 to 0.62 s median throughout; peak RSS 2.08 GB, peak MLX GP
 **Tests.** `tests/test_segmenting.py` (23), scheduler strength suppression (2 new), config validation and defaults (5 new), console transcript lines and `log_transcripts = false` (2), `/metrics` `stt` block (1). Ten mutations of the segmenter (end-silence, cap, cut choice, tail, min-speech gate, pre-roll, gap flush, trailing counter, strength, cut index) were each caught. Full default suite: 445 passed, 6 deselected (`model`). `-m model`: 6 passed.
 
 **Known limits.** Surging noise (8 to 20 dB above the floor, for example music with strong beats or a nearby conversation) looks like speech to an energy VAD and can produce short false segments; pink noise leaked about 11 short segments per 120 s in the synthetic test. Speech through a noise-suppressing phone browser may be lower or shaped differently than the clips. Whisper still hallucinates on some of these; the blocklist only removes known stock phrases. A monologue without a 600 ms pause is cut every 8 s at the quietest point, which can still land inside a word if there is no dip. Each segment costs one full model call regardless of length, so many very short segments (people interjecting) cost more than their audio.
+
+## 2026-09-26 — English and romanized Hindi only (ADR-24)
+
+**Why.** A real-phone run with `language = "auto"` turned Hindi speech into Spanish lines ("Gracias", "¿Qué agarró? ¿Qué?
+Mira, Marta.", "foreign", "et"). The project lead wants English or Hindi only, with Hindi in Latin letters ("kya kar raha hai").
+
+**Measured** (reference laptop, `whisper-large-v3-turbo`, macOS `say` voices: Lekha hi_IN; Rishi en_IN, Samantha, Daniel;
+a Spanish voice; 16 kHz mono clips of 2 to 6 s):
+
+| Decode | Hindi clips (5) | English clips (7) | Time per clip |
+|---|---|---|---|
+| `language="hi"` | Devanagari, accurate | — | ~0.65 s |
+| `language="en"`, no prompt | translated, often wrong ("What do you think?" ×3) | correct | ~0.53 s |
+| `language="en"` + code-mixed prompt | romanized Hindi, loanwords kept ("Tum loog kya soch rahe ho? Kya yeh plan thik hai?") | identical to no prompt, all 7 | ~0.55 s |
+| detect en/hi first, then decode | same text | same text | +~480 ms detector pass |
+
+A prompt made of whole Hinglish sentences leaked its own words ("kar raha hai" for spoken "kar rahe ho"); short
+code-mixed fragments did not. A neutral instruction ("Hindi is written in English letters") did not work. The Spanish
+clip comes out as Latin-letter gibberish, never Spanish.
+
+**Chosen:** always decode in English mode with the code-mixed prompt; no detection pass (cost unchanged from before).
+
+**Tests.** `tests/test_stt_adapter.py` (decode options for `["en","hi"]` and `["en"]`), `tests/test_config.py`
+(invalid `languages`, empty prompt, old `language` key rejected). `-m model`: 6 passed.
+
+**Not run:** real Hindi and code-switched speech on phones, noisy rooms, Hindi-accented English at speed.

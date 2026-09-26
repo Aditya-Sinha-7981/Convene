@@ -158,16 +158,18 @@ def test_build_adapter_selects_by_configured_runtime_and_rejects_cloud_runtimes(
             build_adapter(replace(CONFIG, runtime=cloud))
 
 
-@pytest.mark.parametrize(("configured", "expected"), [("auto", None), ("en", "en"), ("hi", "hi")])
-def test_language_mode_passes_auto_detection_or_the_explicit_language(configured, expected, monkeypatch):
-    """``auto`` is a config sentinel; mlx-whisper itself expects None to detect the segment language."""
+@pytest.mark.parametrize(("languages", "options"), [
+    (("en", "hi"), {"language": "en", "initial_prompt": CONFIG.hindi_prompt}),
+    (("en",), {"language": "en"})])
+def test_segments_are_decoded_in_english_mode_with_the_hinglish_prompt_when_hindi_is_allowed(languages, options, monkeypatch):
+    """English-mode decoding keeps every other language out; the prompt makes Hindi come out romanized (ADR-24)."""
     calls = []
     module = types.SimpleNamespace(transcribe=lambda audio, **kwargs: calls.append(kwargs) or {"segments": []})
     monkeypatch.setitem(sys.modules, "mlx_whisper", module)
-    adapter = MlxWhisperAdapter(replace(CONFIG, language=configured))
+    adapter = MlxWhisperAdapter(replace(CONFIG, languages=languages))
     adapter._path = "/local/model"
     assert adapter._transcribe(np.zeros(10, np.float32)) == {"segments": []}
-    assert calls == [{"path_or_hf_repo": "/local/model", "language": expected, "verbose": None,
+    assert calls == [{"path_or_hf_repo": "/local/model", **options, "verbose": None,
                       "temperature": 0.0, "condition_on_previous_text": False, "word_timestamps": False,
                       "no_speech_threshold": CONFIG.no_speech_threshold,
                       "logprob_threshold": CONFIG.logprob_threshold,

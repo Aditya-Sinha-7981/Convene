@@ -10,7 +10,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import meetings as service
 from .attribution.views import utterance_view
-from .errors import (AmbiguousDisplayNameError, DatabaseBusyError, DeviceConflictError, DeviceNotFoundError,
+from .errors import (AmbiguousDisplayNameError, ColorTakenError, DatabaseBusyError, DeviceConflictError, DeviceNotFoundError,
                      MeetingEndedError, MeetingNotFoundError, ParticipantNotFoundError, StorageError,
                      SummaryInProgressError, SummaryNotFoundError, TranscriptEmptyError, UtteranceNotFoundError,
                      ValidationError)
@@ -92,6 +92,11 @@ async def register_device(meeting_id: str, request: Request):
     status, payload = await service.register_device(
         _runtime(request), _meeting_id(meeting_id), body, request.headers.get("user-agent"))
     return JSONResponse(payload, status_code=status)
+
+
+@router.get("/api/meetings/{meeting_id}/colors")
+async def meeting_colors(meeting_id: str, request: Request):
+    return await service.colors(_runtime(request), _meeting_id(meeting_id))
 
 
 @router.post("/api/meetings/{meeting_id}/end")
@@ -251,6 +256,7 @@ _STORAGE_ERRORS = [
     (SummaryInProgressError, 409, "summary_in_progress"),
     (TranscriptEmptyError, 409, "transcript_empty"),
     (AmbiguousDisplayNameError, 409, "ambiguous_display_name"),
+    (ColorTakenError, 409, "color_taken"),
     (MeetingEndedError, 409, "meeting_ended"),
     (DeviceConflictError, 409, "device_conflict"),
     (ValidationError, 400, "invalid_request"),

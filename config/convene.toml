@@ -12,13 +12,15 @@ public_host = ""
 
 # The STT model: the ONE place it is named (ADR-14). Pinned to an exact revision, resolved from the local cache
 # only; scripts/provision_models.py downloads it once while online. Chosen on the reference laptop (M4 Pro, 24 GB):
-# distil-large-v3 was neither faster nor more accurate (logs/stt.md). "auto" uses Whisper's multilingual language
-# detector for each speech segment; set a language code such as "en" only for a deliberately monolingual run.
+# distil-large-v3 was neither faster nor more accurate (logs/stt.md). Only English and Hindi are transcribed
+# (ADR-24): ["en", "hi"], or ["en"] for an English-only run. Hindi is written in Latin letters, the way Hinglish is
+# typed, by decoding in English mode steered by `hindi_prompt` (measured in logs/stt.md).
 [models.stt]
 runtime = "mlx"
 model = "mlx-community/whisper-large-v3-turbo"
 revision = "a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb"
-language = "auto"
+languages = ["en", "hi"]
+hindi_prompt = "Okay, so the meeting kal hai. Haan, main dekh lunga. Theek hai."
 
 # RAG embeddings use the same local model for transcript chunks and later questions. The revision, dimension and
 # input limit are guards against accidentally mixing vector spaces. Weights must be provisioned before a meeting.

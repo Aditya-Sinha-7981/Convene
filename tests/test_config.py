@@ -75,7 +75,7 @@ def test_stt_and_pipeline_sections_load_with_types_checked(tmp_path):
     assert (settings.stt.model, settings.stt.revision, settings.stt.no_speech_threshold) == ("org/some-model", "abc123", 1.0)
     assert settings.pipeline.hallucination_blocklist == ("thank you.",)
     assert (settings.pipeline.window_ms, settings.pipeline.vad_margin_db, settings.pipeline.workers) == (2000, 12.0, 2)
-    assert settings.pipeline.queue_max == PipelineConfig().queue_max and SttModelConfig().language == "auto"
+    assert settings.pipeline.queue_max == PipelineConfig().queue_max and SttModelConfig().languages == ("en", "hi")
 
 
 @pytest.mark.parametrize("text,message", [
@@ -89,6 +89,12 @@ def test_stt_and_pipeline_sections_load_with_types_checked(tmp_path):
     ('[pipeline]\nsegment_min_ms = 9000\nsegment_max_ms = 8000', "segment_min_ms"),
     ('[pipeline]\nsegment_end_silence_ms = 0', "segment_end_silence_ms"),
     ('[pipeline]\nsegment_max_ms = "8000"', "segment_max_ms must be int"),
+    ('[models.stt]\nlanguage = "auto"', "unknown keys"),
+    ('[models.stt]\nlanguages = []', "only English and romanized Hindi"),
+    ('[models.stt]\nlanguages = ["hi"]', "only English and romanized Hindi"),
+    ('[models.stt]\nlanguages = ["en", "es"]', "only English and romanized Hindi"),
+    ('[models.stt]\nlanguages = ["en", "en"]', "only English and romanized Hindi"),
+    ('[models.stt]\nhindi_prompt = " "', "hindi_prompt must be set"),
 ])
 def test_bad_stt_or_pipeline_values_fail_loudly(tmp_path, text, message):
     config = tmp_path / "bad.toml"

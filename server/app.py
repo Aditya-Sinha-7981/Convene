@@ -51,9 +51,22 @@ def create_app(settings: Settings | None = None, *, sink: AudioSink | None = Non
     app = FastAPI(title="Convene", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.runtime = runtime
     app.include_router(router)
-    app.mount("/static", StaticFiles(directory=CLIENT_DIR), name="static")
+    app.mount("/static", RevalidatedStaticFiles(directory=CLIENT_DIR), name="static")
     install_error_handlers(app)
     return app
+
+
+class RevalidatedStaticFiles(StaticFiles):
+    """Client files, which browsers must revalidate on every load (``Cache-Control: no-cache``).
+
+    Without the header a phone may reuse a stale ``app.js`` for hours by heuristic caching while the page itself is
+    fresh, so a new page can run old script (seen: a chosen participant colour was never sent). Revalidation is a
+    cheap conditional request on the LAN; unchanged files still come back as ``304``.
+    """
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
 
 def uvicorn_options(config: TransportConfig) -> dict:

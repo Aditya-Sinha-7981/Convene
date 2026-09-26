@@ -80,7 +80,7 @@ function makePage({ meetingId = MEETING, storage = new Map(), registerReply, onl
 
   const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
   const page = {
-    els, sockets, peers, fetches, mediaRequests, storage, track, sandbox, flush, windowHandlers, documentHandlers,
+    els, sockets, peers, fetches, mediaRequests, storage, track, sandbox, window: sandbox.window, flush, windowHandlers, documentHandlers,
     pendingTimers: () => timers.map(t => t.ms),
     async advance() {  // run the earliest pending timer
       timers.sort((a, b) => a.at - b.at);
@@ -126,6 +126,16 @@ const scenarios = {
     assert.equal(page.els["#name"].focused, true);
   },
 
+  async "a colour picked on the page is sent with the registration and the device is handed to the page"() {
+    const page = makePage();
+    page.els["input[name=color]:checked"] = { value: "teal" };
+    const seen = [];
+    page.window.conveneRegistered = device => seen.push(device);
+    await page.join("Priya");
+    assert.equal(page.fetches[0].init.body.color, "teal");
+    assert.equal(seen.length, 1);
+  },
+
   async "happy path: microphone, registration, join, offer, answer, connected"() {
     const page = makePage();
     const ws = await page.join("  Priya  ");
@@ -135,7 +145,7 @@ const scenarios = {
     assert.equal(reg.init.method, "POST");
     assert.equal(reg.init.headers["Content-Type"], "application/json");
     const deviceId = page.storage.get(`convene:${MEETING}:device_id`);
-    assert.deepEqual(plain(reg.init.body), { device_id: deviceId, display_name: "Priya", is_shared: false });
+    assert.deepEqual(plain(reg.init.body), { device_id: deviceId, display_name: "Priya", is_shared: false, color: null });
     assert.equal(ws.url, `wss://192.168.50.10:8443/ws/signal/${MEETING}`);
     assert.deepEqual(plain(ws.sent[0]), { type: "join", device_id: deviceId });
     assert.equal(ws.sent[1].type, "offer");
