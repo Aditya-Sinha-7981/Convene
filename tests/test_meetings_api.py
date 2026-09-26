@@ -242,6 +242,24 @@ async def test_a_shared_device_registers_as_enrolling_without_participants(http,
     assert (body["device"]["status"], body["device"]["participants"]) == ("enrolling", [])
 
 
+async def test_colour_picker_lists_the_palette_and_refuses_a_taken_colour(http, server):
+    meeting_id = await make_meeting(http, server)
+    status, body = await register(http, server, meeting_id, color="sky")
+    assert status == 201 and body["device"]["participants"][0]["color"] == "sky"
+    async with http.get(f"{server.base_url}/api/meetings/{meeting_id}/colors") as r:
+        assert r.status == 200
+        palette = (await r.json())["colors"]
+    assert len(palette) == 12 and {"color": "sky", "taken": True} in palette
+    assert sum(entry["taken"] for entry in palette) == 1
+    status, body = await register(http, server, meeting_id, color="sky")
+    assert status == 409
+    assert_error(body, "color_taken")
+    status, body = await register(http, server, meeting_id, color="indigo")
+    assert status == 400
+    async with http.get(f"{server.base_url}/api/meetings/{UUID}/colors") as r:
+        assert r.status == 404
+
+
 # --- POST /api/meetings/{id}/end ------------------------------------------------------------
 
 
@@ -291,6 +309,27 @@ async def test_pages_are_served_locally(http, server):
     async with http.get(f"{base}/join/{meeting_id}") as response:
         text = await response.text()
     assert "audio is being transcribed" in text and 'id="name"' in text  # consent line and name input
+
+
+async def test_pages_link_versioned_assets_so_a_changed_file_gets_a_new_url(http, server):
+    meeting_id = await make_meeting(http, server)
+    async with http.get(f"{server.base_url}/join/{meeting_id}") as response:
+        html = await response.text()
+    assert re.search(r'src="/static/app\.js\?v=\d+"', html) and re.search(r'href="/static/theme\.css\?v=\d+"', html)
+    assert 'src="/static/app.js"' not in html
+    version = re.search(r'/static/app\.js\?v=(\d+)', html).group(1)
+    async with http.get(f"{server.base_url}/static/app.js?v={version}") as response:
+        assert response.status == 200
+
+
+async def test_client_files_are_revalidated_so_a_phone_never_runs_stale_script(http, server):
+    for path in ("/static/app.js", "/static/join_ui.js", "/static/brand/logo.svg"):
+        async with http.get(server.base_url + path) as response:
+            assert response.status == 200, path
+            assert response.headers["Cache-Control"] == "no-cache", path
+            etag = response.headers["ETag"]
+        async with http.get(server.base_url + path, headers={"If-None-Match": etag}) as response:
+            assert response.status == 304, path  # revalidation stays cheap
 
 
 async def test_unknown_meeting_pages_are_a_plain_404_page(http, server):

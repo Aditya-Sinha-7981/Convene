@@ -2,14 +2,35 @@
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="dark">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#f7f5f0">
 <title>Convene — Join meeting</title>
+<link rel="icon" href="/static/brand/logo-mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/theme.css">
 <link rel="stylesheet" href="/static/join.css"></head>
 <body>
-<main class="join-page"><div class="join-ambient" aria-hidden="true"></div><section class="join-card">
-<header><p class="join-kicker">Local meeting intelligence</p><h1>CONVENE</h1><p class="join-intro">A room where every voice keeps its place.</p></header>
-<div class="join-form"><label for="name">Your name</label><input id="name" maxlength="80" autocomplete="name" placeholder="e.g. Priya"><button id="start">Join and start microphone</button><button id="stop" disabled>Stop microphone</button><button id="retry" hidden>Try again</button></div>
+<header class="join-bar">
+  <span class="brand"><img src="/static/brand/logo.svg" alt="Convene"></span>
+  <div class="join-status" data-state="idle"><span class="status-orb" aria-hidden="true"></span><p>Connection: <span id="status">idle</span></p></div>
+</header>
+<main class="join-page"><section class="join-card">
+<header><p class="join-kicker">You're joining a meeting</p><h1>Your phone is your microphone</h1><p class="join-intro">Convene transcribes what you say on the laptop in this room. Nothing goes to the internet.</p></header>
+<div class="join-guide" aria-live="polite">
+  <figure class="mascot" id="guide"><div class="mascot-art"><img id="guideArt" src="/static/brand/mascot.svg" alt=""></div><figcaption class="mascot-line" id="guideLine">Hi! Add your name and I'll start listening.</figcaption></figure>
+  <div id="guideWalk" hidden></div>
+</div>
+<section class="live-view" id="liveView" hidden>
+  <div class="orb"><canvas id="orbCanvas" aria-hidden="true"></canvas><span class="orb-avatar" id="orbAvatar"></span></div>
+  <p class="orb-state" id="orbState" role="status">Listening…</p>
+  <p class="orb-who" id="orbWho"></p>
+</section>
+<div class="join-form"><label for="name">Your name</label><input id="name" class="field" maxlength="80" autocomplete="name" placeholder="e.g. Priya">
+<fieldset class="color-picker" id="colorPicker"><legend>Your colour <span>(optional)</span></legend><div class="swatches" id="swatches"></div><p class="color-hint" id="colorHint">Skip it and we'll pick one no one else has.</p></fieldset>
+<button id="start" class="btn btn-primary">Join and start microphone</button><button id="stop" class="btn btn-secondary" disabled>Stop microphone</button><button id="retry" class="btn btn-secondary" hidden>Try again</button></div>
 <p id="consent">This session's audio is being transcribed. Keep this page open while you speak.</p>
-<div class="join-status"><span class="status-orb" aria-hidden="true"></span><p>Connection: <span id="status">idle</span></p></div><p id="detail" role="status"></p>
+<p id="detail" role="status"></p>
 </section></main>
+<script src="/static/brand.js"></script>
+<script src="/static/mic_orb.js"></script>
+<script src="/static/join_ui.js"></script>
 <script src="/static/app.js"></script></body></html>

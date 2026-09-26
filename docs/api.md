@@ -55,6 +55,7 @@ Single FastAPI process (ADR-01). REST for request/response operations, WebSocket
 | `meeting_not_ended` | 409 | history Q&A over a meeting that is still running (provisional) |
 | `device_conflict` | 409 | the `device_id` is registered in another meeting, or registered here with a different `is_shared` |
 | `ambiguous_display_name` | 409 | a correction by `display_name` matches more than one participant |
+| `color_taken` | 409 | the requested participant colour is already used in this meeting (ADR-25) |
 | `summary_in_progress` | 409 | a summary attempt is already running |
 | `summary_not_ready` | 409 | export needs a `ready` summary and none exists |
 | `transcript_empty` | 409 | nothing to summarize |
@@ -94,6 +95,7 @@ API views may add computed fields to a stored entity. They are computed on the s
 | GET | `/api/meetings` | provisional (CON-14) |
 | GET | `/api/meetings/{meeting_id}` | MVP |
 | POST | `/api/meetings/{meeting_id}/devices` | MVP |
+| GET | `/api/meetings/{meeting_id}/colors` | MVP (ADR-25) |
 | POST | `/api/meetings/{meeting_id}/devices/{device_id}/enroll` | provisional (CON-13) |
 | POST | `/api/meetings/{meeting_id}/end` | MVP |
 | GET | `/api/meetings/{meeting_id}/transcript` | MVP |
@@ -233,7 +235,8 @@ Meeting detail and the dashboard's snapshot of devices and live health.
           "meeting_id": "0d4f6a52-7c1b-4e7a-b0a3-51e1f4c2a9d8",
           "device_id": "7f3a9c52-1e84-4d6b-a0b7-3c5d9e2f4a18",
           "display_name": "Priya",
-          "enrollment_status": "not_required"
+          "enrollment_status": "not_required",
+          "color": "sky"
         }
       ],
       "gauges": {
@@ -275,13 +278,16 @@ Register a device at join. **REST registers; the signaling WebSocket only attach
   "device_id": "7f3a9c52-1e84-4d6b-a0b7-3c5d9e2f4a18",
   "display_name": "Priya",
   "is_shared": false,
-  "declared_speaker_count": 1
+  "declared_speaker_count": 1,
+  "color": "teal"
 }
 ```
 
+`color` is optional: one of the 12 palette keys `lime`, `green`, `teal`, `cyan`, `sky`, `azure`, `violet`, `plum`, `magenta`, `pink`, `slate`, `charcoal` (ADR-25), only for a non-shared device. Omitted or null, the server assigns a random colour not yet used in the meeting (once all 12 are used, one of the least used). The Convene brand colour is never a participant colour.
+
 `device_id` is a UUID the phone generated and persisted (`transport.md`). For a non-shared device (`is_shared` false or omitted) `display_name` is required and `declared_speaker_count` must be 1 or omitted. For a shared device, `declared_speaker_count` is 2 or 3 and `display_name` is omitted; its participants are created one by one at enrollment (provisional, CON-13).
 
-**Response** — `201` for a new registration, `200` for an idempotent replay of the same `device_id` in the same meeting, which returns the stored rows unchanged (a different `display_name` in the replay is ignored, and the response shows the name in force). A non-shared device gets exactly one `Participant` with `enrollment_status = not_required`; the server issues its `participant_id`.
+**Response** — `201` for a new registration, `200` for an idempotent replay of the same `device_id` in the same meeting, which returns the stored rows unchanged (a different `display_name` or `color` in the replay is ignored, and the response shows the values in force, so a rejoining phone keeps its colour). A non-shared device gets exactly one `Participant` with `enrollment_status = not_required`; the server issues its `participant_id`.
 
 ```json
 {
@@ -300,7 +306,8 @@ Register a device at join. **REST registers; the signaling WebSocket only attach
         "meeting_id": "0d4f6a52-7c1b-4e7a-b0a3-51e1f4c2a9d8",
         "device_id": "7f3a9c52-1e84-4d6b-a0b7-3c5d9e2f4a18",
         "display_name": "Priya",
-        "enrollment_status": "not_required"
+        "enrollment_status": "not_required",
+        "color": "teal"
       }
     ]
   }
@@ -315,7 +322,8 @@ Register a device at join. **REST registers; the signaling WebSocket only attach
 |---|---|---|
 | 201 | — | new device registered |
 | 200 | — | replay of an existing registration |
-| 400 | `invalid_request` | missing or invalid `device_id`, `display_name` or speaker count |
+| 400 | `invalid_request` | missing or invalid `device_id`, `display_name`, speaker count or `color` |
+| 409 | `color_taken` | the requested `color` is already used by a participant in this meeting |
 | 404 | `meeting_not_found` | unknown meeting |
 | 409 | `meeting_ended` | the meeting has ended |
 | 409 | `device_conflict` | `device_id` is registered in a different meeting, or in this one with a different `is_shared` |
@@ -323,6 +331,33 @@ Register a device at join. **REST registers; the signaling WebSocket only attach
 | 415 | `unsupported_media_type` | not JSON |
 
 **Side effects** — on a new registration: inserts `Device` and, for a non-shared device, its `Participant` in one transaction; audit `device_registered`; push `device_status`. A replay writes nothing and pushes nothing. Registration does not start the meeting.
+
+### GET /api/meetings/{meeting_id}/colors
+
+The participant palette for the join page's colour picker (ADR-25), with the keys this meeting already uses.
+
+**Request** — no body or parameters.
+
+**Response** — `200`. All 12 keys, in palette order (shortened below). `taken` is a snapshot: two phones can still
+pick the same colour at once, and the second registration then gets `409 color_taken`.
+
+```json
+{
+  "colors": [
+    { "color": "lime", "taken": false },
+    { "color": "teal", "taken": true }
+  ]
+}
+```
+
+**Status codes**
+
+| Status | Code | When |
+|---|---|---|
+| 200 | — | palette returned |
+| 404 | `meeting_not_found` | unknown meeting |
+
+**Side effects** — none; read-only, no audit event.
 
 ### POST /api/meetings/{meeting_id}/end
 
@@ -465,7 +500,8 @@ Reassign an utterance to a different or newly named participant (ADR-04, `speake
     "meeting_id": "0d4f6a52-7c1b-4e7a-b0a3-51e1f4c2a9d8",
     "device_id": "c1a44d90-8f27-4b13-9d6e-52f0a7b3c8e4",
     "display_name": "Sam",
-    "enrollment_status": "not_required"
+    "enrollment_status": "not_required",
+    "color": "teal"
   },
   "created_participant": true,
   "changed": true
@@ -771,7 +807,8 @@ Errors use the JSON error shape:
     "meeting_id": "0d4f6a52-7c1b-4e7a-b0a3-51e1f4c2a9d8",
     "device_id": "c1a44d90-8f27-4b13-9d6e-52f0a7b3c8e4",
     "display_name": "Priya",
-    "enrollment_status": "enrolled"
+    "enrollment_status": "enrolled",
+    "color": "pink"
   },
   "enrollment": {
     "enrollment_id": "8a5c1e7d-3f92-4b06-a4d8-0e6b9c2f7a13",
@@ -869,7 +906,8 @@ Used by the live dashboard and the post-meeting view. **Read-only:** the server 
         "meeting_id": "0d4f6a52-7c1b-4e7a-b0a3-51e1f4c2a9d8",
         "device_id": "7f3a9c52-1e84-4d6b-a0b7-3c5d9e2f4a18",
         "display_name": "Priya",
-        "enrollment_status": "not_required"
+        "enrollment_status": "not_required",
+        "color": "teal"
       }
     ]
   }

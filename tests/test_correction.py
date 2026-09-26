@@ -4,6 +4,7 @@ from aiohttp import ClientSession
 from server import registry
 from server.attribution.service import AttributionService
 from server.attribution.staleness import artifact_is_stale, transcript_high_water
+from server.colors import PALETTE
 from server.config import AttributionConfig
 from server.errors import ParticipantNotFoundError, ValidationError
 from server.ids import new_id
@@ -58,6 +59,7 @@ async def test_name_can_create_participant_and_invalid_target_rolls_back(db):
     assert utterances.get(db.conn, item.utterance_id) == before
     named = await service.correct(meeting.meeting_id, item.utterance_id, {"display_name": " Sam "})
     assert named.created_participant and named.participant.display_name == "Sam"
+    assert named.participant.color in PALETTE  # a speaker named during correction gets a colour too (ADR-25)
     assert named.participant.device_id == item.device_id
     with pytest.raises(ValidationError):
         await service.correct(meeting.meeting_id, item.utterance_id, {})

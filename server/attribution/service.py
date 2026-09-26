@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass
 from typing import Callable
 
+from .. import colors
 from ..audit import emit
 from ..config import AttributionConfig
 from ..errors import (AmbiguousDisplayNameError, ParticipantNotFoundError, UtteranceNotFoundError,
@@ -159,7 +160,8 @@ class AttributionService:
             return matches[0], False
         participant = participants.create(tx.conn, Participant(
             participant_id=new_id(), meeting_id=utterance.meeting_id, device_id=utterance.device_id,
-            display_name=name, enrollment_status="not_required"))
+            display_name=name, enrollment_status="not_required",
+            color=colors.choose(participants.colors_in_meeting(tx.conn, utterance.meeting_id), None)))
         return participant, True
 
     async def _run_hook(self, hook, args: tuple, meeting_id: str, name: str) -> None:

@@ -18,9 +18,11 @@ class SttModelConfig:
     runtime: str = "mlx"                     # docs/data-model.md: mlx | groq | gemini
     model: str = ""                          # repository id of the model
     revision: str = ""                       # exact pinned revision of the weights
-    # ``auto`` maps to ``None`` for mlx-whisper, which selects a language for each speech segment.
-    # Any explicit Whisper language code (for example ``en``) remains available for a known monolingual run.
-    language: str = "auto"
+    # The languages a meeting may be spoken in (ADR-24): "en", optionally with "hi". Nothing else can appear in the
+    # transcript. Hindi is written in Latin letters ("kya kar rahe ho"), the way people type Hinglish: segments are
+    # decoded in English mode steered by this code-mixed prompt. Without it Whisper translates Hindi into English.
+    languages: tuple[str, ...] = ("en", "hi")
+    hindi_prompt: str = "Okay, so the meeting kal hai. Haan, main dekh lunga. Theek hai."
     no_speech_threshold: float = 0.6         # a window Whisper is this sure has no speech is returned empty
     logprob_threshold: float = -1.0          # below this average log-probability the window is treated as unreliable
     compression_ratio_threshold: float = 2.4  # above this the text is repetitive (a decoding failure)
@@ -140,6 +142,14 @@ def _check_attribution(config: "AttributionConfig") -> None:
         raise ValueError("confidence values must be between 0 and 1")
     if config.device_confidence >= 1.0:
         raise ValueError("device_confidence must be below 1.0, which is reserved for manual correction")
+
+
+def _check_stt(config: "SttModelConfig") -> None:
+    if "en" not in config.languages or not set(config.languages) <= {"en", "hi"} \
+            or len(set(config.languages)) != len(config.languages):
+        raise ValueError('languages must be ["en"] or ["en", "hi"]: only English and romanized Hindi are supported')
+    if "hi" in config.languages and not config.hindi_prompt.strip():
+        raise ValueError("hindi_prompt must be set when languages includes hi")
 
 
 def _check_embedding(config: "EmbeddingModelConfig") -> None:
@@ -269,6 +279,8 @@ def _section(cls, table, path: Path, name: str):
             _check_pipeline(built)
         elif cls is AttributionConfig:
             _check_attribution(built)
+        elif cls is SttModelConfig:
+            _check_stt(built)
         elif cls is EmbeddingModelConfig:
             _check_embedding(built)
         elif cls is RagConfig:

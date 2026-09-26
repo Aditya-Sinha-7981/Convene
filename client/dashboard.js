@@ -1,5 +1,7 @@
 import { createState, orderedAnswers, orderedUtterances, reduce } from "/static/dashboard_state.js";
 
+const Brand = window.ConveneBrand;  // client/brand.js: avatars in participant colours
+
 const meetingId = decodeURIComponent(location.pathname.split("/").pop());
 const byId = id => document.querySelector(id);
 const ui = {
@@ -19,11 +21,11 @@ let synced = false;
 let reconnectTimer = null;
 let delay = 500;
 let activeUtterance = null;
-let firstUtterance = true;
 let unread = 0;
 const rows = new Map();
 let pendingQuestion = null; // { question, started } while one question is in flight: no double submit
 let pendingTimer = null;
+const openSources = new Set();  // query_ids whose Sources list the user opened
 
 // Q&A: the server decides the outcome. These are only the words for each server-provided status and reason.
 const NO_GROUNDING_DETAIL = {
@@ -51,8 +53,11 @@ function renderDevices(pulseId = null) {
     const stale = device.status === "disconnected" || (gauge.last_audio_age_ms != null && age(gauge) !== "—" && Number.parseInt(age(gauge), 10) > 5);
     const card = document.createElement("article");
     card.className = `device-card ${device.status === "connected" ? "is-connected" : ""} ${stale ? "is-stale" : ""} ${pulseId === device.device_id ? "connected-pulse" : ""}`;
-    card.innerHTML = `<p class="device-name"></p><p class="device-meta"></p><div class="device-status"><span class="status-dot ${device.status}"></span><span></span></div><div class="device-metrics"><span class="metric">Last audio<b></b></span><span class="metric">STT queue<b></b></span><span class="metric">Reconnects<b></b></span><span class="metric">Dropped<b></b></span></div>`;
+    card.innerHTML = `<div class="device-head"><span class="device-avatars"></span><div><p class="device-name"></p><p class="device-meta"></p></div></div><div class="device-status"><span class="status-dot ${device.status}"></span><span></span></div><div class="device-metrics"><span class="metric">Last audio<b></b></span><span class="metric">STT queue<b></b></span><span class="metric">Reconnects<b></b></span><span class="metric">Dropped<b></b></span></div>`;
     card.querySelector(".device-name").textContent = name;
+    card.querySelector(".device-avatars").append(...(device.participants.length
+      ? device.participants.map(person => Brand.avatar(person.color, person.participant_id))
+      : [Brand.avatar(null, null)]));
     card.querySelector(".device-meta").textContent = device.is_shared ? "Shared device" : "Dedicated microphone";
     card.querySelector(".device-status span:last-child").textContent = device.status;
     const values = card.querySelectorAll(".metric b");
@@ -63,38 +68,69 @@ function renderDevices(pulseId = null) {
   ui.devices.replaceChildren(fragment);
 }
 
-function createRow(utterance, animate) {
+function createRow(utterance) {
   const row = document.createElement("li"); row.dataset.utteranceId = utterance.utterance_id;
-  if (animate) row.classList.add(firstUtterance ? "utterance-first" : "utterance-enter");
-  firstUtterance = false; rows.set(utterance.utterance_id, row); updateRow(row, utterance); return row;
+  rows.set(utterance.utterance_id, row); updateRow(row, utterance); return row;
+}
+// A participant's colour key (ADR-25), from the device roster the server keeps current.
+function participantColor(participantId) {
+  if (!participantId) return null;
+  for (const device of Object.values(state.devices)) {
+    const person = (device.participants || []).find(p => p.participant_id === participantId);
+    if (person) return person.color;
+  }
+  return null;
 }
 function updateRow(row, utterance) {
-  const entering = row.classList.contains("utterance-enter") ? " utterance-enter" : row.classList.contains("utterance-first") ? " utterance-first" : "";
-  row.className = `utterance ${utterance.low_confidence ? "low-confidence" : ""}${entering}`;
+  const grouping = ["is-cont", "is-last"].filter(name => row.classList.contains(name)).map(name => ` ${name}`).join("");
+  row.className = `utterance ${utterance.low_confidence ? "low-confidence" : ""}${grouping}`;
   row.dataset.utteranceId = utterance.utterance_id;
+  row.dataset.color = Brand.colorFor(participantColor(utterance.participant_id), utterance.participant_id);
   row.replaceChildren();
   const time = document.createElement("time"); time.className = "utterance-time"; time.textContent = timestamp(utterance.t_start);
-  const speaker = document.createElement("strong"); speaker.className = "speaker-label"; speaker.textContent = utterance.speaker_label;
+  const speaker = document.createElement("strong"); speaker.className = "speaker-label pc-text"; speaker.textContent = utterance.speaker_label;
   const text = document.createElement("span"); text.className = "utterance-text"; text.textContent = utterance.text;
   const badges = document.createElement("span"); badges.className = "utterance-badges";
   if (utterance.low_confidence) { const badge = document.createElement("span"); badge.className = "badge warning"; badge.textContent = "Needs review"; badge.title = "The server marked this attribution as low confidence."; badges.append(badge); }
   if (utterance.corrected) { const badge = document.createElement("span"); badge.className = "badge"; badge.textContent = "Corrected"; badges.append(badge); }
   const review = document.createElement("button"); review.className = "review-button"; review.type = "button"; review.textContent = "Review / correct"; review.onclick = () => openCorrection(utterance.utterance_id);
   row.onclick = event => { if (event.target !== review) openCorrection(utterance.utterance_id); };
-  row.append(time, speaker, text, badges, review);
+  const avatar = Brand.avatar(participantColor(utterance.participant_id), utterance.participant_id);
+  avatar.classList.add("utterance-avatar");
+  const bubble = document.createElement("div"); bubble.className = "utterance-bubble";
+  const head = document.createElement("div"); head.className = "utterance-head"; head.append(speaker);
+  const body = document.createElement("div"); body.className = "utterance-body"; body.append(text, badges, review, time);
+  bubble.append(head, body);
+  row.append(avatar, bubble);
 }
-function renderTranscript(changedId = null, animate = false) {
+
+// Chat-style grouping, display only: consecutive lines from the same speaker read as one bubble, like a group
+// chat. Each line stays its own row (correction, citations and the audit trail are per utterance). An uncertain
+// line never merges into a confident run, and a long silence starts a new bubble.
+const GROUP_GAP_MS = 120000;
+function groupKey(line) { return `${line.participant_id || line.speaker_label}|${line.low_confidence ? 1 : 0}`; }
+function markGroups(lines) {
+  lines.forEach((line, i) => {
+    const prev = lines[i - 1], next = lines[i + 1];
+    const joins = (a, b) => a && b && groupKey(a) === groupKey(b) && Date.parse(b.t_start) - Date.parse(a.t_start) < GROUP_GAP_MS;
+    const row = rows.get(line.utterance_id);
+    row.classList.toggle("is-cont", Boolean(joins(prev, line)));
+    row.classList.toggle("is-last", !joins(line, next));
+  });
+}
+function renderTranscript(changedId = null) {
   const lines = orderedUtterances(state); ui.empty.hidden = lines.length > 0;
   const shouldFollow = atBottom(); const wanted = new Set(lines.map(line => line.utterance_id));
   for (const [id, row] of rows) if (!wanted.has(id)) { row.remove(); rows.delete(id); }
   let cursor = ui.transcript.firstChild;
   for (const line of lines) {
     let row = rows.get(line.utterance_id);
-    if (!row) row = createRow(line, animate && line.utterance_id === changedId);
+    if (!row) row = createRow(line);
     else if (line.utterance_id === changedId) updateRow(row, line);
     if (row !== cursor) ui.transcript.insertBefore(row, cursor);
     cursor = row.nextSibling;
   }
+  markGroups(lines);
   if (shouldFollow) { ui.scroll.scrollTop = ui.scroll.scrollHeight; unread = 0; ui.newLines.hidden = true; }
   else if (changedId) { unread++; ui.newLines.textContent = `${unread} new line${unread === 1 ? "" : "s"} ↓`; ui.newLines.hidden = false; }
 }
@@ -103,7 +139,7 @@ function render(event = null) {
   ui.title.textContent = meeting?.title || "Meeting"; ui.status.textContent = meeting?.status || "—";
   ui.status.className = `meeting-status ${meeting?.status || ""}`; ui.end.disabled = meeting?.status === "ended";
   if (event?.type === "device_status") renderDevices(event.device.device_id); else renderDevices();
-  if (event?.type === "utterance" || event?.type === "utterance_updated") renderTranscript(event.utterance.utterance_id, true); else renderTranscript();
+  if (event?.type === "utterance" || event?.type === "utterance_updated") renderTranscript(event.utterance.utterance_id); else renderTranscript();
   if (!event || event.type === "qa_answer" || event.type === "meeting_status") renderAnswers();
 }
 
@@ -126,6 +162,11 @@ function answerCard(item) {
   const body = document.createElement("p"); body.className = "qa-body";
   if (query.status === "answered") {
     body.textContent = query.answer; card.append(body);
+    // The answer reads on its own; its sources sit behind one toggle so the panel stays calm (ADR-26).
+    const sources = document.createElement("details"); sources.className = "qa-sources";
+    sources.open = openSources.has(query.query_id);  // the panel is redrawn every second while a question is pending
+    sources.ontoggle = () => { if (sources.open) openSources.add(query.query_id); else openSources.delete(query.query_id); };
+    const toggle = document.createElement("summary"); toggle.textContent = `Sources (${citations.length})`;
     const list = document.createElement("ul"); list.className = "qa-citations"; list.setAttribute("aria-label", "Sources from the transcript");
     for (const citation of citations) {
       const entry = document.createElement("li"); const button = document.createElement("button"); button.type = "button"; button.className = "qa-citation";
@@ -134,7 +175,8 @@ function answerCard(item) {
       button.append(who, excerpt); button.title = "Show these lines in the transcript"; button.onclick = () => highlightLines(citation.utterance_ids || []);
       entry.append(button); list.append(entry);
     }
-    card.append(list);
+    sources.append(toggle, list);
+    if (citations.length) card.append(sources);
   } else if (query.status === "no_grounding") {
     body.textContent = "Not discussed in this meeting so far."; card.append(body);
     const detail = document.createElement("small"); detail.className = "qa-detail"; detail.textContent = NO_GROUNDING_DETAIL[reason] || NO_GROUNDING_DETAIL.no_relevant_evidence; card.append(detail);
@@ -152,12 +194,12 @@ function renderAnswers() {
   const fragment = document.createDocumentFragment();
   if (pendingQuestion) {
     const card = document.createElement("li"); card.className = "qa-card pending";
-    const head = document.createElement("div"); head.className = "qa-card-head";
-    const chip = document.createElement("span"); chip.className = "qa-status"; chip.textContent = "Searching the transcript";
-    const elapsed = document.createElement("span"); elapsed.className = "qa-time"; elapsed.textContent = `${Math.floor((Date.now() - pendingQuestion.started) / 1000)}s`;
-    head.append(chip, elapsed);
     const question = document.createElement("p"); question.className = "qa-question"; question.textContent = pendingQuestion.question;
-    card.append(head, question); fragment.append(card);
+    const thinking = document.createElement("div"); thinking.className = "qa-thinking";
+    const line = document.createElement("p"); line.className = "mascot-line"; line.textContent = "Reading the conversation…";
+    const elapsed = document.createElement("span"); elapsed.className = "qa-time"; elapsed.textContent = `${Math.floor((Date.now() - pendingQuestion.started) / 1000)}s`;
+    thinking.append(Brand.avatar("brand", null, "Convene"), line, elapsed);
+    card.append(question, thinking); fragment.append(card);
   }
   for (const item of orderedAnswers(state)) fragment.append(answerCard(item));
   ui.qaAnswers.replaceChildren(fragment);
@@ -185,7 +227,8 @@ function openCorrection(id) {
   for (const participant of allParticipants()) {
     const label = document.createElement("label"); label.className = "participant-choice";
     const radio = document.createElement("input"); radio.type = "radio"; radio.name = "participant"; radio.value = participant.participant_id; radio.checked = participant.participant_id === utterance.participant_id;
-    const text = document.createElement("span"); text.textContent = participant.display_name; label.append(radio, text); ui.choices.append(label);
+    const text = document.createElement("span"); text.textContent = participant.display_name;
+    label.append(radio, Brand.avatar(participant.color, participant.participant_id), text); ui.choices.append(label);
   }
   ui.dialog.showModal();
 }
@@ -232,5 +275,11 @@ ui.qaQuestion.addEventListener("keydown", event => { if (event.key === "Enter" &
 byId("#summaryLink").href = `/meetings/${encodeURIComponent(meetingId)}`;
 ui.end.onclick = async () => { if (!window.confirm("End this meeting? Phones will be disconnected.")) return; ui.end.disabled = true; try { const response = await fetch(`/api/meetings/${encodeURIComponent(meetingId)}/end`, { method: "POST" }); const body = await json(response); if (!response.ok) throw new Error(body.error?.message || "Could not end meeting."); dispatch({ type: "local_meeting", meeting: body.meeting }); render(); renderAnswers(); location.href = `/meetings/${encodeURIComponent(meetingId)}`; } catch (error) { setError(error.message); ui.end.disabled = false; } };
 setInterval(() => renderDevices(), 1000);
-if (matchMedia("(hover: hover) and (pointer: fine)").matches && !matchMedia("(prefers-reduced-motion: reduce)").matches) { const glow = document.querySelector(".cursor-glow"); let targetX = innerWidth / 2, targetY = innerHeight / 2, x = targetX, y = targetY; addEventListener("pointermove", event => { targetX = event.clientX; targetY = event.clientY; }); const moveGlow = () => { x += (targetX - x) * .08; y += (targetY - y) * .08; glow.style.left = `${x}px`; glow.style.top = `${y}px`; requestAnimationFrame(moveGlow); }; moveGlow(); }
+// The mascot's occasional aside, only when nothing needs attention: never mid-question, mid-correction or offline.
+window.ConvenePopins?.start({
+  lines: ["No more 'wait, who said that?'", "I promise I won't put words in your mouth.",
+          "Not sure who said it? I flag it. I don't guess.", "Everything stays in this room. I don't gossip.",
+          "Ask me anything that was said. I was listening."],
+  canShow: () => synced && !pendingQuestion && !ui.dialog.open && state.meeting?.status === "live",
+});
 connect();

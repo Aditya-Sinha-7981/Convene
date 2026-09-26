@@ -52,9 +52,8 @@ Convene is successful if, live with only weak internet needed for the trusted-ho
 - A production-grade polished frontend — functional and legible beats visually elaborate.
 - Calendar, Slack, email, or any third-party integration.
 - Mobile native apps — the phone side is a browser page, nothing more.
-- Real-time translation and multilingual product workflows beyond local speech transcription. The STT runtime may
-  auto-detect the language of a spoken segment; this does not add translation, language selection UI, or any promise
-  of cross-language meeting features.
+- Real-time translation and multilingual product workflows. Speech is transcribed as English or as Hindi written in
+  Latin letters (ADR-24); no other language, no translation, and no language selection UI.
 - Anything requiring a paid API tier of any kind.
 - General-purpose meeting management (scheduling, invites, recurring meetings).
 

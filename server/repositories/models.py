@@ -48,6 +48,7 @@ class Participant:
     device_id: str
     display_name: str
     enrollment_status: str  # not_required | pending | enrolled | failed
+    color: str | None = None  # palette key (server/colors.py, ADR-25); null only on rows from before migration 0007
 
     @classmethod
     def from_row(cls, row):

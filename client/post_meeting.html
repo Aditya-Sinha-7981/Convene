@@ -4,42 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Convene — Meeting summary</title>
-<style>
-  :root { --muted: #5b6270; --line: #d9dde3; --warn-bg: #fff4d6; --warn: #7a5200; --bad-bg: #fde8e8; --bad: #8a1c1c; }
-  body { font: 16px/1.5 system-ui, sans-serif; max-width: 46rem; margin: 2rem auto; padding: 0 1rem; color: #1b1f24; background: #fff; }
-  h1 { margin: 0 0 .2rem; font-size: 1.6rem; overflow-wrap: anywhere; }
-  h2 { font-size: 1.15rem; margin: 2rem 0 .6rem; }
-  .meta, .muted, small { color: var(--muted); }
-  button { font: inherit; padding: .45rem .9rem; cursor: pointer; }
-  button:disabled { cursor: default; opacity: .6; }
-  .notice { padding: .7rem .9rem; border-radius: 6px; margin: .8rem 0; display: flex; gap: .8rem; align-items: center; flex-wrap: wrap; }
-  .notice.pending { background: #eef3fb; }
-  .notice.stale { background: var(--warn-bg); color: var(--warn); }
-  .notice.failed { background: var(--bad-bg); color: var(--bad); }
-  .notice span { flex: 1 1 16rem; }
-  [hidden] { display: none !important; }
-  #summaryText p { margin: 0 0 .8rem; white-space: pre-wrap; }
-  #actions { padding-left: 1.2rem; }
-  #actions li { margin: .3rem 0; }
-  .owner { color: var(--muted); }
-  #transcript { list-style: none; padding: 0; margin: 0; }
-  #transcript li { border-top: 1px solid var(--line); padding: .45rem 0; }
-  .when { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: .4rem; }
-  .who { font-weight: 600; margin-right: .4rem; }
-  .tag { font-size: .8rem; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 .3rem; margin-left: .3rem; }
-  .link { background: none; border: 0; padding: 0 0 0 .5rem; color: #1f5fbf; text-decoration: underline; font-size: .9rem; }
-  form.fix { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .4rem; }
-  form.fix select, form.fix input { font: inherit; padding: .3rem; max-width: 100%; }
-  #error { color: var(--bad); }
-</style>
+<link rel="icon" href="/static/brand/logo-mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/post_meeting.css">
 </head>
 <body>
-<p class="meta"><a href="/">Convene</a> · <span id="status">Loading…</span> <a id="live" hidden>Open the live dashboard</a></p>
+<header class="pm-bar"><a class="brand" href="/"><img src="/static/brand/logo.svg" alt="Convene home"></a><p class="meta"><span id="status">Loading…</span> <a id="live" hidden>Open the live dashboard</a></p></header>
+<main class="pm">
 <h1 id="title">Meeting summary</h1>
 <p id="error" role="alert"></p>
 
 <h2>Summary</h2>
-<div id="pending" class="notice pending" hidden role="status"><span>Writing the summary… this can take up to a minute after the meeting ends.</span></div>
+<div id="pending" class="notice pending" hidden role="status"><span>Writing the summary… this can take up to a minute after the meeting ends.</span><div class="walk-track" aria-hidden="true"><div class="walker"><div class="walker-frames"><img src="/static/brand/walk.svg" alt=""></div></div></div></div>
 <div id="failed" class="notice failed" hidden role="alert"><span id="failedText"></span><button id="retry" type="button">Try again</button></div>
 <div id="stale" class="notice stale" hidden role="status"><span>The transcript changed after this summary was written (a line was added or a speaker was corrected).</span><button id="regenerate" type="button">Regenerate</button></div>
 <div id="none" hidden><p class="muted">No summary yet.</p><button id="summarize" type="button">Summarize now</button></div>
@@ -54,6 +30,7 @@
 <p id="noLines" class="muted" hidden>Nothing was transcribed.</p>
 <ol id="transcript"></ol>
 
+</main>
 <script type="module" src="/static/post_meeting.js"></script>
 </body>
 </html>

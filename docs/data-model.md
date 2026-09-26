@@ -49,6 +49,7 @@ A person. For a non-shared device, exactly one Participant maps to one Device. F
 | device_id | TEXT (UUID) | FK → Device |
 | display_name | TEXT | entered at join or enrollment |
 | enrollment_status | TEXT | `not_required` \| `pending` \| `enrolled` \| `failed` |
+| color | TEXT, nullable | palette key (`lime` … `charcoal`, `server/colors.py`); chosen at join or assigned; unique in the meeting while any of the 12 is free; null only on rows from before migration 0007 (ADR-25) |
 
 ### SpeakerEnrollment
 
@@ -223,7 +224,7 @@ The complete set. Payloads reference records by ID and never contain transcript 
 | `meeting_started` | `transport` | `first_device_id` |
 | `meeting_ended` | `api` | `utterance_count`, `device_count` |
 | `hook_failed` | `api` | `hook`, `error` |
-| `device_registered` | `registry` | `device_id`, `is_shared`, `declared_speaker_count`, `user_agent` |
+| `device_registered` | `registry` | `device_id`, `is_shared`, `declared_speaker_count`, `user_agent`, `color` |
 | `device_connected` | `transport` | `device_id`, `reconnect_count` |
 | `device_reconnected` | `transport` | `device_id`, `reconnect_count`, `via`, `remote_addr`, `user_agent` |
 | `device_disconnected` | `transport` | `device_id`, `reason` |

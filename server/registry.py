@@ -14,6 +14,7 @@ All functions run inside the caller's transaction (``Database.transaction()`` / 
 from dataclasses import dataclass
 from datetime import datetime
 
+from . import colors
 from .audit import emit, record_connection_event
 from .db import Tx
 from .errors import DeviceConflictError, MeetingEndedError, ValidationError
@@ -84,14 +85,16 @@ def create_meeting(tx: Tx, title: str | None = None, *, meeting_id: str | None =
 
 def register_device(tx: Tx, meeting_id: str, device_id: str, display_name: str | None, is_shared: bool = False,
                     declared_speaker_count: int | None = None, user_agent: str | None = None, *,
-                    now: str | None = None) -> Registration:
+                    color: str | None = None, now: str | None = None) -> Registration:
     """Register a device (and, if it is not shared, its one Participant). Idempotent.
 
     * New device: ``Device`` in ``joining`` (``enrolling`` if shared) and, for a non-shared device, one
       ``Participant`` with ``enrollment_status = not_required``; audit ``device_registered``. Shared
       devices get no participants here; CON-13 creates them at enrollment.
+    * ``color``: an optional palette key for that participant (ADR-25). A colour already used in the meeting is
+      ``ColorTakenError``; with none, the server picks an unused one.
     * Known ``device_id`` in this meeting: the stored rows are returned unchanged, nothing is written (a
-      different ``display_name`` in the replay is ignored).
+      different ``display_name`` or ``color`` in the replay is ignored), so a rejoining phone keeps its colour.
     * ``device_id`` registered in another meeting, or here with a different ``is_shared``:
       ``DeviceConflictError``. Devices are never re-parented.
     * Ended meeting: ``MeetingEndedError``. Unknown meeting: ``MeetingNotFoundError``.
@@ -114,6 +117,8 @@ def register_device(tx: Tx, meeting_id: str, device_id: str, display_name: str |
         if not isinstance(display_name, str) or not (1 <= len(display_name.strip()) <= MAX_DISPLAY_NAME):
             raise ValidationError(f"display_name must be 1 to {MAX_DISPLAY_NAME} characters")
         name = display_name.strip()
+    if color is not None and (is_shared or not isinstance(color, str)):
+        raise ValidationError("color is a palette key, and only for a device that is not shared")
     if user_agent is not None:
         if not isinstance(user_agent, str):
             raise ValidationError("user_agent must be a string")
@@ -132,6 +137,7 @@ def register_device(tx: Tx, meeting_id: str, device_id: str, display_name: str |
         return Registration(existing, participants.list_for_device(tx.conn, device_id), created=False)
 
     now = now or utc_now()
+    chosen = None if is_shared else colors.choose(participants.colors_in_meeting(tx.conn, meeting_id), color)
     device = devices.create(tx.conn, Device(
         device_id=device_id, meeting_id=meeting_id, joined_at=now,
         status="enrolling" if is_shared else "joining", is_shared=is_shared,
@@ -140,10 +146,10 @@ def register_device(tx: Tx, meeting_id: str, device_id: str, display_name: str |
     if not is_shared:
         people.append(participants.create(tx.conn, Participant(
             participant_id=new_id(), meeting_id=meeting_id, device_id=device_id,
-            display_name=name, enrollment_status="not_required")))
+            display_name=name, enrollment_status="not_required", color=chosen)))
     emit(tx, "device_registered", "registry",
          {"device_id": device_id, "is_shared": is_shared, "declared_speaker_count": declared_speaker_count,
-          "user_agent": user_agent}, meeting_id=meeting_id, timestamp=now)
+          "user_agent": user_agent, "color": chosen}, meeting_id=meeting_id, timestamp=now)
     return Registration(device, people, created=True)
 
 

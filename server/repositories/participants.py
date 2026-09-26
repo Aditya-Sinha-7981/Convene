@@ -7,6 +7,10 @@ from .models import Participant
 UPDATABLE = frozenset({"display_name", "enrollment_status"})
 
 
+def colors_in_meeting(conn, meeting_id: str) -> list[str | None]:
+    return [r["color"] for r in base.query_all(conn, "SELECT color FROM Participant WHERE meeting_id = ?", (meeting_id,))]
+
+
 def create(conn, participant: Participant) -> Participant:
     base.insert(conn, "Participant", asdict(participant))
     return participant

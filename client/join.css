@@ -1,1 +1,79 @@
-:root{--join-bg:#090c12;--join-text:#f1f4f5;--join-muted:#98a3ad;--join-line:rgba(235,242,245,.14);--join-accent:#91e5c6;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}*{box-sizing:border-box}body{min-height:100vh;margin:0;background:var(--join-bg);color:var(--join-text)}.join-page{position:relative;display:grid;min-height:100vh;place-items:center;overflow:hidden;padding:24px}.join-ambient:before,.join-ambient:after{position:absolute;content:"";width:62vmax;height:62vmax;border-radius:50%;filter:blur(46px);opacity:.16;animation:drift 14s ease-in-out infinite alternate}.join-ambient:before{top:-40vmax;left:-24vmax;background:#4f7d71}.join-ambient:after{right:-32vmax;bottom:-44vmax;background:#284d5a;animation-delay:-7s}.join-card{position:relative;width:min(100%,420px);padding:36px 28px 26px;border:1px solid var(--join-line);border-radius:24px;background:linear-gradient(145deg,rgba(23,29,38,.89),rgba(11,15,21,.92));box-shadow:0 30px 90px rgba(0,0,0,.36);animation:join-enter .6s ease-out both}.join-kicker{margin:0 0 12px;color:var(--join-muted);font-size:10px;font-weight:700;letter-spacing:.15em;text-transform:uppercase}.join-card h1{margin:0;font-size:clamp(2rem,10vw,3rem);font-weight:280;letter-spacing:.25em;line-height:1}.join-intro{margin:14px 0 32px;color:var(--join-muted);font-size:14px}.join-form{display:grid;gap:9px;animation:join-enter .55s .16s ease-out both}.join-form label{font-size:12px;color:var(--join-muted)}button,input{font:inherit}input{width:100%;border:1px solid var(--join-line);border-radius:12px;padding:13px;color:var(--join-text);background:rgba(0,0,0,.2);transition:border-color .16s ease,box-shadow .16s ease}input:focus{border-color:var(--join-accent);outline:0;box-shadow:0 0 0 3px rgba(145,229,198,.12)}button{border:1px solid var(--join-line);border-radius:12px;padding:13px;color:#092019;background:var(--join-accent);font-weight:700;transition:transform .16s ease,filter .16s ease}button:hover{transform:translateY(-1px);filter:brightness(1.04)}button:disabled{opacity:.55;cursor:wait}#stop,#retry{color:var(--join-text);background:transparent}#consent{margin:23px 0 18px;color:var(--join-muted);font-size:11px;line-height:1.55}.join-status{display:flex;align-items:center;gap:8px;color:var(--join-muted);font-size:12px}.join-status p,#detail{margin:0}.status-orb{width:7px;height:7px;border-radius:50%;background:var(--join-accent);box-shadow:0 0 12px var(--join-accent)}#status{color:var(--join-text);font-weight:650;text-transform:capitalize}#detail{min-height:1.4em;margin-top:8px;color:var(--join-muted);font-size:12px}@keyframes join-enter{from{opacity:0;transform:translateY(12px) scale(.985)}to{opacity:1;transform:none}}@keyframes drift{to{transform:translate3d(8vmax,5vmax,0) scale(1.12)}}@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important}.join-ambient:before,.join-ambient:after{display:none}}
+/* Phone join page. Mobile-first; only small local SVGs, so it loads instantly on the meeting Wi-Fi. */
+body { min-height: 100vh; min-height: 100dvh; }
+.join-bar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: rgba(247, 245, 240, .94); }
+.join-bar .brand img { height: 26px; }
+
+.join-status { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 13px; }
+.join-status p { margin: 0; white-space: nowrap; }
+#status { color: var(--ink); font-weight: 650; text-transform: capitalize; }
+.status-orb { position: relative; width: 9px; height: 9px; flex: none; border-radius: 50%; background: var(--idle); }
+.join-status[data-state="connecting"] .status-orb { background: var(--surface); box-shadow: inset 0 0 0 2px var(--accent); }
+.join-status[data-state="connected"] { border-color: var(--accent-line); background: var(--accent-soft); }
+.join-status[data-state="connected"] .status-orb { background: var(--accent); }
+.join-status[data-state="connected"] #status { color: var(--accent-hover); }
+.join-status[data-state="problem"] { border-color: var(--danger-line); background: var(--danger-soft); }
+.join-status[data-state="problem"] .status-orb { background: var(--danger); }
+.join-status[data-state="problem"] #status { color: var(--danger); }
+
+.join-page { display: grid; justify-items: center; padding: 20px 16px 40px; }
+.join-card { width: min(100%, 460px); padding: 26px 22px 22px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); box-shadow: var(--shadow); animation: join-enter .4s ease-out both; }
+.join-kicker { margin: 0 0 8px; color: var(--accent); font-size: 13px; font-weight: 650; }
+.join-card h1 { margin: 0; font-size: clamp(26px, 7.5vw, 32px); font-weight: 750; line-height: 1.15; letter-spacing: -.03em; }
+.join-intro { margin: 10px 0 20px; color: var(--muted); font-size: 15px; }
+
+.join-guide { display: grid; gap: 6px; margin: 0 0 20px; padding: 12px 14px; border-radius: 14px; background: var(--bg); }
+.join-guide .mascot-art { width: 48px; }
+.join-guide .mascot-art .avatar { width: 48px; height: 48px; }
+#guideWalk { padding: 0 2px; }
+.join-guide .mascot.is-walking .mascot-art { display: none; }
+
+.join-form { display: grid; gap: 10px; }
+.join-form > label, .color-picker legend { color: var(--ink-2); font-size: 14px; font-weight: 600; }
+.join-form input.field { font-size: 17px; }
+.join-form .btn { width: 100%; min-height: 50px; font-size: 16px; }
+
+.color-picker { margin: 6px 0 4px; padding: 0; border: 0; min-width: 0; }
+.color-picker legend { padding: 0; margin-bottom: 8px; }
+.color-picker legend span { color: var(--muted); font-weight: 500; }
+.swatches { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.swatch { position: relative; display: grid; place-items: center; cursor: pointer; }
+.swatch .avatar { position: relative; }
+.swatch input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: inherit; }
+.swatch .avatar { width: 100%; max-width: 46px; height: auto; aspect-ratio: 1; transition: transform .15s ease, box-shadow .15s ease; }
+.swatch:hover .avatar { transform: scale(1.06); }
+.swatch input:focus-visible + .avatar { outline: 3px solid var(--accent-line); outline-offset: 2px; }
+.swatch input:checked + .avatar { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--pc); }
+.swatch:has(input:disabled) { cursor: not-allowed; }
+.swatch input:disabled + .avatar { background: var(--bg-2); color: #bdb8ae; transform: none; }
+.swatch input:disabled:not(:checked) + .avatar::after { content: ""; position: absolute; width: 60%; height: 2px; border-radius: 1px; background: #bdb8ae; transform: rotate(-45deg); }
+.color-hint { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+/* Once joined, the picker collapses to the person's own colour. */
+.color-picker.is-set { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.color-picker.is-set legend { width: 100%; }
+.color-picker.is-set .swatches { display: flex; }
+.color-picker.is-set .swatch:not(:has(input:checked)) { display: none; }
+.color-picker.is-set .swatch { cursor: default; }
+.color-picker.is-set .swatch .avatar { width: 40px; max-width: none; box-shadow: none; background: color-mix(in srgb, var(--pc) 13%, #fff); color: var(--pc); }
+.color-picker.is-set .color-hint { margin: 0; }
+
+#consent { margin: 18px 0 0; padding: 11px 13px; border-radius: 10px; background: var(--bg); color: var(--ink-2); font-size: 13px; line-height: 1.5; }
+#detail { min-height: 1.4em; margin: 12px 0 0; color: var(--muted); font-size: 14px; }
+@keyframes join-enter { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 360px) { .swatches { gap: 6px; } .join-bar .brand img { height: 22px; } }
+.color-picker.is-set legend span { display: none; }
+
+/* Live view: after joining, the form gives way to the microphone orb. Stop and Try again stay available. */
+.is-live .join-card > header, .is-live .join-form > label, .is-live #name, .is-live .color-picker, .is-live #start { display: none; }
+.is-live .join-guide { margin-bottom: 6px; background: none; padding: 0 0 4px; }
+.is-live .join-guide .mascot-art { display: none; }
+.is-live .join-guide .mascot { justify-content: center; }
+.live-view { display: grid; justify-items: center; margin: 0 0 18px; }
+.orb { position: relative; width: min(280px, 74vw); aspect-ratio: 1; }
+.orb canvas { display: block; width: 100%; height: 100%; }
+.orb-avatar { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.orb-avatar .avatar { width: 34%; height: 34%; background: none; }
+.live-view[data-state="connecting"] .orb, .live-view[data-state="problem"] .orb { opacity: .55; }
+.orb-state { margin: 2px 0 0; color: var(--ink); font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
+.live-view[data-state="problem"] .orb-state { color: var(--danger); }
+.orb-who { margin: 4px 0 0; color: var(--muted); font-size: 14px; }

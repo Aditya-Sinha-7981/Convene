@@ -349,7 +349,7 @@ is necessary to invoke the existing local multilingual STT capability).
 **Tradeoffs:** Detection happens per segment, so short or code-switched segments can select the wrong language.
 Hindi/Hinglish quality, latency, and interaction with the VAD must be measured on real phones before a demo claim.
 
-**Status:** Accepted by the project lead for the local STT configuration on 2026-09-26; pending real-phone language validation.
+**Status:** Superseded by ADR-24 on 2026-09-26 (auto-detection produced Spanish text for Hindi speech on a real phone).
 
 ---
 
@@ -425,3 +425,84 @@ only); queueing a meeting-end attempt behind a running manual one (rejected: the
 A long summary holds the reasoning model, so a live question waits behind it.
 
 **Status:** Proposed (CON-10), pending project-lead confirmation.
+
+---
+
+### ADR-24: English and romanized Hindi only; no per-segment language detection
+
+**Decision:** `[models.stt].languages` is `["en", "hi"]` (default) or `["en"]`; no other value is accepted. Every
+segment is decoded by Whisper in English mode. When Hindi is allowed, the decode carries a short code-mixed
+`hindi_prompt` ("Okay, so the meeting kal hai. Haan, main dekh lunga. Theek hai."), which makes Whisper write Hindi
+speech in Latin letters, the way Hinglish is typed ("Tum loog kya soch rahe ho? Kya yeh plan thik hai?"). This is
+transliteration by the STT model, not translation; Convene still does not translate.
+
+**Rationale:** On a real phone, `language = "auto"` turned Hindi speech into Spanish ("Gracias", "¿Qué agarró?").
+Participants read and type Hindi in Latin letters, and the summary, Q&A and DOCX pipeline is English-first. Measured
+on the reference laptop (`logs/stt.md`): with the prompt, five Hindi clips came out as readable romanized Hindi with
+English loanwords kept ("launch", "report", "budget"); seven English clips were word-for-word identical with and
+without the prompt; a Spanish clip could no longer come out as Spanish. Without the prompt, English mode translates
+Hindi, badly ("What do you think? What do you think?").
+
+**Alternatives considered:** Restrict Whisper's detector to en/hi and decode Hindi as `hi` (rejected: Devanagari
+output, which the user does not want). Detect en/hi first and prompt only Hindi segments (rejected: the detector is
+a second encoder pass, measured at about 480 ms per segment, which doubled STT time for no measured gain in English
+accuracy). Transliterate Devanagari afterwards with rules or the local LLM (rejected: extra latency and a second
+error source, for spellings no better than Whisper's).
+
+**Tradeoffs:** Romanized spelling is Whisper's, not standardized ("hoogi", "chaheye"). Measured only on synthetic
+text-to-speech voices; real Hindi and code-switched speech on phones must be checked. A different or smaller STT
+model may not follow the prompt. English embeddings (`bge-small-en`) match romanized Hindi only loosely, so Q&A over
+Hindi speech is weaker than over English.
+
+**Status:** Requested by the project lead on 2026-09-26; synthetic-speech measurement done, real-phone check open.
+
+
+---
+
+### ADR-25: Participant colours from a fixed palette of 12
+
+**Decision:** Each participant has a `color`: one of 12 palette keys (`lime`, `green`, `teal`, `cyan`, `sky`, `azure`,
+`violet`, `plum`, `magenta`, `pink`, `slate`, `charcoal`; `server/colors.py`). A phone may choose one at join from a
+swatch picker that greys out colours already used in the meeting (`GET /api/meetings/{id}/colors`); a registration
+asking for a used colour gets `409 color_taken`. With no choice, the server assigns a random unused colour; after all
+12 are used, a random least-used one. A participant created by a correction ("name this speaker") is assigned one
+the same way. A replayed registration (the same phone rejoining) returns the stored colour. The server stores only the
+key; the client maps keys to hex values. The Convene brand colour (indigo) is never in the palette: it belongs to the
+product's own mascot, logo and actions.
+
+**Rationale:** The transcript identifies speakers by a recoloured mascot avatar, WhatsApp-style. Keys (not hex) keep
+the palette tunable in one CSS file. A fixed palette guarantees legible, mutually distinct colours on the light
+theme and keeps them away from the semantic colours (review amber, error red, brand indigo); a free colour wheel
+would allow near-duplicates, unreadable pastels and colours that read as "needs review" or "error".
+
+**Alternatives considered:** Free colour wheel (rejected above); colour derived from a hash of the participant id
+(rejected: no choice, and collisions within a meeting); a unique index in SQLite (rejected: a 13th participant must
+still get a colour).
+
+**Tradeoffs:** Uniqueness holds only while fewer than 13 participants exist; beyond that the name disambiguates.
+Rows from before migration 0007 have a null colour; the client derives a stable one from the participant id.
+
+**Status:** Requested by the project lead on 2026-09-26.
+
+---
+
+### ADR-26: Q&A answers carry no inline sources; sources sit behind one toggle
+
+**Decision:** The Q&A prompt asks for at most three sentences naming the speaker for each fact, with no times or
+brackets. `clean_answer` removes any inline reference the model still writes (`(Name, 00:12:03)`, `[Name, 00:12:03]`,
+`(excerpt 2)`) before the answer is stored, unless that would leave nothing. The dashboard shows the answer as plain
+text and its citations behind a collapsed **Sources (n)** toggle; citations are unchanged (the retrieved chunks,
+never parsed from the model's text), and each still scrolls to and highlights the cited lines.
+
+**Rationale:** On a real run the answer repeated the excerpts with a reference after every fragment and the citation
+box repeated them again; the panel read as noise. Sources stay one click away for anyone checking grounding.
+
+**Alternatives considered:** A longer prompt spelling out the style (rejected: measured on the reference laptop, it
+diluted the `NO_GROUNDING` rule; the honesty test then saw "There is no information about…" answers instead of a
+decline). UI-only cleanup (rejected: the stored answer, which later exports may show, would keep the clutter).
+
+**Tradeoffs:** The regex can remove a genuine parenthesised time with a comma, such as "(launch, 10:30)"; a bare
+time in a sentence is kept. Real answers must be spot-checked on the demo transcript.
+
+**Status:** Requested by the project lead on 2026-09-26; the real-model honesty test passes with the new prompt.
+
