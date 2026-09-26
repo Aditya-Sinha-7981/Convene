@@ -79,3 +79,45 @@ that an empty list is correct (stopped two or three filler items in `no_action_i
   record time to summary. Summarize at meeting end in the demo: a manual summary during heavy live speech delays
   STT (above).
 - Open: project-lead confirmation of the proposed `Summary` failure fields (ADR-18) and ADR-23.
+
+## 2026-09-26 — CON-11 deterministic DOCX export
+
+### What was built
+
+- `server/export/` provides a pure fixed-template `python-docx` renderer and a service that snapshots stored rows,
+  writes to a temporary file, fsyncs, and atomically replaces `data/exports/<meeting_id>.docx`.
+- Migration `0008_export.sql` and `repositories/exports.py` store retained `pending`, `ready`, and `failed` attempts.
+  A failed retry therefore cannot remove or hide the earlier ready file.
+- `GET /api/meetings/{id}/export?format=docx` renders only when absent or stale; the status route supplies the
+  post-meeting view. The service derives staleness from the export, summary, and transcript audit sequences.
+- Successful and failed attempts emit `export_created` / `export_failed`, which the dashboard maps to
+  `export_ready` / `export_failed`. A ready summary triggers a best-effort, isolated automatic export.
+- The post-meeting view shows ready, pending, failed, and stale export states plus a DOCX download link.
+
+### Decisions
+
+- Determinism is semantic document-content identity, not byte identity. Core timestamps are fixed; DOCX ZIP entry
+  timestamps are implementation details and can differ. Rendered dates and elapsed transcript clocks use UTC.
+- Export attempts are retained rather than overwritten. The current export is the most recent `ready` attempt.
+
+### Checks
+
+```sh
+.venv/bin/python -m pytest tests/test_docx_renderer.py tests/test_api_contract_docs.py -q
+node --check client/post_meeting.js
+.venv/bin/python -m compileall -q server
+```
+
+- **Passed:** 40 focused tests. Renderer smoke test re-opened a generated DOCX; migration smoke test confirmed
+  schema version 8 and all Export columns.
+- **Not run:** existing `tests/test_summary_api.py` requires a loopback server, but this sandbox denies binding
+  `127.0.0.1` (`[Errno 1] operation not permitted`).
+
+### Hardware / manual checks
+
+| Check | Result |
+|---|---|
+| Open in Word, Pages, and LibreOffice | Not run — viewers/demo laptop unavailable in this session |
+| Real corrected/generic/null-owner meeting | Not run — no real meeting used |
+| Longest expected meeting render time | Not run — synthetic scale benchmark still needed |
+| Network-disabled export | Not run — service has no network path, but physical check remains |

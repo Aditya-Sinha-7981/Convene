@@ -71,6 +71,7 @@ class SummaryService:
         self.reasoning, self.priority, self.pipeline, self.attribution = reasoning, priority, pipeline, attribution
         self._running: dict[str, str] = {}             # meeting_id -> summary_id of the attempt in progress
         self._tasks: set[asyncio.Task] = set()
+        self.on_ready = None  # optional async callback; CON-11 installs deterministic export here
 
     @property
     def model_identifier(self) -> str:
@@ -248,6 +249,8 @@ class SummaryService:
         try:
             await self.db.run(lambda tx: self._persist_success(tx, meeting_id, summary_id, transcript, attempt, began,
                                                                drain_timed_out))
+            if self.on_ready is not None:
+                await self.on_ready(meeting_id)
         except Exception as exc:
             # The transaction rolled back: no summary text and no action items were written.
             log.exception("could not store summary %s", summary_id)

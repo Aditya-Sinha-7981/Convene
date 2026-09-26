@@ -46,3 +46,15 @@ def summary_input_as_of_seq(conn, summary_id: str) -> int | None:
                                "WHERE event_type = 'summary_generated' AND json_extract(payload, '$.summary_id') = ?",
                          (summary_id,))
     return row[0] if row else None
+
+
+def summary_generated_seq(conn, summary_id: str) -> int | None:
+    row = base.query_one(conn, "SELECT seq FROM AuditEvent WHERE event_type = 'summary_generated' "
+                               "AND json_extract(payload, '$.summary_id') = ?", (summary_id,))
+    return row[0] if row else None
+
+
+def export_created_seq(conn, export_id: str) -> int | None:
+    row = base.query_one(conn, "SELECT seq FROM AuditEvent WHERE event_type = 'export_created' "
+                               "AND json_extract(payload, '$.export_id') = ?", (export_id,))
+    return row[0] if row else None

@@ -786,6 +786,10 @@ Errors use the JSON error shape:
 
 **Side effects** — when a render happens: inserts an `Export` (`pending`, then `ready` with `storage_path` under `data/exports/`); audit `export_created` (its payload records `summary_id` and `input_as_of_seq`, from which staleness is derived); push `export_ready`. On failure: the `Export` becomes `failed` with an `error_message`; audit `export_failed`; push `export_failed`. Serving an existing current file writes nothing. The post-meeting view learns whether a file exists from `latest_export` in `GET /api/meetings/{meeting_id}` and from the pushes, without triggering a render.
 
+### GET /api/meetings/{meeting_id}/export/status
+
+Read the current ready export, latest attempt, and derived `stale` flag for the post-meeting view. This endpoint never renders. It returns `200` with `{ "export", "latest_attempt", "stale", "as_of_seq" }`, where both export objects are null when no attempt exists; unknown meetings return `404 meeting_not_found`.
+
 ### POST /api/meetings/{meeting_id}/devices/{device_id}/enroll
 
 **Provisional (CON-13).** Enroll one speaker on a shared device (`speaker-attribution.md`). The audio is **captured by the server from the device's live WebRTC track** for the configured enrollment duration; the phone does not upload a recording (G19). The caller therefore has the speaker talk while the request is open.

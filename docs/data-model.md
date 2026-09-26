@@ -178,7 +178,7 @@ evidence (empty unless answered). The reason for `no_grounding`/`failed` is in t
 | export_id | TEXT (UUID) | PK |
 | meeting_id | TEXT (UUID) | FK → Meeting |
 | type | TEXT | `docx` |
-| status | TEXT | **(proposed)** `pending` \| `ready` \| `failed`. A `failed` attempt never replaces the current `ready` file |
+| status | TEXT | `pending` \| `ready` \| `failed`. Attempts are retained; a `failed` attempt never replaces the current `ready` file |
 | storage_path | TEXT, nullable | relative path under `data/exports/`; null unless `status = ready` |
 | error_message | TEXT, nullable | **(proposed)** short diagnostic when `status = failed` |
 | created_at | TEXT (ISO 8601) | |

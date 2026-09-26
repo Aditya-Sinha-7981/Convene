@@ -17,6 +17,7 @@ from .pipeline.pipeline import SttPipeline
 from .rag.indexer import TranscriptIndexer
 from .rag.qa import QAService
 from .summary import SummaryService
+from .export import ExportService
 from .transport.audio import AudioSink, CountingSink
 from .transport.peers import PeerManager
 
@@ -61,6 +62,7 @@ class Runtime:
         self.indexer: TranscriptIndexer | None = None
         self.qa: QAService | None = None
         self.summary: SummaryService | None = None
+        self.export: ExportService | None = None
         self._hooks: list[tuple[str, MeetingEndedHook]] = []
         self._log_task: asyncio.Task | None = None
 
@@ -161,6 +163,9 @@ class Runtime:
         self.summary = SummaryService(self.db, self.settings.summary, reasoning=self.reasoning_adapter,
                                       priority=self.pipeline.priority if self.pipeline else None,
                                       pipeline=self.pipeline, attribution=self.attribution)
+        self.export = ExportService(self.db, self.settings.exports_dir,
+                                    low_confidence_threshold=self.settings.attribution.low_confidence_threshold)
+        self.summary.on_ready = self.export.on_summary_ready
         interrupted = await self.summary.reconcile()
         if interrupted:
             log.info("startup reconciliation: %d interrupted summary attempt(s) marked failed", interrupted)

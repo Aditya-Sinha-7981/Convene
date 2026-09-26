@@ -16,7 +16,7 @@ from dataclasses import asdict
 from .audit import emit
 from .attribution.views import utterance_view
 from .rag.citations import query_view, resolve_citations
-from .repositories import connections, devices, meetings, participants, qa_queries, summaries, utterances
+from .repositories import connections, devices, exports, meetings, participants, qa_queries, summaries, utterances
 from .repositories.models import AuditEvent
 from .timeutil import utc_now
 from .views import device_view, meeting_view
@@ -28,6 +28,7 @@ _DEVICE_EVENTS = {"device_registered", "device_left"}
 _CONNECTION_EVENTS = {"device_connected", "device_reconnected", "device_disconnected", "device_audio_resumed"}
 _UTTERANCE_EVENTS = {"utterance_created": "utterance", "utterance_corrected": "utterance_updated"}
 _SUMMARY_EVENTS = {"summary_generated", "summary_failed"}
+_EXPORT_EVENTS = {"export_created", "export_failed"}
 OVERFLOW_CLOSE_CODE = 1013
 
 
@@ -101,7 +102,7 @@ class DashboardHub:
 
     async def _translate(self, event: AuditEvent) -> list[tuple[str, dict]]:
         kind = event.event_type
-        if kind not in (_MEETING_EVENTS | _DEVICE_EVENTS | _CONNECTION_EVENTS | set(_UTTERANCE_EVENTS) | _SUMMARY_EVENTS
+        if kind not in (_MEETING_EVENTS | _DEVICE_EVENTS | _CONNECTION_EVENTS | set(_UTTERANCE_EVENTS) | _SUMMARY_EVENTS | _EXPORT_EVENTS
                         | {"qa_query"}):
             return []
 
@@ -119,6 +120,12 @@ class DashboardHub:
             if kind == "summary_failed":
                 row = summaries.get(tx.conn, event.payload["summary_id"])
                 return [("summary_failed", {"summary_id": event.payload["summary_id"],
+                                            "error_message": row.error_message if row is not None else None})]
+            if kind == "export_created":
+                return [("export_ready", {"export_id": event.payload["export_id"]})]
+            if kind == "export_failed":
+                row = exports.get(tx.conn, event.payload["export_id"])
+                return [("export_failed", {"export_id": event.payload["export_id"],
                                             "error_message": row.error_message if row is not None else None})]
             if kind in _MEETING_EVENTS:
                 out.append(("meeting_status", {"meeting": meeting_view(meetings.require(tx.conn, event.meeting_id))}))

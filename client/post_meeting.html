@@ -22,6 +22,13 @@
 <div id="summaryText"></div>
 <p id="generated" class="muted"></p>
 
+<h2>Export</h2>
+<div id="exportPending" class="notice pending" hidden role="status">Preparing the DOCX…</div>
+<div id="exportFailed" class="notice failed" hidden role="alert"><span id="exportFailedText"></span><button id="exportRetry" type="button">Try again</button></div>
+<div id="exportStale" class="notice stale" hidden role="status">The DOCX is out of date; downloading it will refresh it.</div>
+<p id="exportNone" class="muted" hidden>A DOCX will be available after the summary is ready.</p>
+<a id="download" class="download" hidden>Download DOCX</a>
+
 <h2>Action items</h2>
 <ul id="actions"></ul>
 <p id="noActions" class="muted" hidden>No action items.</p>

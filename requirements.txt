@@ -9,3 +9,4 @@ huggingface-hub>=0.24
 sqlite-vec>=0.1,<0.2
 sentence-transformers>=3,<4
 mlx-lm>=0.31,<0.32
+python-docx>=1.1,<2

@@ -20,12 +20,13 @@ DOCX only for the hackathon build (`requirements.md` — PDF/Markdown export is 
 1. Triggered after summarization completes (automatically) or manually re-triggered from the dashboard.
 2. Render function pulls `Meeting`, `Participant`, `Summary`, `ActionItem`, and `Utterance` rows directly from SQLite — no model call happens during rendering itself.
 3. File written to `data/exports/<meeting_id>.docx`.
-4. An `Export` row created (`data-model.md`), `export_created` AuditEvent fired.
+4. An `Export` attempt row is created (`pending`, then `ready`), `export_created` AuditEvent fired. Attempts are
+   retained so a failed retry cannot replace a prior ready file.
 5. Dashboard surfaces a download link once the `Export` row exists.
 
 ## Failure handling
 
-A rendering failure (e.g. a `python-docx` exception) marks the export attempt `failed` and is fully independent of the underlying data — the summary and transcript remain intact and viewable in the dashboard regardless of whether the file render succeeded. Retry is safe and idempotent — re-rendering from the same stored data always produces the same file.
+A rendering failure (e.g. a `python-docx` exception) marks the export attempt `failed` and is fully independent of the underlying data — the summary and transcript remain intact and viewable in the dashboard regardless of whether the file render succeeded. Retry is safe and idempotent. Determinism means identical document content: the fixed renderer sets fixed core timestamps and produces equivalent document XML for equal stored rows. DOCX is a ZIP container whose entry timestamps may differ, so byte identity is not promised. Dates and transcript clocks render in UTC.
 
 ## Why this is worth its own document
 
