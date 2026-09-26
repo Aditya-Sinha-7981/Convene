@@ -8,6 +8,7 @@
 .meeting-identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .topbar h1 { margin: 0; overflow: hidden; font-size: clamp(19px, 2vw, 24px); font-weight: 700; letter-spacing: -.02em; text-overflow: ellipsis; white-space: nowrap; }
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
+.topbar-actions .theme-toggle { width: 34px; height: 34px; }
 .eyebrow { margin: 0 0 8px; color: var(--muted); font-size: 12px; font-weight: 650; }
 h2 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
 
@@ -60,7 +61,7 @@ h2 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
 .metric { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; }
 .metric b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 .join-card { margin: 10px; padding: 14px; border: 1px dashed var(--line-strong); border-radius: 10px; background: var(--bg); text-align: center; }
-.join-card img { display: block; width: 150px; margin: 4px auto 10px; padding: 6px; border-radius: 8px; background: #fff; }
+.join-card img { display: block; width: 150px; margin: 4px auto 10px; padding: 6px; border-radius: 8px; background: var(--surface); }
 .join-card code { display: block; overflow-wrap: anywhere; color: var(--ink-2); font-family: var(--mono); font-size: 11px; }
 
 /* Transcript */

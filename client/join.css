@@ -1,13 +1,14 @@
 /* Phone join page. Mobile-first; only small local SVGs, so it loads instantly on the meeting Wi-Fi. */
 body { min-height: 100vh; min-height: 100dvh; }
-.join-bar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: rgba(247, 245, 240, .94); }
+.join-bar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 94%, transparent); backdrop-filter: blur(14px); }
 .join-bar .brand img { height: 26px; }
+.join-bar-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 
-.join-status { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 13px; }
+.join-status { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 13px; transition: border-color .2s ease, background-color .2s ease, color .2s ease; }
 .join-status p { margin: 0; white-space: nowrap; }
 #status { color: var(--ink); font-weight: 650; text-transform: capitalize; }
 .status-orb { position: relative; width: 9px; height: 9px; flex: none; border-radius: 50%; background: var(--idle); }
-.join-status[data-state="connecting"] .status-orb { background: var(--surface); box-shadow: inset 0 0 0 2px var(--accent); }
+.join-status[data-state="connecting"] .status-orb { background: var(--surface); box-shadow: inset 0 0 0 2px var(--accent); animation: connection-pulse 1.5s ease-in-out infinite; }
 .join-status[data-state="connected"] { border-color: var(--accent-line); background: var(--accent-soft); }
 .join-status[data-state="connected"] .status-orb { background: var(--accent); }
 .join-status[data-state="connected"] #status { color: var(--accent-hover); }
@@ -41,11 +42,12 @@ body { min-height: 100vh; min-height: 100dvh; }
 .swatch input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: inherit; }
 .swatch .avatar { width: 100%; max-width: 46px; height: auto; aspect-ratio: 1; transition: transform .15s ease, box-shadow .15s ease; }
 .swatch:hover .avatar { transform: scale(1.06); }
+.swatch:active .avatar { transform: scale(.94); }
 .swatch input:focus-visible + .avatar { outline: 3px solid var(--accent-line); outline-offset: 2px; }
 .swatch input:checked + .avatar { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--pc); }
 .swatch:has(input:disabled) { cursor: not-allowed; }
-.swatch input:disabled + .avatar { background: var(--bg-2); color: #bdb8ae; transform: none; }
-.swatch input:disabled:not(:checked) + .avatar::after { content: ""; position: absolute; width: 60%; height: 2px; border-radius: 1px; background: #bdb8ae; transform: rotate(-45deg); }
+.swatch input:disabled + .avatar { background: var(--bg-2); color: var(--idle); transform: none; }
+.swatch input:disabled:not(:checked) + .avatar::after { content: ""; position: absolute; width: 60%; height: 2px; border-radius: 1px; background: var(--idle); transform: rotate(-45deg); }
 .color-hint { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
 /* Once joined, the picker collapses to the person's own colour. */
 .color-picker.is-set { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
@@ -53,7 +55,7 @@ body { min-height: 100vh; min-height: 100dvh; }
 .color-picker.is-set .swatches { display: flex; }
 .color-picker.is-set .swatch:not(:has(input:checked)) { display: none; }
 .color-picker.is-set .swatch { cursor: default; }
-.color-picker.is-set .swatch .avatar { width: 40px; max-width: none; box-shadow: none; background: color-mix(in srgb, var(--pc) 13%, #fff); color: var(--pc); }
+.color-picker.is-set .swatch .avatar { width: 40px; max-width: none; box-shadow: none; background: color-mix(in srgb, var(--pc) 13%, var(--surface)); color: var(--pc); }
 .color-picker.is-set .color-hint { margin: 0; }
 
 #consent { margin: 18px 0 0; padding: 11px 13px; border-radius: 10px; background: var(--bg); color: var(--ink-2); font-size: 13px; line-height: 1.5; }
@@ -77,3 +79,12 @@ body { min-height: 100vh; min-height: 100dvh; }
 .orb-state { margin: 2px 0 0; color: var(--ink); font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
 .live-view[data-state="problem"] .orb-state { color: var(--danger); }
 .orb-who { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+
+/* A single quiet signal while the phone is negotiating its connection. The microphone orb remains
+   driven by real input level, so this never pretends that audio is arriving when it is not. */
+@keyframes connection-pulse { 50% { box-shadow: inset 0 0 0 2px var(--accent), 0 0 0 5px var(--accent-soft); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .join-status[data-state="connecting"] .status-orb { animation: none; }
+  .swatch:active .avatar { transform: none; }
+}

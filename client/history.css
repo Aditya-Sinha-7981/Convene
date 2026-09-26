@@ -4,6 +4,7 @@
 .muted { color: var(--muted); }
 
 .hx-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: min(1160px, calc(100% - 32px)); margin: 0 auto; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.hx-bar-actions, .join-bar-actions { display: flex; align-items: center; gap: 10px; }
 .hx-new { min-height: 38px; padding: 0 14px; font-size: 14px; }
 .hx { width: min(1160px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 56px; }
 .hx-head h1 { margin: 0 0 .3rem; font-size: clamp(26px, 4vw, 34px); font-weight: 750; letter-spacing: -.025em; }

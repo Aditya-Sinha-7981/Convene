@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<script src="/static/theme.js"></script>
 <title>Convene — Meeting summary</title>
 <link rel="icon" href="/static/brand/logo-mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/theme.css">
@@ -10,7 +12,7 @@
 <link rel="stylesheet" href="/static/post_meeting.css">
 </head>
 <body>
-<header class="pm-bar"><a class="brand" href="/"><img src="/static/brand/logo.svg" alt="Convene home"></a><p class="meta"><a href="/history">Past meetings</a> · <span id="status">Loading…</span> <a id="live" hidden>Open the live dashboard</a></p></header>
+<header class="pm-bar"><a class="brand" href="/"><img src="/static/brand/logo.svg" alt="Convene home"></a><p class="meta"><a href="/history">Past meetings</a> · <span id="status">Loading…</span> <a id="live" hidden>Open the live dashboard</a></p><button class="theme-toggle" type="button" data-theme-toggle></button></header>
 <main class="pm">
 <div class="pm-title"><h1 id="title">Meeting summary</h1><button id="rename" class="link" type="button">Rename</button></div>
 <p id="error" role="alert"></p>

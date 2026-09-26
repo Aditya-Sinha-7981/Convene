@@ -2,8 +2,9 @@
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light">
+<meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#f7f5f0">
+<script src="/static/theme.js"></script>
 <title>Convene — Join meeting</title>
 <link rel="icon" href="/static/brand/logo-mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/theme.css">
@@ -11,7 +12,7 @@
 <body>
 <header class="join-bar">
   <span class="brand"><img src="/static/brand/logo.svg" alt="Convene"></span>
-  <div class="join-status" data-state="idle"><span class="status-orb" aria-hidden="true"></span><p>Connection: <span id="status">idle</span></p></div>
+  <div class="join-bar-actions"><button class="theme-toggle" type="button" data-theme-toggle></button><div class="join-status" data-state="idle"><span class="status-orb" aria-hidden="true"></span><p>Connection: <span id="status">idle</span></p></div></div>
 </header>
 <main class="join-page"><section class="join-card">
 <header><p class="join-kicker">You're joining a meeting</p><h1>Your phone is your microphone</h1><p class="join-intro">Convene transcribes what you say on the laptop in this room. Nothing goes to the internet.</p></header>
