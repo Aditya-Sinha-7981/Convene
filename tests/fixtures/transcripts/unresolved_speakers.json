@@ -1,0 +1,14 @@
+{
+  "description": "One shared phone whose speakers are unresolved (generic label), one of whom takes a task. The summary must not invent a name for them. Invented people and facts.",
+  "people": ["Dana"],
+  "shared_phones": 1,
+  "lines": [
+    ["Dana", 3, "Thanks for coming in. We need to decide on the venue for the spring workshop."],
+    ["shared:1", 11, "The library hall holds sixty people and it's free on weekdays."],
+    ["shared:1", 19, "The community centre is bigger but costs four hundred a day."],
+    ["Dana", 28, "Sixty is enough. Let's go with the library hall."],
+    ["shared:1", 36, "Okay. I'll call the library tomorrow and reserve the hall for the ninth."],
+    ["Dana", 45, "Great, and I'll write the invitation once we have the booking confirmed."]
+  ],
+  "expect": {"owners": {"Dana": 1}, "unowned_min": 1, "min_items": 2, "max_items": 3}
+}

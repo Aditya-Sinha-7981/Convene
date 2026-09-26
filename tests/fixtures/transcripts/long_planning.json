@@ -1,0 +1,320 @@
+{
+ "description": "Long monthly planning meeting (about 20 minutes, four topics, tasks spread through it, one explicitly unassigned task). Invented people and facts.",
+ "people": [
+  "Priya",
+  "Sam",
+  "Marcus",
+  "Lena"
+ ],
+ "lines": [
+  [
+   "Priya",
+   5,
+   "Okay, let's start. This is the monthly planning meeting. We have the roadmap, hiring, the offsite, and the support backlog."
+  ],
+  [
+   "Priya",
+   19,
+   "Let's start with the roadmap because that's the big one."
+  ],
+  [
+   "Sam",
+   33,
+   "So on the roadmap, the main question is whether offline sync goes into the June release or slips to July."
+  ],
+  [
+   "Marcus",
+   53,
+   "From the engineering side, sync is about seventy percent done. Conflict resolution is the hard part left."
+  ],
+  [
+   "Sam",
+   75,
+   "How long for conflict resolution?"
+  ],
+  [
+   "Marcus",
+   96,
+   "Realistically three weeks, and then a week of testing on bad networks."
+  ],
+  [
+   "Priya",
+   108,
+   "That puts us right at the end of June with no slack at all."
+  ],
+  [
+   "Lena",
+   123,
+   "Customers keep asking for it though. It came up in four of the last five sales calls."
+  ],
+  [
+   "Sam",
+   142,
+   "I'd rather ship it in July and have it work than ship a broken version in June."
+  ],
+  [
+   "Marcus",
+   164,
+   "Same. A sync bug that loses data would be much worse than a delay."
+  ],
+  [
+   "Priya",
+   188,
+   "Okay. Decision: offline sync moves to the July release. June ships the reporting improvements only."
+  ],
+  [
+   "Lena",
+   201,
+   "Then I need to tell the customers who were promised June."
+  ],
+  [
+   "Priya",
+   215,
+   "Yes. Lena, can you let those customers know about the new date?"
+  ],
+  [
+   "Lena",
+   233,
+   "I'll email them this week and offer a call if anyone wants one."
+  ],
+  [
+   "Sam",
+   254,
+   "For the June release, the reporting work is basically finished. Just the export to spreadsheet is left."
+  ],
+  [
+   "Marcus",
+   279,
+   "That's a two day job. Kofi started it last week."
+  ],
+  [
+   "Priya",
+   290,
+   "Good. Let's move on to hiring."
+  ],
+  [
+   "Priya",
+   303,
+   "We have budget for two engineers this quarter. We've interviewed six people so far."
+  ],
+  [
+   "Marcus",
+   321,
+   "Two of them were strong. The backend candidate from last Tuesday was the best I've seen this year."
+  ],
+  [
+   "Sam",
+   344,
+   "I agree on her. The other strong one was the mobile developer, but he wants to be fully remote."
+  ],
+  [
+   "Priya",
+   370,
+   "Fully remote is fine for mobile. We already have two remote engineers."
+  ],
+  [
+   "Lena",
+   382,
+   "What about the salary range? The backend candidate asked for more than the band."
+  ],
+  [
+   "Priya",
+   397,
+   "We can stretch the band a little for someone that good. I'll talk to finance about it."
+  ],
+  [
+   "Marcus",
+   416,
+   "If we wait too long she'll take another offer. She said she has one on the table."
+  ],
+  [
+   "Priya",
+   438,
+   "Then let's move quickly. I'll get an answer from finance by Friday."
+  ],
+  [
+   "Sam",
+   462,
+   "And the mobile developer?"
+  ],
+  [
+   "Priya",
+   471,
+   "Let's do a final round with him next week. Marcus, can you set up the final interview?"
+  ],
+  [
+   "Marcus",
+   487,
+   "Sure, I'll schedule it for Tuesday or Wednesday."
+  ],
+  [
+   "Priya",
+   503,
+   "Great. Next topic, the offsite."
+  ],
+  [
+   "Lena",
+   521,
+   "So for the offsite, I looked at three places. The lake house, the city hotel, and the farm."
+  ],
+  [
+   "Lena",
+   547,
+   "The lake house is the cheapest but it's two and a half hours away."
+  ],
+  [
+   "Sam",
+   559,
+   "Two and a half hours each way eats most of a day."
+  ],
+  [
+   "Lena",
+   574,
+   "The city hotel is close but it's expensive, about twice the lake house."
+  ],
+  [
+   "Marcus",
+   592,
+   "What about the farm?"
+  ],
+  [
+   "Lena",
+   610,
+   "The farm is an hour away, has meeting rooms, and it's in the middle on price."
+  ],
+  [
+   "Priya",
+   635,
+   "The farm sounds like the right balance. Does anyone object?"
+  ],
+  [
+   "Sam",
+   646,
+   "No, the farm is fine with me."
+  ],
+  [
+   "Marcus",
+   659,
+   "Fine with me too, as long as the Wi-Fi works. We tried to demo there once and it was bad."
+  ],
+  [
+   "Lena",
+   679,
+   "I'll ask them about the Wi-Fi before we book."
+  ],
+  [
+   "Priya",
+   699,
+   "Okay, the farm, pending Wi-Fi. What dates?"
+  ],
+  [
+   "Lena",
+   721,
+   "They have the second week of September free."
+  ],
+  [
+   "Priya",
+   731,
+   "Second week of September works. Lena, go ahead and book it if the Wi-Fi checks out."
+  ],
+  [
+   "Lena",
+   747,
+   "Will do."
+  ],
+  [
+   "Priya",
+   761,
+   "Last topic, the support backlog."
+  ],
+  [
+   "Sam",
+   779,
+   "The backlog is at one hundred and forty tickets. It was ninety a month ago."
+  ],
+  [
+   "Marcus",
+   804,
+   "A lot of those are the same password reset problem on older Android phones."
+  ],
+  [
+   "Sam",
+   816,
+   "If we fixed that one bug, we'd close maybe forty tickets at once."
+  ],
+  [
+   "Marcus",
+   831,
+   "I know what the cause is. It's the old browser on those phones not supporting the new login form."
+  ],
+  [
+   "Priya",
+   851,
+   "How long to fix?"
+  ],
+  [
+   "Marcus",
+   869,
+   "A day, maybe two, to add a fallback form."
+  ],
+  [
+   "Priya",
+   892,
+   "That's clearly worth it. Marcus, please take the password reset fix."
+  ],
+  [
+   "Marcus",
+   903,
+   "Okay, I'll do the fallback login form next."
+  ],
+  [
+   "Sam",
+   916,
+   "The rest of the backlog is mixed. Billing questions, feature requests, a few real bugs."
+  ],
+  [
+   "Lena",
+   935,
+   "Maybe we should write a help page for the billing questions. They're mostly the same three questions."
+  ],
+  [
+   "Priya",
+   957,
+   "Good idea. Somebody should write that help page, but let's not assign it today, the team is full."
+  ],
+  [
+   "Sam",
+   983,
+   "One more thing on support. The weekend coverage rota ends this month."
+  ],
+  [
+   "Priya",
+   995,
+   "Let's continue the same rota for another quarter. No changes."
+  ],
+  [
+   "Priya",
+   1009,
+   "Okay, I think that's everything. To recap the decisions: sync moves to July, the farm for the offsite, and we move fast on the backend hire."
+  ],
+  [
+   "Sam",
+   1031,
+   "Sounds right."
+  ],
+  [
+   "Priya",
+   1048,
+   "Thanks everyone, see you next month."
+  ]
+ ],
+ "expect": {
+  "owners": {
+   "Lena": 2,
+   "Priya": 1,
+   "Marcus": 2
+  },
+  "min_items": 5,
+  "max_items": 8
+ }
+}

@@ -384,3 +384,44 @@ reach the model and honesty on them depends on its instruction following (measur
 model holds several GB for the whole meeting (`models.md`).
 
 **Status:** Accepted (CON-09).
+
+---
+
+## Decision made during CON-10
+
+### ADR-23: Summary length limit, end-only drain, and summary failure details
+
+**Decision:**
+- **Long transcripts.** The whole transcript goes to the model in one call or not at all. The prompt is counted
+  with the model's tokenizer; above `[summary].max_input_tokens` (16,000, measured) the attempt fails with
+  `transcript_too_long` and the model is not called. No truncation and no map-then-merge pass.
+- **Drain only at meeting end.** The end trigger flushes partial segments and waits, bounded by
+  `[summary].drain_timeout_s`, for queued STT and the attribution writes behind it. A manual trigger neither flushes
+  nor waits.
+- **Failure detail.** `summary_failed.error_code` is one of `summary_invalid_output`, `summary_generation_failed`,
+  `transcript_too_long` and `transcript_empty`. `summary_generated` and `summary_failed` gain `attempts`, `duration_ms`
+  and `drain_timed_out`. `Summary.generated_at` is null while `pending`. A `pending` row left by a stopped server is
+  failed at startup.
+- **Parsing and owners.** Unwrap one code fence or prose around one JSON object, ignore extra keys, read a blank
+  owner as null, and reject everything else without repair. Owners map by case-insensitive exact display-name
+  match; an ambiguous or unknown name, or a generic label, is null.
+- **One attempt per meeting.** A second trigger is `409 summary_in_progress`; the end trigger does not queue behind a
+  running manual attempt.
+
+**Rationale:** Measured on the reference laptop (`logs/summary-export.md`), memory grows slowly with context (5.5 GB
+at 2k tokens, 8.7 GB at 27k) but time does not: prefill runs at 160–290 tokens per second, so 90 minutes of nonstop
+talk took over four minutes and overran the output budget. 16,000 tokens covers about 50 minutes of nonstop speech
+and far more of a normal meeting in about 100 s, many times the demo's length. A clear failure is honest, where
+truncation would silently drop the end of the meeting and map-then-merge adds a second prompt and failure mode that
+the demo does not need. Flushing on a live meeting would cut off a sentence being spoken. The extra audit keys make
+the retry rate, time to summary and drain timeouts visible from the audit stream (ADR-13).
+
+**Alternatives considered:** A 128k context (rejected: minutes of prefill, and a live meeting's STT would stall for
+the duration); truncating to the latest part (rejected: silent loss); map-then-merge (deferred until a real meeting
+needs it); retrying model errors (rejected: a failing model fails again, and the contract retries parse failures
+only); queueing a meeting-end attempt behind a running manual one (rejected: the staleness notice already covers it).
+
+**Tradeoffs:** A meeting longer than the limit gets no summary until the limit is raised or map-then-merge is added.
+A long summary holds the reasoning model, so a live question waits behind it.
+
+**Status:** Proposed (CON-10), pending project-lead confirmation.

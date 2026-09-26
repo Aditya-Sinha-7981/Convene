@@ -46,6 +46,7 @@ class ReasoningAdapter(Protocol):
 
     def load(self) -> None: ...
     def generate(self, messages: Sequence[dict], max_tokens: int, temperature: float, timeout: float) -> Generation: ...
+    def count_tokens(self, messages: Sequence[dict]) -> int: ...
     def close(self) -> None: ...
 
 
@@ -68,6 +69,9 @@ class FakeReasoningAdapter:
     def close(self) -> None:
         self.loaded = False
 
+    def count_tokens(self, messages) -> int:
+        return sum(len(message["content"].split()) for message in messages)
+
     def generate(self, messages, max_tokens, temperature, timeout) -> Generation:
         with self._lock:
             began = time.monotonic()
@@ -79,7 +83,7 @@ class FakeReasoningAdapter:
             if self.fail is not None:
                 raise self.fail
             text = self.respond(messages)
-            return Generation(text, sum(len(m["content"].split()) for m in messages), len(text.split()),
+            return Generation(text, self.count_tokens(messages), len(text.split()),
                               time.monotonic() - began, "stop")
 
 
@@ -129,6 +133,12 @@ class MlxLmAdapter:
 
     def close(self) -> None:
         self._model = self._tokenizer = None
+
+    def count_tokens(self, messages) -> int:
+        """Prompt length in model tokens, with the chat template applied exactly as ``generate`` does."""
+        if self._tokenizer is None:
+            raise RuntimeError("the reasoning model is not loaded")
+        return len(self._tokenizer.apply_chat_template(list(messages), add_generation_prompt=True))
 
     def generate(self, messages, max_tokens, temperature, timeout) -> Generation:
         if self._model is None:

@@ -38,6 +38,18 @@ class MeetingEndedError(StorageError):
     """`meeting_ended`: the operation needs a meeting that has not ended."""
 
 
+class SummaryNotFoundError(NotFoundError):
+    """`summary_not_found`: no summary attempt exists for this meeting."""
+
+
+class SummaryInProgressError(StorageError):
+    """`summary_in_progress`: an attempt for this meeting is already running."""
+
+
+class TranscriptEmptyError(StorageError):
+    """`transcript_empty`: the meeting has no utterances to summarize."""
+
+
 class DeviceConflictError(StorageError):
     """`device_conflict`: the device_id belongs to another meeting, or `is_shared` differs."""
 

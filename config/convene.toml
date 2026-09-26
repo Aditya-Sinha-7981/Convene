@@ -53,6 +53,17 @@ temperature = 0.0
 answer_timeout_s = 30.0
 index_stale_s = 30.0
 
+# End-of-meeting summary (CON-10). Measured on the reference laptop with scripts/measure_summary.py (logs/summary-export.md):
+# continuous talk is about 310 prompt tokens per minute, so 16000 tokens is about 50 minutes of nonstop speech (turn-taking
+# meetings run far below that rate) and takes about 2 to 3 minutes. A longer transcript fails with transcript_too_long; it
+# is never truncated. generation_timeout_s covers the prompt prefill as well as the reply.
+[summary]
+max_input_tokens = 16000
+max_output_tokens = 1536
+temperature = 0.0
+generation_timeout_s = 240.0
+drain_timeout_s = 15.0
+
 # VAD, segmenting, scheduling and priority. Each value below was set from measurement on this machine with
 # synthetic audio (logs/stt.md); none has been tuned on real phone audio. CON-15 tunes them with real bleed data.
 [pipeline]

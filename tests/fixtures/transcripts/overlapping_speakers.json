@@ -1,0 +1,20 @@
+{
+  "description": "Crosstalk: phones pick up overlapping speech, lines are fragmentary and share timestamps, and STT made errors. Invented people and facts.",
+  "people": ["Kofi", "Mei", "Tom"],
+  "lines": [
+    ["Kofi", 2, "So the the server bill last month was"],
+    ["Mei", 2, "twelve hundred, I checked"],
+    ["Tom", 3, "wait which month"],
+    ["Kofi", 6, "August. Twelve hundred. That's double July."],
+    ["Mei", 7, "It's the logs, we're keeping every debug log for ninety days"],
+    ["Tom", 7, "yeah the logs"],
+    ["Kofi", 12, "Can we cut that to fourteen days?"],
+    ["Mei", 13, "Yes. I'll change the log retention to fourteen days today."],
+    ["Tom", 15, "and the the staging box is still running, nobody uses it"],
+    ["Kofi", 18, "Tom can you shut down staging then"],
+    ["Tom", 19, "sure I'll turn off the staging server after lunch"],
+    ["Mei", 22, "Should save maybe five hundred a month."],
+    ["Kofi", 25, "Good. Decision is fourteen day logs and no staging. Done."]
+  ],
+  "expect": {"owners": {"Mei": 1, "Tom": 1}, "min_items": 2, "max_items": 3}
+}

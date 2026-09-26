@@ -10,9 +10,11 @@ from server.errors import DatabaseOpenError, MigrationError, SchemaVersionError
 from tests.test_api_contract_docs import ENTITY_FIELDS, ENUMS
 
 CORE_TABLES = {"Meeting", "Device", "Participant", "Utterance", "ConnectionEvent", "AuditEvent"}
-LATEST_VERSION = 5  # 0001 core, 0002 ModelExecution, 0003/4 transcript chunks (CON-08), 0005 QAQuery (CON-09)
-TABLES_SO_FAR = CORE_TABLES | {"ModelExecution", "TranscriptChunk", "TranscriptIndexMeta", "TranscriptChunkVector",
-                               "QAQuery"}
+LATEST_VERSION = 6  # 0001 core, 0002 ModelExecution, 0003/4 transcript chunks (CON-08), 0005 QAQuery (CON-09),
+                    # 0006 Summary and ActionItem (CON-10)
+SUMMARY_TABLES = {"Summary", "ActionItem"}
+TABLES_SO_FAR = CORE_TABLES | SUMMARY_TABLES | {"ModelExecution", "TranscriptChunk", "TranscriptIndexMeta",
+                                                "TranscriptChunkVector", "QAQuery"}
 
 
 def schema(conn):
@@ -109,7 +111,7 @@ def test_corrupt_file_stops_startup_with_a_clear_error(tmp_path):
 
 
 def test_columns_match_the_data_model(db):
-    for entity in CORE_TABLES:
+    for entity in CORE_TABLES | SUMMARY_TABLES:
         columns = {r["name"] for r in db.conn.execute(f"PRAGMA table_info({entity})")}
         # ``started_at`` and ``ended_at`` are documented nullable Meeting fields but API examples omit them.
         expected = ENTITY_FIELDS[entity] | ({"started_at", "ended_at"} if entity == "Meeting" else set())
@@ -120,7 +122,7 @@ def test_check_enums_match_the_documented_values(db):
     sql = schema(db.conn)
     checked = 0
     for (entity, column), documented in ENUMS.items():
-        if entity not in CORE_TABLES or entity == "AuditEvent":  # audit values are enforced by emit()
+        if entity not in CORE_TABLES | SUMMARY_TABLES or entity == "AuditEvent":  # audit values are enforced by emit()
             continue
         match = re.search(rf"\b{column}\s+IN\s*\(([^)]*)\)", sql[entity])
         assert match, f"{entity}.{column} has no CHECK ... IN (...)"

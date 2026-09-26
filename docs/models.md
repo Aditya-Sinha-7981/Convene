@@ -47,6 +47,7 @@ Measured on the reference laptop (MacBook Pro, M4 Pro, 24 GB) with `scripts/meas
 | `embedding` model (`bge-small-en-v1.5`) | **measured: about 0.4 GB added to the server's peak RSS** | continuously (loaded at startup), used after each settle window |
 | `speaker_embedding` model | ~200–500MB | only for shared-device windows |
 | **STT + embedding + reasoning loaded, 5 phones talking, questions every 8 s** | **measured: 5.7 GB peak RSS, 7.1 GB peak MLX memory** | about 15 GB headroom on 24 GB; `speaker_embedding` (CON-13) is not yet measured |
+| `reasoning` during a summary (CON-10) | **measured: 5.5 GB peak MLX at 2k prompt tokens, 7.1 GB at the 16k limit, 8.7 GB at 27k** | the key-value cache grows with the transcript; `[summary].max_input_tokens` caps it (`summarization.md`, "Long transcripts") |
 
 This headroom is the margin for "several phones talking at once plus a live Q&A call in flight" without swapping or stalling. If real testing shows this budget is wrong, correct this table — it is a claim to be verified, not assumed. The `reasoning`, `embedding` and `speaker_embedding` rows are still unmeasured estimates (CON-08, CON-09, CON-13). The `embedding` (CON-08) and `reasoning` (CON-09) rows are measured below; `speaker_embedding` remains an estimate.
 

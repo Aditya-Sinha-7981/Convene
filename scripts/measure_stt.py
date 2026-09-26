@@ -19,6 +19,9 @@ can be compared with and without indexing, and each result adds the indexing lag
 written to the first time a `ready` chunk covers it (sampled every 100 ms). With `--qa` (implies `--embedding`),
 the reasoning model is loaded too and a question is asked every `--qa-every` seconds while the phones talk; each
 result adds the question-to-answer latency and outcomes, so STT latency can be compared with Q&A running.
+With `--summarize-at S`, the reasoning model is loaded and one manual summary of the live meeting is started S
+seconds in (CON-10); each result adds its time to summary and the STT latency of windows that ended while it
+ran, next to the latency of windows well outside it.
 """
 import argparse
 import asyncio
@@ -135,7 +138,7 @@ def speech_at_48k(offset_s: float, pause_s: float, duty: float) -> np.ndarray:
 
 async def run_scenario(adapter, devices: int, scenario: str, seconds: float, window_ms: int, queue_max: int,
                        segmentation: str | None = None, embedding_adapter=None, reasoning_adapter=None,
-                       qa_every_s: float = 8.0) -> dict:
+                       qa_every_s: float = 8.0, summarize_at_s: float | None = None) -> dict:
     import tempfile
     from dataclasses import replace
     from datetime import datetime, timezone
@@ -160,6 +163,7 @@ async def run_scenario(adapter, devices: int, scenario: str, seconds: float, win
     lag, depth = [], []
     searchable: dict[str, float] = {}  # utterance_id -> seconds from written to covered by a ready chunk
     answers: list[tuple[float, str, str | None]] = []  # (seconds, status, reason) per question
+    summary_run: dict = {}  # CON-10: one manual "summarize now" during live speech
     try:
         async with __import__("aiohttp").ClientSession() as http, http.post(server.base_url + "/api/meetings", json={}) as r:
             meeting_id = (await r.json())["meeting"]["meeting_id"]
@@ -215,13 +219,28 @@ async def run_scenario(adapter, devices: int, scenario: str, seconds: float, win
                 answers.append((time.monotonic() - began, result["query"]["status"], result["reason"]))
                 number += 1
 
+        async def summarizer():
+            from server.repositories import summaries
+            await asyncio.sleep(summarize_at_s)
+            summary_run["start"] = time.time()
+            started = await server.runtime.summary.summarize(meeting_id)
+            while server.runtime.summary.running(meeting_id):
+                await asyncio.sleep(0.05)
+            summary_run["end"] = time.time()
+            row = await server.runtime.db.run(lambda tx: summaries.get(tx.conn, started["summary_id"]))
+            summary_run["status"] = row.status
+
         tasks = [asyncio.create_task(sampler()), asyncio.create_task(depth_sampler())]
+        if summarize_at_s is not None:
+            tasks.append(asyncio.create_task(summarizer()))
         if embedding_adapter is not None:
             tasks.append(asyncio.create_task(index_sampler()))
-        if reasoning_adapter is not None:
+        if reasoning_adapter is not None and qa_every_s > 0:
             tasks.append(asyncio.create_task(asker()))
         start = time.time()
         await asyncio.sleep(seconds)
+        while summarize_at_s is not None and "end" not in summary_run and time.time() - start < seconds + 300:
+            await asyncio.sleep(0.1)  # let a summary that started near the end finish (speech keeps coming)
         for t in tasks:
             t.cancel()
         finished = await server.runtime.pipeline.drain(meeting_id, 60)
@@ -250,11 +269,23 @@ async def run_scenario(adapter, devices: int, scenario: str, seconds: float, win
                                        "p95": round(float(np.percentile(lags, 95)), 2) if lags else None,
                                        "max": round(max(lags), 2) if lags else None},
                     "index_status_at_end": {k: index_status[k] for k in ("ready", "failed", "indexed", "pending_utterances")}}
-    if reasoning_adapter is not None:
+    if reasoning_adapter is not None and qa_every_s > 0:
         latency = [seconds_taken for seconds_taken, _, _ in answers]
         indexing["qa"] = {"asked": len(answers), "answer_s": {"median": round(float(np.median(latency)), 2) if latency else None,
                                                              "max": round(max(latency), 2) if latency else None},
                           "outcomes": sorted({f"{status}/{reason}" for _, status, reason in answers})}
+    if summary_run:
+        during = [(when - parse(o.t_end)) * 1000 for when, o in ok
+                  if "end" in summary_run and summary_run["start"] <= parse(o.t_end) <= summary_run["end"]]
+        outside = [(when - parse(o.t_end)) * 1000 for when, o in ok
+                   if "end" in summary_run and not summary_run["start"] - 1 <= parse(o.t_end) <= summary_run["end"] + 5]
+        indexing["summary"] = {"status": summary_run.get("status"),
+                               "time_to_summary_s": round(summary_run["end"] - summary_run["start"], 1)
+                               if "end" in summary_run else None,
+                               "stt_post_window_ms_during": {"n": len(during), "median": pct(during, 50),
+                                                             "p95": pct(during, 95), "max": pct(during, 100)},
+                               "stt_post_window_ms_outside": {"n": len(outside), "median": pct(outside, 50),
+                                                              "p95": pct(outside, 95)}}
     return {"devices": devices, "scenario": scenario, "seconds": seconds, "windows_ok": len(ok), "failure_samples": failures,
             **indexing,
             "post_window_latency_ms": {"median": pct(post_window, 50), "p95": pct(post_window, 95), "max": pct(post_window, 100)},
@@ -276,7 +307,7 @@ def measure_pipeline(args) -> None:
           f"workers {settings.pipeline.workers}; embedding indexer {'on' if args.embedding or args.qa else 'off'}; "
           f"Q&A {'every %.0f s' % args.qa_every if args.qa else 'off'}", flush=True)
     embedding = reasoning = None
-    if args.qa:
+    if args.qa or args.summarize_at is not None:
         from server.rag.reasoning import build_reasoning_adapter
         reasoning = build_reasoning_adapter(settings.reasoning)
         reasoning.load()
@@ -289,7 +320,8 @@ def measure_pipeline(args) -> None:
             adapter = build_adapter(settings.stt)  # the server closes its adapter on shutdown, so each run loads its own
             adapter.load()
             result = asyncio.run(run_scenario(adapter, devices, scenario, args.seconds, args.window_ms, args.queue_max,
-                                              args.segmentation, embedding, reasoning, args.qa_every))
+                                              args.segmentation, embedding, reasoning,
+                                              args.qa_every if args.qa else 0, args.summarize_at))
             print(json.dumps(result), flush=True)
     print(json.dumps({"peak_rss_mb": round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024 / 1024),
                       "mlx_peak_gpu_mb": round(mx.get_peak_memory() / 1024 / 1024)}))
@@ -380,6 +412,8 @@ def main() -> None:
     pipe.add_argument("--embedding", action="store_true", help="also run the CON-08 indexer with the real embedding model")
     pipe.add_argument("--qa", action="store_true", help="also load the reasoning model and ask questions (CON-09)")
     pipe.add_argument("--qa-every", type=float, default=8.0, help="seconds between questions with --qa")
+    pipe.add_argument("--summarize-at", type=float, help="load the reasoning model and trigger one manual summary this "
+                                                           "many seconds in, measuring STT latency while it runs (CON-10)")
     sub.add_parser("strategies", help="compare fixed windows with speech segments on realistic streams (real model)")
     args = parser.parse_args()
 

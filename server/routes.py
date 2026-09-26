@@ -12,10 +12,12 @@ from . import meetings as service
 from .attribution.views import utterance_view
 from .errors import (AmbiguousDisplayNameError, DatabaseBusyError, DeviceConflictError, DeviceNotFoundError,
                      MeetingEndedError, MeetingNotFoundError, ParticipantNotFoundError, StorageError,
-                     UtteranceNotFoundError, ValidationError)
+                     SummaryInProgressError, SummaryNotFoundError, TranscriptEmptyError, UtteranceNotFoundError,
+                     ValidationError)
 from .ids import is_uuid4
 from .timeutil import utc_now
 from .repositories import audit_events, meetings as meetings_repo, utterances
+from .summary.views import summary_payload
 from .transport.signaling import signaling_endpoint
 
 log = logging.getLogger("convene.api")
@@ -150,6 +152,20 @@ async def ask_question(meeting_id: str, request: Request):
     return await _runtime(request).qa.ask(meeting_id, body)
 
 
+@router.post("/api/meetings/{meeting_id}/summarize")
+async def summarize(meeting_id: str, request: Request):
+    """Start a summary attempt (live or ended meeting); the outcome arrives as ``summary_ready``/``summary_failed``."""
+    meeting_id = _meeting_id(meeting_id)
+    await read_json_body(request)
+    return JSONResponse(await _runtime(request).summary.summarize(meeting_id), status_code=202)
+
+
+@router.get("/api/meetings/{meeting_id}/summary")
+async def get_summary(meeting_id: str, request: Request):
+    meeting_id = _meeting_id(meeting_id)
+    return await _runtime(request).db.run(lambda tx: summary_payload(tx.conn, meeting_id))
+
+
 @router.get("/metrics")
 async def metrics(request: Request):
     """Read-only per-device diagnostics (not part of the contract; nothing may depend on it)."""
@@ -194,6 +210,12 @@ async def dashboard_page(meeting_id: str, request: Request):
     return _page("dashboard.html")
 
 
+@router.get("/meetings/{meeting_id}")
+async def post_meeting_page(meeting_id: str, request: Request):
+    """Summary, action items and transcript. Served for a live meeting too, for "summarize now"."""
+    return _page("post_meeting.html") if await _existing_meeting(request, meeting_id) else _not_found_page()
+
+
 # -- WebSockets -----------------------------------------------------------------------------
 
 
@@ -225,6 +247,9 @@ _STORAGE_ERRORS = [
     (DeviceNotFoundError, 404, "device_not_found"),
     (UtteranceNotFoundError, 404, "utterance_not_found"),
     (ParticipantNotFoundError, 404, "participant_not_found"),
+    (SummaryNotFoundError, 404, "summary_not_found"),
+    (SummaryInProgressError, 409, "summary_in_progress"),
+    (TranscriptEmptyError, 409, "transcript_empty"),
     (AmbiguousDisplayNameError, 409, "ambiguous_display_name"),
     (MeetingEndedError, 409, "meeting_ended"),
     (DeviceConflictError, 409, "device_conflict"),

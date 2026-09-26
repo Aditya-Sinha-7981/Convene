@@ -16,6 +16,7 @@ from .repositories import participants
 from .pipeline.pipeline import SttPipeline
 from .rag.indexer import TranscriptIndexer
 from .rag.qa import QAService
+from .summary import SummaryService
 from .transport.audio import AudioSink, CountingSink
 from .transport.peers import PeerManager
 
@@ -59,6 +60,7 @@ class Runtime:
         self.attribution: AttributionService | None = None
         self.indexer: TranscriptIndexer | None = None
         self.qa: QAService | None = None
+        self.summary: SummaryService | None = None
         self._hooks: list[tuple[str, MeetingEndedHook]] = []
         self._log_task: asyncio.Task | None = None
 
@@ -155,6 +157,14 @@ class Runtime:
         self.qa = QAService(self.db, self.settings.qa, embedding=self.embedding_adapter,
                             reasoning=self.reasoning_adapter, indexer=self.indexer,
                             priority=self.pipeline.priority if self.pipeline else None)
+        # Always present, like Q&A: without a model an attempt is recorded as failed with the reason.
+        self.summary = SummaryService(self.db, self.settings.summary, reasoning=self.reasoning_adapter,
+                                      priority=self.pipeline.priority if self.pipeline else None,
+                                      pipeline=self.pipeline, attribution=self.attribution)
+        interrupted = await self.summary.reconcile()
+        if interrupted:
+            log.info("startup reconciliation: %d interrupted summary attempt(s) marked failed", interrupted)
+        self.on_meeting_ended(self.summary.meeting_ended, "summary")
         if self.transport.metrics_log_interval_s > 0:
             self._log_task = asyncio.create_task(self._log_metrics())
 
@@ -191,6 +201,8 @@ class Runtime:
         if self._log_task is not None:
             self._log_task.cancel()
             await asyncio.gather(self._log_task, return_exceptions=True)
+        if self.summary is not None:
+            await self.summary.stop()
         await self.hub.stop()
         await self.peers.shutdown()
         if self.pipeline is not None:

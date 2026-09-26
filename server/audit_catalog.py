@@ -45,8 +45,9 @@ CATALOG: dict[str, EventSpec] = {
     "qa_query": _spec("rag", "query_id", "mode", "status", "meeting_ids", "chunk_count", "duration_ms",
                       "error_code", "reason", "best_similarity", meeting_required=False),
     "summary_started": _spec("summary", "summary_id", "trigger"),
-    "summary_generated": _spec("summary", "summary_id", "input_as_of_seq", "model_identifier", "action_item_count"),
-    "summary_failed": _spec("summary", "summary_id", "error_code", "attempts"),
+    "summary_generated": _spec("summary", "summary_id", "input_as_of_seq", "model_identifier", "action_item_count",
+                               "attempts", "duration_ms", "drain_timed_out"),
+    "summary_failed": _spec("summary", "summary_id", "error_code", "attempts", "duration_ms", "drain_timed_out"),
     "export_created": _spec("export", "export_id", "summary_id", "input_as_of_seq", "type"),
     "export_failed": _spec("export", "export_id", "error_code"),
 }

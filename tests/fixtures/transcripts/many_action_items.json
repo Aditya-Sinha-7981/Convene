@@ -1,0 +1,20 @@
+{
+  "description": "Launch planning with many tasks: most with an explicit owner, two unowned. Invented people and facts.",
+  "people": ["Priya", "Sam", "Marcus", "Lena"],
+  "lines": [
+    ["Priya", 4, "We have a lot to split up before the launch, so let's go person by person."],
+    ["Priya", 12, "I'll write the launch blog post and have a draft by Thursday."],
+    ["Sam", 20, "I'll update the pricing page with the new student tier."],
+    ["Marcus", 29, "I can record the product walkthrough video on Monday."],
+    ["Lena", 37, "I'll email the twenty beta customers to tell them the launch date."],
+    ["Priya", 46, "Sam, please also check the checkout works in euros."],
+    ["Sam", 52, "Sure, I'll test euro checkout tomorrow."],
+    ["Marcus", 61, "Lena, can you book the photographer for the team photo?"],
+    ["Lena", 67, "Yes, I'll book the photographer."],
+    ["Priya", 75, "Someone needs to renew the domain certificate before it expires next week."],
+    ["Marcus", 83, "And somebody should update the press kit, the logo in it is old."],
+    ["Priya", 91, "Right, let's figure out who takes those two later. Marcus, you also own the status page, yes?"],
+    ["Marcus", 98, "Yes, I'll set up the status page before launch."]
+  ],
+  "expect": {"owners": {"Priya": 1, "Sam": 2, "Marcus": 2, "Lena": 2}, "min_items": 8, "max_items": 11}
+}

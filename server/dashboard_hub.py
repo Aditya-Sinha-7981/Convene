@@ -6,7 +6,8 @@ caused it. Read-only: whatever a client sends is ignored. A client that cannot k
 and resynchronizes; one slow socket never delays another.
 
 This task pushes ``meeting_status``, ``device_status``, ``connection_event`` and ``device_gauges``; the
-tasks that produce the other event types add them here (CON-09: ``qa_query`` becomes ``qa_answer``).
+tasks that produce the other event types add them here (CON-09: ``qa_query`` becomes ``qa_answer``; CON-10:
+``summary_generated`` and ``summary_failed`` become ``summary_ready`` and ``summary_failed``).
 """
 import asyncio
 import logging
@@ -15,7 +16,7 @@ from dataclasses import asdict
 from .audit import emit
 from .attribution.views import utterance_view
 from .rag.citations import query_view, resolve_citations
-from .repositories import connections, devices, meetings, participants, qa_queries, utterances
+from .repositories import connections, devices, meetings, participants, qa_queries, summaries, utterances
 from .repositories.models import AuditEvent
 from .timeutil import utc_now
 from .views import device_view, meeting_view
@@ -26,6 +27,7 @@ _MEETING_EVENTS = {"meeting_started", "meeting_ended"}
 _DEVICE_EVENTS = {"device_registered", "device_left"}
 _CONNECTION_EVENTS = {"device_connected", "device_reconnected", "device_disconnected", "device_audio_resumed"}
 _UTTERANCE_EVENTS = {"utterance_created": "utterance", "utterance_corrected": "utterance_updated"}
+_SUMMARY_EVENTS = {"summary_generated", "summary_failed"}
 OVERFLOW_CLOSE_CODE = 1013
 
 
@@ -99,7 +101,8 @@ class DashboardHub:
 
     async def _translate(self, event: AuditEvent) -> list[tuple[str, dict]]:
         kind = event.event_type
-        if kind not in _MEETING_EVENTS | _DEVICE_EVENTS | _CONNECTION_EVENTS | set(_UTTERANCE_EVENTS) | {"qa_query"}:
+        if kind not in (_MEETING_EVENTS | _DEVICE_EVENTS | _CONNECTION_EVENTS | set(_UTTERANCE_EVENTS) | _SUMMARY_EVENTS
+                        | {"qa_query"}):
             return []
 
         def read(tx):
@@ -111,6 +114,12 @@ class DashboardHub:
                     out.append(("qa_answer", {"query": view, "citations": resolve_citations(
                         tx.conn, event.meeting_id, view["cited_chunk_ids"])}))
                 return out
+            if kind == "summary_generated":
+                return [("summary_ready", {"summary_id": event.payload["summary_id"]})]
+            if kind == "summary_failed":
+                row = summaries.get(tx.conn, event.payload["summary_id"])
+                return [("summary_failed", {"summary_id": event.payload["summary_id"],
+                                            "error_message": row.error_message if row is not None else None})]
             if kind in _MEETING_EVENTS:
                 out.append(("meeting_status", {"meeting": meeting_view(meetings.require(tx.conn, event.meeting_id))}))
             device_id = event.payload.get("device_id")

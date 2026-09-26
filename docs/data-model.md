@@ -153,11 +153,11 @@ evidence (empty unless answered). The reason for `no_grounding`/`failed` is in t
 |---|---|---|
 | summary_id | TEXT (UUID) | PK |
 | meeting_id | TEXT (UUID) | FK → Meeting |
-| status | TEXT | **(proposed)** `pending` \| `ready` \| `failed`. A row is created as `pending` when an attempt starts. The current summary of a meeting is its most recent `ready` row; a `failed` attempt never replaces it |
+| status | TEXT | **(proposed)** `pending` \| `ready` \| `failed`. A row is created as `pending` when an attempt starts. The current summary of a meeting is its most recent `ready` row; a `failed` attempt never replaces it. Attempts are ordered by insertion (at most one runs per meeting at a time) |
 | summary_text | TEXT, nullable | **(proposed)** null unless `status = ready`; malformed model output is never stored here |
-| error_message | TEXT, nullable | **(proposed)** short diagnostic when `status = failed` |
-| model_identifier | TEXT | which local (or cloud) model produced it |
-| generated_at | TEXT (ISO 8601) | completion time of the attempt (success or failure) |
+| error_message | TEXT, nullable | **(proposed)** short diagnostic when `status = failed`; never contains transcript text |
+| model_identifier | TEXT | which local (or cloud) model produced it (`none` when no reasoning model was loaded) |
+| generated_at | TEXT (ISO 8601), nullable | completion time of the attempt (success or failure); null while `pending` |
 
 ### ActionItem
 
@@ -240,8 +240,8 @@ The complete set. Payloads reference records by ID and never contain transcript 
 | `index_failed` | `rag` | `utterance_id_start`, `utterance_id_end`, `error` |
 | `qa_query` | `rag` | `query_id`, `mode`, `status`, `meeting_ids`, `chunk_count`, `duration_ms`, `error_code`, `reason`, `best_similarity` |
 | `summary_started` | `summary` | `summary_id`, `trigger` |
-| `summary_generated` | `summary` | `summary_id`, `input_as_of_seq`, `model_identifier`, `action_item_count` |
-| `summary_failed` | `summary` | `summary_id`, `error_code`, `attempts` |
+| `summary_generated` | `summary` | `summary_id`, `input_as_of_seq`, `model_identifier`, `action_item_count`, `attempts`, `duration_ms`, `drain_timed_out` |
+| `summary_failed` | `summary` | `summary_id`, `error_code`, `attempts`, `duration_ms`, `drain_timed_out` |
 | `export_created` | `export` | `export_id`, `summary_id`, `input_as_of_seq`, `type` |
 | `export_failed` | `export` | `export_id`, `error_code` |
 
@@ -256,6 +256,12 @@ Payload value sets:
   manual correction uses `1.0`. The initial server-owned low-confidence threshold is `0.8`; these tunable
   values live under `[attribution]`, not in application logic. One successful STT speech segment creates one
   `Utterance`.
+- `summary_generated.attempts` and `summary_failed.attempts` count model calls: `1`, or `2` when the stricter retry
+  ran (`0` when the attempt failed before calling the model). `duration_ms` runs from the trigger to the outcome,
+  including the drain (null for an attempt failed by startup reconciliation). `drain_timed_out` is true when a
+  meeting-end attempt stopped waiting for queued STT and summarized the lines that existed (`summarization.md`).
+  `summary_failed.error_code`: `summary_generation_failed` \| `summary_invalid_output` \| `transcript_too_long` \|
+  `transcript_empty`. Payloads carry ids and counts, never transcript text.
 - `summary_generated.input_as_of_seq` and `export_created.input_as_of_seq` are the `seq` high-water mark of the transcript the artifact was built from. They are how staleness is derived (see below), so no extra column is needed.
 
 <!-- example: audit -->

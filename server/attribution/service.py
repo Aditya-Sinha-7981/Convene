@@ -54,6 +54,16 @@ class AttributionService:
         while self._tasks:
             await asyncio.gather(*list(self._tasks), return_exceptions=True)
 
+    async def wait_idle(self, timeout: float) -> bool:
+        """Wait up to ``timeout`` seconds for pending writes and hooks, without cancelling any; True if idle."""
+        deadline = asyncio.get_running_loop().time() + timeout
+        while self._tasks:
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                return False
+            await asyncio.wait(list(self._tasks), timeout=remaining)
+        return True
+
     async def attribute(self, outcome) -> Utterance | None:
         if outcome.status != "ok" or outcome.meeting_id is None or not outcome.text.strip():
             return None

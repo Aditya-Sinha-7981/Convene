@@ -2,7 +2,7 @@
 
 Single FastAPI process (ADR-01). REST for request/response operations, WebSocket for signaling and live push feeds. This document is authoritative for endpoint shape — other docs describe *when* these are called, not their exact contracts. Stored field names come from `data-model.md` and are never renamed here; where the API adds a computed field it is listed under [Derived fields](#derived-fields).
 
-**Implementation status (through CON-09):** implemented and covered by automated loopback tests: `POST /api/meetings`, `GET /api/meetings/{meeting_id}`, `POST …/devices`, `POST …/end`, `GET …/transcript`, and `POST …/utterances/{utterance_id}/correct`; signaling and dashboard WebSockets; and the pages `/`, `/join/{meeting_id}`, `/dashboard/{meeting_id}`, and `/static/…`. The dashboard feed includes `meeting_status`, `device_status`, `connection_event`, `device_gauges`, `utterance`, and `utterance_updated`; the dashboard consumes server-computed labels and low-confidence state. Live Q&A (`POST …/qa`, the `qa_answer` push) is implemented by CON-09. `GET /api/meetings`, history Q&A (`POST /api/qa`), summary, export, and enrollment routes remain unimplemented. `end` reports `summary_pending: false` until CON-10 starts summarization from the `on_meeting_ended` hook. None of this has been verified on real phones. A route section below describes the contract, not a claim that the route exists.
+**Implementation status (through CON-09):** implemented and covered by automated loopback tests: `POST /api/meetings`, `GET /api/meetings/{meeting_id}`, `POST …/devices`, `POST …/end`, `GET …/transcript`, and `POST …/utterances/{utterance_id}/correct`; signaling and dashboard WebSockets; and the pages `/`, `/join/{meeting_id}`, `/dashboard/{meeting_id}`, and `/static/…`. The dashboard feed includes `meeting_status`, `device_status`, `connection_event`, `device_gauges`, `utterance`, and `utterance_updated`; the dashboard consumes server-computed labels and low-confidence state. Live Q&A (`POST …/qa`, the `qa_answer` push) is implemented by CON-09. Summarization (`POST …/summarize`, `GET …/summary`, the `summary_ready` and `summary_failed` pushes, summarization started by `end`, and the post-meeting page `/meetings/{meeting_id}`) is implemented by CON-10. `GET /api/meetings`, history Q&A (`POST /api/qa`), export, and enrollment routes remain unimplemented. None of this has been verified on real phones. A route section below describes the contract, not a claim that the route exists.
 
 **Status of decisions:** contract choices that change a documented behavior or the schema are marked **(proposed)** and recorded as ADR-15 to ADR-18 in `decisions.md`, pending project-lead confirmation. Shapes marked **provisional** belong to should-have features and are finalized by CON-13 (enrollment) and CON-14 (history).
 
@@ -67,7 +67,7 @@ Single FastAPI process (ADR-01). REST for request/response operations, WebSocket
 | `export_render_failed` | 500 | rendering the DOCX failed; summary and transcript are unaffected |
 | `internal_error` | 500 | unexpected server error |
 
-Failure codes that appear inside successful responses, pushes, or audit payloads rather than as HTTP errors: `retrieval_failed` and `generation_failed` (a `QAQuery` with `status = failed`), `summary_generation_failed` and `summary_invalid_output` (a failed `Summary`), `stt_failed`, and `enrollment_failed`. `no_grounding` is a `QAQuery.status` value, not an error code.
+Failure codes that appear inside successful responses, pushes, or audit payloads rather than as HTTP errors: `retrieval_failed` and `generation_failed` (a `QAQuery` with `status = failed`), `summary_generation_failed`, `summary_invalid_output`, `transcript_too_long` and `transcript_empty` (the `summary_failed.error_code` of a failed `Summary`, `summarization.md`), `stt_failed`, and `enrollment_failed`. `no_grounding` is a `QAQuery.status` value, not an error code.
 
 ### Derived fields
 
@@ -330,7 +330,7 @@ Explicit meeting-end action; triggers summarization (`summarization.md`).
 
 **Request** — empty body or `{}`.
 
-**Response** — `202` the first time, `200` if the meeting had already ended (nothing further happens). `summary_pending` is true when a summary attempt was started, which requires at least one utterance; an empty transcript starts none.
+**Response** — `202` the first time, `200` if the meeting had already ended (nothing further happens). `summary_pending` is true when a summary attempt was started (and, on the `200` replay, while it is still running). An attempt starts when the meeting has at least one utterance or still has speech queued for transcription; an empty transcript starts none. If a manually triggered attempt is already running when the meeting ends, no second attempt starts; lines it missed make it stale.
 
 ```json
 {
@@ -653,10 +653,10 @@ Manually (re-)trigger summarization. It is also called automatically on meeting 
 |---|---|---|
 | 202 | — | attempt started |
 | 404 | `meeting_not_found` | unknown meeting |
-| 409 | `summary_in_progress` | an attempt is already running |
+| 409 | `summary_in_progress` | an attempt is already running (the running attempt is unaffected; no duplicate starts) |
 | 409 | `transcript_empty` | the meeting has no utterances |
 
-**Side effects** — inserts a new `Summary` (`pending`); audit `summary_started` (`trigger: manual`). On success the row becomes `ready` with its `ActionItem` rows, audit `summary_generated`, push `summary_ready`; a parse failure after the one stricter retry, or a model error, makes it `failed` with an `error_message`, audit `summary_failed`, push `summary_failed`. A `ready` summary from an earlier attempt stays current until a newer `ready` one exists, so a failed re-run never erases a good summary. A `summarize` on a live meeting summarizes the transcript so far and does not end the meeting.
+**Side effects** — inserts a new `Summary` (`pending`); audit `summary_started` (`trigger: manual`). On success the row becomes `ready` with its `ActionItem` rows, audit `summary_generated`, push `summary_ready`; a parse failure after the one stricter retry, or a model error, makes it `failed` with an `error_message`, audit `summary_failed`, push `summary_failed`. A `ready` summary from an earlier attempt stays current until a newer `ready` one exists, so a failed re-run never erases a good summary. A `summarize` on a live meeting summarizes the transcript so far and does not end the meeting; unlike the end trigger it does not flush or wait for queued speech, so a sentence still being spoken is not cut off. The drain, the retry, the long-transcript limit and the `summary_failed` error codes are in `summarization.md`.
 
 ### GET /api/meetings/{meeting_id}/summary
 

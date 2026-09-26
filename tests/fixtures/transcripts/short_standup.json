@@ -1,0 +1,13 @@
+{
+  "description": "Short stand-up. Two explicit commitments with owners. Invented people and facts.",
+  "people": ["Priya", "Sam", "Marcus"],
+  "lines": [
+    ["Priya", 3, "Morning everyone, quick stand-up. Sam, where are we on the payment screen?"],
+    ["Sam", 11, "The fix is merged, but QA found a rounding bug in the tax line. I'll fix the rounding bug by Wednesday."],
+    ["Marcus", 24, "Android crash reports dropped to almost zero after yesterday's build."],
+    ["Priya", 33, "Great. Marcus, can you send the crash numbers to the client today?"],
+    ["Marcus", 39, "Yes, I'll send them this afternoon."],
+    ["Priya", 46, "Then we keep the beta on Friday. That's it, thanks all."]
+  ],
+  "expect": {"owners": {"Sam": 1, "Marcus": 1}, "min_items": 2, "max_items": 3}
+}

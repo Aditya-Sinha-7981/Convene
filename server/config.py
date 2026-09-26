@@ -115,6 +115,16 @@ class QaConfig:
 
 
 @dataclass(frozen=True)
+class SummaryConfig:
+    """``[summary]``: end-of-meeting summarization (CON-10). Limits were measured on the reference laptop."""
+    max_input_tokens: int = 16000            # a longer prompt fails with ``transcript_too_long``; never truncated
+    max_output_tokens: int = 1536            # room for a few paragraphs and a long action-item list
+    temperature: float = 0.0
+    generation_timeout_s: float = 240.0      # per attempt, including the prompt prefill
+    drain_timeout_s: float = 15.0            # meeting end: wait this long for queued STT before summarizing
+
+
+@dataclass(frozen=True)
 class NetworkConfig:
     """``[network]``: optional public hostname used in participant join URLs.
 
@@ -157,6 +167,13 @@ def _check_qa(config: "QaConfig") -> None:
         raise ValueError("temperature must be non-negative and the timeouts positive")
 
 
+def _check_summary(config: "SummaryConfig") -> None:
+    if config.max_input_tokens < 256 or config.max_output_tokens < 64:
+        raise ValueError("max_input_tokens must be at least 256 and max_output_tokens at least 64")
+    if config.temperature < 0 or config.generation_timeout_s <= 0 or config.drain_timeout_s < 0:
+        raise ValueError("temperature and drain_timeout_s must be non-negative and generation_timeout_s positive")
+
+
 def _check_pipeline(config: "PipelineConfig") -> None:
     if config.segmentation not in ("segments", "fixed"):
         raise ValueError(f"segmentation must be 'segments' or 'fixed', got {config.segmentation!r}")
@@ -178,6 +195,7 @@ class Settings:
     attribution: AttributionConfig = AttributionConfig()
     rag: RagConfig = RagConfig()
     qa: QaConfig = QaConfig()
+    summary: SummaryConfig = SummaryConfig()
     network: NetworkConfig = NetworkConfig()
 
 
@@ -215,6 +233,7 @@ def load_settings(config_path: Path | None = None, *, root: Path | None = None) 
                         attribution=_section(AttributionConfig, data.get("attribution", {}), path, "attribution"),
                         rag=_section(RagConfig, data.get("rag", {}), path, "rag"),
                         qa=_section(QaConfig, data.get("qa", {}), path, "qa"),
+                        summary=_section(SummaryConfig, data.get("summary", {}), path, "summary"),
                         network=_section(NetworkConfig, data.get("network", {}), path, "network"))
     if settings.rag.hard_max_tokens >= settings.embedding.max_tokens:
         raise ConfigError(f"{path}: [rag].hard_max_tokens must leave margin below [models.embedding].max_tokens")
@@ -256,6 +275,8 @@ def _section(cls, table, path: Path, name: str):
             _check_rag(built)
         elif cls is QaConfig:
             _check_qa(built)
+        elif cls is SummaryConfig:
+            _check_summary(built)
     except ValueError as exc:
         raise ConfigError(f"{path}: [{name}] {exc}") from exc
     return built

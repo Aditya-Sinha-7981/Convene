@@ -35,6 +35,7 @@ Functional and legible beats visually elaborate (`requirements.md`). The fronten
 ### 3. Post-meeting view
 
 - Summary text, action items (with owner if inferred), all speaker-attributed and confidence-aware exactly as the live view was.
+- Summary status (pending, ready, failed with its reason), a staleness notice with a regenerate action, and the transcript, readable whatever the summary's status. Served at `/meetings/{meeting_id}` for a live meeting too, as the "summarize now" entry point (the dashboard links to it and goes there after "End meeting"). CON-10 built a deliberately minimal version (`client/post_meeting.html`); the planned UI redesign replaces its look.
 - Export/download button (DOCX).
 - Q&A box remains available in history mode against this specific meeting.
 

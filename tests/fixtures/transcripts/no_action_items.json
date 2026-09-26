@@ -1,0 +1,14 @@
+{
+  "description": "A retrospective that only discusses; nobody takes on a task. Invented people and facts.",
+  "people": ["Ana", "Ravi"],
+  "lines": [
+    ["Ana", 2, "Let's just talk through how the conference went, no decisions needed today."],
+    ["Ravi", 10, "I thought the booth was busier on the second day than the first."],
+    ["Ana", 18, "Agreed. The demo on the big screen pulled people in much better than the posters."],
+    ["Ravi", 27, "The coffee queue next to us helped too, honestly."],
+    ["Ana", 35, "People asked a lot about offline mode, more than about pricing."],
+    ["Ravi", 44, "That matches what I heard. Mostly teachers and small clinics."],
+    ["Ana", 52, "Okay, good to share. Nothing to follow up on, we'll talk again next month."]
+  ],
+  "expect": {"owners": {}, "min_items": 0, "max_items": 0}
+}
