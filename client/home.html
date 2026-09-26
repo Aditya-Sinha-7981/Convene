@@ -1,31 +1,108 @@
 <!doctype html>
 <html lang="en">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
 <title>Convene</title>
-<style>
-  body { font: 16px system-ui, sans-serif; max-width: 34rem; margin: 2rem auto; padding: 0 1rem; }
-  button, input { padding: .8rem 1.2rem; font: inherit; }
-  input { width: 100%; box-sizing: border-box; margin: .3rem 0 1rem; }
-</style>
-<h1>Convene</h1>
-<p>Start a meeting, then have each person scan the QR code with their phone.</p>
-<label for="title">Meeting title (optional)</label>
-<input id="title" maxlength="200">
-<button id="create">New meeting</button>
-<p id="message"></p>
-<script>
-document.querySelector("#create").onclick = async () => {
-  const message = document.querySelector("#message");
-  try {
-    const response = await fetch("/api/meetings", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: document.querySelector("#title").value.trim() || null }),
-    });
-    const body = await response.json();
-    if (!response.ok) throw new Error(body.error ? body.error.message : "could not create the meeting");
-    location.href = `/dashboard/${body.meeting.meeting_id}`;
-  } catch (error) { message.textContent = String(error); }
-};
-</script>
+<meta name="description" content="Phones on the table become separate microphones. Convene transcribes each one on this laptop, knows who said what, and answers questions about the meeting, with no internet connection.">
+<link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/home.css">
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="/"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="#4338ca"/><rect x="8" y="12" width="3.5" height="8" rx="1.75" fill="#fff"/><rect x="14.25" y="7.5" width="3.5" height="17" rx="1.75" fill="#fff"/><rect x="20.5" y="10.5" width="3.5" height="11" rx="1.75" fill="#fff"/></svg>Convene</a>
+    <nav class="nav-links" aria-label="Sections"><a href="#features">Features</a><a href="#how">How it works</a></nav>
+    <a class="btn btn-primary nav-cta" href="#start" data-focus-start>Start a meeting</a>
+  </div>
+</header>
+
+<main>
+  <section class="hero wrap">
+    <div class="hero-copy">
+      <p class="pill"><span class="pill-dot" aria-hidden="true"></span>Runs offline on your laptop</p>
+      <h1>Every voice in the room, on the record.</h1>
+      <p class="lede">The phones on the table become separate microphones. Convene transcribes each one on this laptop, knows who said what, and answers questions about the meeting.</p>
+
+      <form id="start" class="start-card">
+        <label for="title">Meeting title <span>(optional)</span></label>
+        <div class="start-row">
+          <input id="title" class="field" maxlength="200" placeholder="e.g. Weekly product sync" autocomplete="off">
+          <button id="create" class="btn btn-primary" type="submit">New meeting</button>
+        </div>
+        <p id="message" role="alert"></p>
+        <p class="start-note">Then have each person scan the QR code with their phone.</p>
+      </form>
+    </div>
+
+    <div class="sim" id="sim" role="img" aria-label="Animation: three phones connect, their speech appears as an attributed transcript, an uncertain line is corrected, and a question is answered with a citation.">
+      <div class="sim-top">
+        <span class="sim-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="sim-title">Pilot launch sync</span>
+        <span class="sim-live" data-on="false"><i aria-hidden="true"></i><span>Waiting</span></span>
+      </div>
+      <div class="sim-body">
+        <ul class="sim-devices" aria-hidden="true">
+          <li data-dev="0"><span class="sim-avatar">P</span><span><b>Priya</b><small>Waiting</small></span></li>
+          <li data-dev="1"><span class="sim-avatar">S</span><span><b>Sam</b><small>Waiting</small></span></li>
+          <li data-dev="2"><span class="sim-avatar sim-avatar-shared">2</span><span><b>Shared phone</b><small>Waiting</small></span></li>
+        </ul>
+        <div class="sim-main" aria-hidden="true">
+          <ol class="sim-lines"></ol>
+          <div class="sim-qa">
+            <div class="sim-q"></div>
+            <div class="sim-a"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="strip" aria-label="At a glance">
+    <div class="wrap strip-inner">
+      <div class="stat"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M2 20h20"/></svg><div><b>One laptop</b><span>does all the listening</span></div></div>
+      <div class="stat"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg><div><b>1 to 10 phones</b><span>one microphone each</span></div></div>
+      <div class="stat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19.5" r="1"/><path d="M3 3l18 18"/></svg><div><b>No internet</b><span>audio stays in the room</span></div></div>
+    </div>
+  </section>
+
+  <section id="features" class="features wrap">
+    <div class="section-head reveal">
+      <p class="kicker">What it does</p>
+      <h2>Built for the meeting, not the cloud.</h2>
+    </div>
+    <div class="feature-grid">
+      <article class="feature reveal"><span class="icon"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg></span><h3>A microphone per person</h3><p>Each phone streams its own audio, so every line is attributed to the person who joined on it.</p></article>
+      <article class="feature reveal"><span class="icon icon-review"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/><path d="M12 8v4.5M12 15.5v.5"/></svg></span><h3>Honest about uncertainty</h3><p>When Convene is not sure who spoke, it marks the line <em>Needs review</em>. Fix it in one click; the original stays in the audit record.</p></article>
+      <article class="feature reveal"><span class="icon"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.3 2.4c-.5.2-.8.6-.8 1.1M12 14.5v.01"/></svg></span><h3>Ask the meeting</h3><p>Ask a question while you talk. Answers cite who said it and when, and Convene says so when nobody did.</p></article>
+      <article class="feature reveal"><span class="icon"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></svg></span><h3>Summary and minutes</h3><p>When the meeting ends you get a structured summary with decisions and action items, ready to share.</p></article>
+    </div>
+  </section>
+
+  <section id="how" class="how">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <p class="kicker">How it works</p>
+        <h2>Three steps, no accounts.</h2>
+      </div>
+      <ol class="steps">
+        <li class="reveal"><span class="step-n">1</span><h3>Start a meeting</h3><p>Open Convene on the laptop and create a meeting.</p></li>
+        <li class="reveal"><span class="step-n">2</span><h3>Scan the QR code</h3><p>Everyone joins from their phone's browser on the same Wi-Fi.</p></li>
+        <li class="reveal"><span class="step-n">3</span><h3>Just talk</h3><p>Watch the transcript fill in, ask questions, and get the summary at the end.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="cta wrap reveal">
+    <h2>Ready when your room is.</h2>
+    <p>No sign-up, no upload. Start a meeting and hand the QR code around.</p>
+    <a class="btn btn-primary btn-lg" href="#start" data-focus-start>Start a meeting</a>
+  </section>
+</main>
+
+<footer class="footer wrap"><span>Convene</span><span>Runs entirely on your local network.</span></footer>
+
+<script src="/static/home.js"></script>
+</body>
 </html>

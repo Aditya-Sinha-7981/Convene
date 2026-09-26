@@ -1,0 +1,94 @@
+/* Shared Convene look: light, warm, one accent. No external fonts or libraries (the product runs offline).
+   Colour roles are semantic: --accent means live / connected / attributed; --review means an attribution that
+   needs a human look; --danger means a connection or system problem. They are never swapped for decoration. */
+:root {
+  color-scheme: light;
+  --bg: #f7f5f0;
+  --bg-2: #efebe3;
+  --surface: #ffffff;
+  --ink: #1d1b24;
+  --ink-2: #3d3a46;
+  --muted: #625e6b;
+  --line: #e4e0d7;
+  --line-strong: #cdc8bd;
+
+  --accent: #4338ca;
+  --accent-hover: #3730a3;
+  --accent-soft: #eeedfc;
+  --accent-line: #c7c3f3;
+  --on-accent: #ffffff;
+
+  --review: #9a4a0c;
+  --review-soft: #fdf1e0;
+  --review-line: #ebc28d;
+
+  --danger: #b42318;
+  --danger-soft: #fdecea;
+  --danger-line: #f1b8b2;
+
+  --idle: #8f8b98;
+
+  --radius: 14px;
+  --shadow-sm: 0 1px 2px rgba(29, 27, 36, .05);
+  --shadow: 0 1px 2px rgba(29, 27, 36, .04), 0 10px 30px rgba(29, 27, 36, .07);
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+[hidden] { display: none !important; }
+a { color: var(--accent); }
+
+/* Logo */
+.brand { display: inline-flex; align-items: center; gap: 9px; color: var(--ink); font-weight: 700; font-size: 17px; letter-spacing: -.02em; text-decoration: none; }
+.brand-mark { width: 26px; height: 26px; flex: none; }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 20px; border: 1px solid transparent; border-radius: 10px; font-size: 15px; font-weight: 600; text-decoration: none; white-space: nowrap; transition: background-color .15s ease, border-color .15s ease, transform .15s ease, box-shadow .15s ease; }
+.btn:focus-visible { outline: 3px solid var(--accent-line); outline-offset: 2px; }
+.btn:active:not(:disabled) { transform: translateY(0) scale(.98); }
+.btn:disabled { cursor: default; opacity: .5; }
+.btn-primary { color: var(--on-accent); background: var(--accent); box-shadow: 0 1px 2px rgba(67, 56, 202, .25); }
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(67, 56, 202, .22); }
+.btn-secondary { color: var(--ink); background: var(--surface); border-color: var(--line-strong); }
+.btn-secondary:hover:not(:disabled) { border-color: var(--ink-2); transform: translateY(-1px); }
+
+.field { width: 100%; min-height: 46px; padding: 11px 14px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); color: var(--ink); transition: border-color .15s ease, box-shadow .15s ease; }
+.field::placeholder { color: #8a8693; }
+.field:focus { border-color: var(--accent); outline: 0; box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* Mascot: a small microphone character, only used in low-stakes waiting/empty states (join page, empty Q&A). */
+.mascot { display: flex; align-items: center; gap: 12px; margin: 0; }
+.mascot-art { width: 56px; height: 56px; flex: none; color: var(--accent); }
+.mascot-art svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.mascot-line { position: relative; margin: 0; padding: 9px 13px; border: 1px solid var(--line); border-radius: 12px 12px 12px 4px; background: var(--surface); color: var(--ink-2); font-size: 14px; line-height: 1.4; }
+.m-body { fill: var(--accent); transition: fill .3s ease; }
+.m-stand { fill: none; stroke: var(--line-strong); stroke-width: 3; stroke-linecap: round; }
+.m-face { fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.m-eye { fill: #fff; }
+.m-pupil { fill: var(--ink); transition: transform .3s ease; }
+.m-waves { fill: none; stroke: var(--accent); stroke-width: 2.4; stroke-linecap: round; opacity: 0; transition: opacity .3s ease; }
+.m-eyes-happy, .m-eyes-closed, .m-brows, .m-mouth-o, .m-mouth-flat { display: none; }
+[data-mood="thinking"] .m-pupil { transform: translate(1.4px, -1.6px); }
+[data-mood="thinking"] .m-mouth-smile { display: none; }
+[data-mood="thinking"] .m-mouth-flat { display: inline; }
+[data-mood="listening"] .m-eyes-open { display: none; }
+[data-mood="listening"] .m-eyes-happy { display: inline; }
+[data-mood="listening"] .m-waves { opacity: 1; }
+[data-mood="worried"] .m-brows, [data-mood="worried"] .m-mouth-o { display: inline; }
+[data-mood="worried"] .m-mouth-smile { display: none; }
+[data-mood="worried"] .m-pupil { transform: translateY(1px); }
+[data-mood="off"] .m-body { fill: var(--idle); }
+[data-mood="off"] .m-eyes-open, [data-mood="off"] .m-mouth-smile { display: none; }
+[data-mood="off"] .m-eyes-closed, [data-mood="off"] .m-mouth-flat { display: inline; }
+[data-mood="curious"] .m-pupil { transform: translate(1.6px, .4px); }
+.mascot-art.m-bump svg { animation: m-bump .45s cubic-bezier(.3, 1.6, .5, 1); transform-origin: 50% 90%; }
+@keyframes m-bump { 0% { transform: scale(1); } 35% { transform: scale(1.07, .93); } 70% { transform: scale(.97, 1.04); } 100% { transform: scale(1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
