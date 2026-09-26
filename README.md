@@ -1,6 +1,6 @@
 # Convene
 
-Convene turns phones on a local Wi-Fi network into separate meeting microphones: a laptop receives each phone's audio over WebRTC, transcribes it locally, attributes each dedicated device's speech to its registered participant, and presents a live dashboard with correction. **What exists today** is the transport, meeting/device registry, local STT, dedicated-device attribution, correction audit trail, and dashboard: phones join from a QR code, stream audio to a per-device sink, reconnect under the same identity, and their attributed transcript rows appear live. Live grounded Q&A, summary, and DOCX export remain planned and are **not implemented yet**. A first real-phone trusted-host run has verified QR join, microphone capture, local transcription, device attribution, and live dashboard rendering; the broader Wi-Fi, reconnect, multi-device, noise, and language checklist remains open in [`docs/manual-tests.md`](docs/manual-tests.md) and the relevant `logs/` files.
+Convene turns phones on a local Wi-Fi network into separate meeting microphones: a laptop receives each phone's audio over WebRTC, transcribes it locally, attributes each dedicated device's speech to its registered participant, and presents a live dashboard with correction. The checked-in system includes transport, meeting/device registry, local STT, dedicated-device attribution and correction, live grounded Q&A, structured summary/action items, and deterministic DOCX export. Automated and reference-laptop model checks pass; the complete offline multi-phone demo is **not yet proven**. A first real-phone trusted-host run verified QR join, microphone capture, local transcription, device attribution, and dashboard rendering; the broader Wi-Fi, reconnect, multi-device, noise, language, and end-to-end checklist remains open.
 
 Read the [Convene documentation](docs/README.md) for the design and build plan, and `AGENTS.md` before changing anything.
 
@@ -38,6 +38,8 @@ For developer-owned phones, IP + `mkcert` remains available; it requires manuall
 The terminal logs connection state, audio, and a metrics line every 5 seconds. `https://<laptop-ip>:8443/metrics` returns the same per-device counters as JSON (a debug route, not part of the API contract). `last_audio_age_ms` is time since the last audio frame, **not** one-way latency. The microphone stays active while the join page is open; screen lock and background behavior must be measured on each browser.
 
 Run details, the startup checks, and the database location are in [deployment](docs/deployment.md). The earlier DT-17 `aiohttp` prototype and its optional `STT_COMMAND` command-line transcription were replaced by this server and its speech pipeline, and are recoverable from Git history (commit `d44ba68`).
+
+For demo day, use the short [operator flow](tests/manual-test/DEMO_FLOW.md). The complete physical-phone checklist is [here](tests/manual-test/PHYSICAL_PHONE_TESTS.md); it is deliberately separate from synthetic automated tests.
 
 ## Data
 
