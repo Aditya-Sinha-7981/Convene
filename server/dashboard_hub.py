@@ -23,7 +23,7 @@ from .views import device_view, meeting_view
 
 log = logging.getLogger("convene.hub")
 
-_MEETING_EVENTS = {"meeting_started", "meeting_ended"}
+_MEETING_EVENTS = {"meeting_started", "meeting_ended", "meeting_renamed"}
 _DEVICE_EVENTS = {"device_registered", "device_left"}
 _CONNECTION_EVENTS = {"device_connected", "device_reconnected", "device_disconnected", "device_audio_resumed"}
 _UTTERANCE_EVENTS = {"utterance_created": "utterance", "utterance_corrected": "utterance_updated"}
@@ -109,6 +109,8 @@ class DashboardHub:
         def read(tx):
             out = []
             if kind == "qa_query":
+                if event.payload["mode"] != "live":
+                    return out  # history answers go only to the asker: the live panel never shows another scope
                 row = qa_queries.get(tx.conn, event.payload["query_id"])
                 if row is not None:
                     view = query_view(row, event.payload["error_code"], event.payload["reason"])

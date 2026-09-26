@@ -10,13 +10,15 @@ from __future__ import annotations
 import json
 
 from ..attribution.labels import speaker_label
-from ..repositories import devices, participants, transcript_chunks, utterances
+from ..repositories import devices, meetings, participants, transcript_chunks, utterances
 
 ERROR_CODES = {"index_unavailable": "retrieval_failed", "retrieval_failed": "retrieval_failed",
+               "embedding_model_mismatch": "retrieval_failed",
                "answer_failed": "generation_failed", "answer_timeout": "generation_failed"}
 ERROR_MESSAGES = {
     "index_unavailable": "the transcript index is not available",
     "retrieval_failed": "searching the transcript failed",
+    "embedding_model_mismatch": "a selected meeting was indexed with a different embedding model",
     "answer_failed": "the answer model failed",
     "answer_timeout": "the answer model did not finish in time",
 }
@@ -51,10 +53,31 @@ def resolve_citations(conn, meeting_id: str, chunk_ids: list[str]) -> list[dict]
     return citations
 
 
-def query_view(row: dict, error_code: str | None, reason: str | None) -> dict:
+def resolve_history_citations(conn, chunk_ids: list[str]) -> list[dict]:
+    """History mode: citations across meetings, in cited order, each with its meeting's identity (CON-14).
+
+    ``meeting_title`` and ``meeting_started_at`` (``started_at``, or ``created_at`` for a meeting that never
+    started) let the reader tell sources apart; time within the meeting is ``t_start - meeting_started_at``.
+    """
+    by_meeting: dict[str, list[str]] = {}
+    for chunk_id in chunk_ids:
+        chunk = transcript_chunks.get(conn, chunk_id)
+        if chunk is not None:
+            by_meeting.setdefault(chunk.meeting_id, []).append(chunk_id)
+    resolved: dict[str, dict] = {}
+    for meeting_id, ids in by_meeting.items():
+        meeting = meetings.require(conn, meeting_id)
+        for citation in resolve_citations(conn, meeting_id, ids):
+            resolved[citation["chunk_id"]] = {**citation, "meeting_title": meeting.title,
+                                              "meeting_started_at": meeting.started_at or meeting.created_at}
+    return [resolved[chunk_id] for chunk_id in chunk_ids if chunk_id in resolved]
+
+
+def query_view(row: dict, error_code: str | None, reason: str | None, message: str | None = None) -> dict:
     """The stored ``QAQuery`` with ``cited_chunk_ids`` as a JSON array and the derived ``error`` field."""
     view = dict(row)
     view["cited_chunk_ids"] = json.loads(view["cited_chunk_ids"])
-    view["error"] = ({"code": error_code, "message": ERROR_MESSAGES.get(reason, "the question could not be answered")}
+    view["error"] = ({"code": error_code,
+                      "message": message or ERROR_MESSAGES.get(reason, "the question could not be answered")}
                      if view["status"] == "failed" else None)
     return view

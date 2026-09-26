@@ -36,6 +36,28 @@ class VectorStore:
         if tuple(row) != (self.model_identifier, self.dimension, self.metric):
             raise ValidationError("configured embedding model/dimension differs from this database; rebuild the index explicitly")
 
+    def foreign_model_meetings(self, conn, meeting_ids: list[str]) -> dict[str, str]:
+        """Meetings whose vectors cannot be compared with this model's (meeting id -> the model that made them).
+
+        The database-wide guard (``TranscriptIndexMeta``) normally stops the server from starting with another
+        model, so this only fires if that guard was bypassed or the file was edited. Per meeting, the evidence is
+        the most recent embedding ``ModelExecution`` of its ready chunks (``related_id`` = a chunk of the batch).
+        """
+        if not meeting_ids:
+            return {}
+        meta = conn.execute("SELECT model_identifier, dimension, distance_metric FROM TranscriptIndexMeta "
+                            "WHERE singleton = 1").fetchone()
+        if meta is not None and tuple(meta) != (self.model_identifier, self.dimension, self.metric):
+            return {meeting_id: f"{meta['model_identifier']} ({meta['dimension']} dimensions)" for meeting_id in meeting_ids}
+        marks = ",".join("?" * len(meeting_ids))
+        rows = conn.execute(
+            f"SELECT c.meeting_id, e.model_identifier FROM TranscriptChunk c "
+            f"JOIN ModelExecution e ON e.related_id = c.chunk_id AND e.resource_type = 'embedding' "
+            f"WHERE c.meeting_id IN ({marks}) AND c.status = 'ready' AND e.created_at = ("
+            f"  SELECT MAX(created_at) FROM ModelExecution WHERE related_id = c.chunk_id AND resource_type = 'embedding')",
+            list(meeting_ids)).fetchall()
+        return {row["meeting_id"]: row["model_identifier"] for row in rows if row["model_identifier"] != self.model_identifier}
+
     def upsert(self, conn, chunk_id: str, meeting_id: str, vector) -> None:
         if len(vector) != self.dimension:
             raise ValidationError(f"embedding dimension {len(vector)} differs from configured {self.dimension}")

@@ -22,6 +22,10 @@ CATALOG: dict[str, EventSpec] = {
     "meeting_created": _spec("api", "title"),
     "meeting_started": _spec("transport", "first_device_id"),
     "meeting_ended": _spec("api", "utterance_count", "device_count"),
+    "meeting_renamed": _spec("api", "title"),
+    # The meeting row is gone, so this event has no meeting_id; the payload keeps only the id and counts.
+    "meeting_deleted": _spec("api", "deleted_meeting_id", "utterance_count", "device_count", "qa_query_count",
+                             meeting_required=False),
     "hook_failed": _spec("api", "hook", "error"),
     "device_registered": _spec("registry", "device_id", "is_shared", "declared_speaker_count", "user_agent", "color"),
     "device_connected": _spec("transport", "device_id", "reconnect_count"),

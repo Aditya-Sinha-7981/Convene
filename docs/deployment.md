@@ -34,6 +34,8 @@ The STT model is pinned (model and exact revision) in `[models.stt]` in `config/
 .venv/bin/python scripts/provision_models.py --check    # later: verify only, no network
 .venv/bin/python scripts/provision_models.py --resource embedding
 .venv/bin/python scripts/provision_models.py --resource embedding --check
+.venv/bin/python scripts/provision_models.py --resource reasoning
+.venv/bin/python scripts/provision_models.py --resource reasoning --check
 ```
 
 The server never downloads anything: it resolves the pinned revision from the local Hugging Face cache with networking off, and refuses to start if it is missing. The embedding provisioning command prints the resolved revision; copy that exact value into `[models.embedding]` before the demo. To change models, edit the relevant `[models.*]` section (see `models.md`) and provision again.
@@ -45,6 +47,11 @@ The server never downloads anything: it resolves the pinned revision from the lo
 
 ## Running the server
 
+For the demo-day command card and the exact physical-phone sequence, use
+[`tests/manual-test/DEMO_FLOW.md`](../tests/manual-test/DEMO_FLOW.md). It wraps the normal server command below in
+`scripts/start_demo.sh`, sets local-only model environment variables, and requires certificate paths through
+environment variables so they are not copied into notes or shell history.
+
 ```sh
 # Explicit preflight while the laptop is connected to the hotspot. This is the only Cloudflare API call.
 .venv/bin/python scripts/update_dns.py
@@ -54,7 +61,7 @@ The server never downloads anything: it resolves the pinned revision from the lo
   --public-host convene.example.com --advertise-ip 172.20.10.4 --port 8443
 ```
 
-The server is one FastAPI process served by uvicorn over HTTPS on `0.0.0.0` (`ADR-01`). `--public-host` (or `[network].public_host`) becomes the host in join URLs/QR codes; `--advertise-ip` remains the actual laptop address used for diagnostics. Startup warns—but does not block—if the hostname resolves elsewhere, because the laptop resolver can differ from a phone's. It blocks for a mismatched, expired, or unreadable certificate. Then open `https://<public-host>:8443/` on the laptop, press **New meeting**, and have phones join the hotspot before scanning the meeting QR. The dashboard shows the join link/QR, device health, attributed live transcript, confidence/review state, and correction controls. Q&A, summary, and export are later tasks.
+The server is one FastAPI process served by uvicorn over HTTPS on `0.0.0.0` (`ADR-01`). `--public-host` (or `[network].public_host`) becomes the host in join URLs/QR codes; `--advertise-ip` remains the actual laptop address used for diagnostics. Startup warns—but does not block—if the hostname resolves elsewhere, because the laptop resolver can differ from a phone's. It blocks for a mismatched, expired, or unreadable certificate. Then open `https://<public-host>:8443/` on the laptop, press **New meeting**, and have phones join the hotspot before scanning the meeting QR. The dashboard shows the join link/QR, device health, attributed live transcript, confidence/review state, correction controls, grounded Q&A, and post-meeting summary/DOCX status.
 
 ## Startup sequence
 

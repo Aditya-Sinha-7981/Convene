@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Convene — Past meetings</title>
+<link rel="icon" href="/static/brand/logo-mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/history.css">
+</head>
+<body>
+<header class="hx-bar">
+  <a class="brand" href="/"><img src="/static/brand/logo.svg" alt="Convene home"></a>
+  <a class="btn btn-secondary hx-new" href="/#start">Start a meeting</a>
+</header>
+<main class="hx">
+  <div class="hx-head">
+    <h1>Past meetings</h1>
+    <p class="muted">Open a meeting for its summary and minutes, or ask a question across several. History search only reads ended meetings; a running meeting is asked from its live dashboard.</p>
+  </div>
+
+  <div class="hx-grid">
+    <section class="hx-list" aria-labelledby="listHeading">
+      <h2 id="listHeading" class="sr-only">Meetings</h2>
+      <form id="filters" class="hx-filters" role="search">
+        <label class="hx-field hx-grow"><span>Title</span><input id="q" class="field" type="search" placeholder="Search titles" maxlength="200" autocomplete="off"></label>
+        <label class="hx-field"><span>From</span><input id="from" class="field" type="date"></label>
+        <label class="hx-field"><span>To</span><input id="to" class="field" type="date"></label>
+      </form>
+      <div class="hx-list-meta"><span id="count" class="muted" role="status"></span><button id="clearSel" class="hx-link" type="button" hidden>Clear selection</button></div>
+      <p id="error" class="hx-error" role="alert"></p>
+      <div id="empty" class="hx-empty" hidden>
+        <p class="mascot"><span class="mascot-art"><img src="/static/brand/mascot.svg" alt=""></span><span class="mascot-line" id="emptyText">No meetings yet. Start one and it will appear here once it ends.</span></p>
+      </div>
+      <ul id="meetings" class="hx-meetings"></ul>
+      <button id="more" class="btn btn-secondary hx-more" type="button" hidden>Show more</button>
+    </section>
+
+    <section class="hq-panel" id="qa" aria-labelledby="qaHeading">
+      <div class="hq-panel-head">
+        <h2 id="qaHeading">Ask across meetings</h2>
+        <fieldset class="hx-scope">
+          <legend class="sr-only">Search scope</legend>
+          <label><input type="radio" name="scope" value="all" checked> All ended meetings</label>
+          <label><input type="radio" name="scope" value="selected"> Selected meetings</label>
+        </fieldset>
+      </div>
+      <form class="hq-form" data-qa-form>
+        <p class="hq-scope" aria-live="polite"><span class="hq-scope-tag">History</span><span data-qa-scope></span></p>
+        <textarea data-qa-question rows="3" maxlength="500" placeholder="e.g. When did we decide the beta launch date?" aria-label="Question about past meetings"></textarea>
+        <div class="hq-actions"><span class="hq-hint" data-qa-hint></span><button class="btn btn-primary" type="submit" data-qa-ask>Ask</button></div>
+        <p class="hx-error" data-qa-error role="alert"></p>
+      </form>
+      <p class="hq-empty muted" data-qa-empty>Answers come only from the transcripts of the meetings in scope, with the meeting, speaker and time for every source.</p>
+      <ol class="hq-answers" data-qa-answers aria-live="polite"></ol>
+    </section>
+  </div>
+</main>
+<script type="module" src="/static/history.js"></script>
+</body>
+</html>

@@ -40,6 +40,13 @@ def transcript_high_water(conn, meeting_id: str) -> int:
     return row[0]
 
 
+def latest_seq(conn, meeting_id: str, event_type: str) -> int | None:
+    """``seq`` of the meeting's most recent event of this type, or None."""
+    row = base.query_one(conn, "SELECT MAX(seq) FROM AuditEvent WHERE meeting_id = ? AND event_type = ?",
+                         (meeting_id, event_type))
+    return row[0] if row else None
+
+
 def summary_input_as_of_seq(conn, summary_id: str) -> int | None:
     """``input_as_of_seq`` of a ready summary, from its ``summary_generated`` event (staleness, data-model.md)."""
     row = base.query_one(conn, "SELECT json_extract(payload, '$.input_as_of_seq') FROM AuditEvent "

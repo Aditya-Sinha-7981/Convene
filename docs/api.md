@@ -2,7 +2,7 @@
 
 Single FastAPI process (ADR-01). REST for request/response operations, WebSocket for signaling and live push feeds. This document is authoritative for endpoint shape — other docs describe *when* these are called, not their exact contracts. Stored field names come from `data-model.md` and are never renamed here; where the API adds a computed field it is listed under [Derived fields](#derived-fields).
 
-**Implementation status (through CON-09):** implemented and covered by automated loopback tests: `POST /api/meetings`, `GET /api/meetings/{meeting_id}`, `POST …/devices`, `POST …/end`, `GET …/transcript`, and `POST …/utterances/{utterance_id}/correct`; signaling and dashboard WebSockets; and the pages `/`, `/join/{meeting_id}`, `/dashboard/{meeting_id}`, and `/static/…`. The dashboard feed includes `meeting_status`, `device_status`, `connection_event`, `device_gauges`, `utterance`, and `utterance_updated`; the dashboard consumes server-computed labels and low-confidence state. Live Q&A (`POST …/qa`, the `qa_answer` push) is implemented by CON-09. Summarization (`POST …/summarize`, `GET …/summary`, the `summary_ready` and `summary_failed` pushes, summarization started by `end`, and the post-meeting page `/meetings/{meeting_id}`) is implemented by CON-10. `GET /api/meetings`, history Q&A (`POST /api/qa`), export, and enrollment routes remain unimplemented. None of this has been verified on real phones. A route section below describes the contract, not a claim that the route exists.
+**Implementation status (through CON-09):** implemented and covered by automated loopback tests: `POST /api/meetings`, `GET /api/meetings/{meeting_id}`, `POST …/devices`, `POST …/end`, `GET …/transcript`, and `POST …/utterances/{utterance_id}/correct`; signaling and dashboard WebSockets; and the pages `/`, `/join/{meeting_id}`, `/dashboard/{meeting_id}`, and `/static/…`. The dashboard feed includes `meeting_status`, `device_status`, `connection_event`, `device_gauges`, `utterance`, and `utterance_updated`; the dashboard consumes server-computed labels and low-confidence state. Live Q&A (`POST …/qa`, the `qa_answer` push) is implemented by CON-09. Summarization (`POST …/summarize`, `GET …/summary`, the `summary_ready` and `summary_failed` pushes, summarization started by `end`, and the post-meeting page `/meetings/{meeting_id}`) is implemented by CON-10. Export is implemented by CON-11. The history list (`GET /api/meetings`), history Q&A (`POST /api/qa`) and the `/history` page are implemented by CON-14, and rename (`PATCH`) and delete (`DELETE /api/meetings/{meeting_id}`) by ADR-27. Enrollment routes remain unimplemented. None of this has been verified on real phones. A route section below describes the contract, not a claim that the route exists.
 
 **Status of decisions:** contract choices that change a documented behavior or the schema are marked **(proposed)** and recorded as ADR-15 to ADR-18 in `decisions.md`, pending project-lead confirmation. Shapes marked **provisional** belong to should-have features and are finalized by CON-13 (enrollment) and CON-14 (history).
 
@@ -52,7 +52,8 @@ Single FastAPI process (ADR-01). REST for request/response operations, WebSocket
 | `utterance_not_found` | 404 | no such utterance in this meeting |
 | `summary_not_found` | 404 | no summary attempt exists for this meeting |
 | `meeting_ended` | 409 | the operation needs a meeting that has not ended |
-| `meeting_not_ended` | 409 | history Q&A over a meeting that is still running (provisional) |
+| `meeting_not_ended` | 409 | history Q&A named a meeting that has not ended |
+| `meeting_active` | 409 | a phone is still connected, so the meeting cannot be deleted |
 | `device_conflict` | 409 | the `device_id` is registered in another meeting, or registered here with a different `is_shared` |
 | `ambiguous_display_name` | 409 | a correction by `display_name` matches more than one participant |
 | `color_taken` | 409 | the requested participant colour is already used in this meeting (ADR-25) |
@@ -77,6 +78,8 @@ API views may add computed fields to a stored entity. They are computed on the s
 | Entity | Derived field | Meaning |
 |---|---|---|
 | Meeting | `participant_count` | number of participants in the meeting (list view) |
+| Meeting | `has_summary` | a `ready` summary exists (list view) |
+| Meeting | `has_export` | a `ready` DOCX export exists, possibly stale (list view) |
 | Device | `participants` | the device's `Participant` rows |
 | Device | `gauges` | live gauges (`last_audio_age_ms`, `audio_duration_s`, `stt_backlog`, `stt_dropped_windows`), all `null` for a device that has not streamed since the server started |
 | Utterance | `seq` | `seq` of the utterance's `utterance_created` audit event |
@@ -92,8 +95,10 @@ API views may add computed fields to a stored entity. They are computed on the s
 | Method | Path | Tier |
 |---|---|---|
 | POST | `/api/meetings` | MVP |
-| GET | `/api/meetings` | provisional (CON-14) |
+| GET | `/api/meetings` | should-have (CON-14) |
 | GET | `/api/meetings/{meeting_id}` | MVP |
+| PATCH | `/api/meetings/{meeting_id}` | should-have (ADR-27) |
+| DELETE | `/api/meetings/{meeting_id}` | should-have (ADR-27) |
 | POST | `/api/meetings/{meeting_id}/devices` | MVP |
 | GET | `/api/meetings/{meeting_id}/colors` | MVP (ADR-25) |
 | POST | `/api/meetings/{meeting_id}/devices/{device_id}/enroll` | provisional (CON-13) |
@@ -101,7 +106,7 @@ API views may add computed fields to a stored entity. They are computed on the s
 | GET | `/api/meetings/{meeting_id}/transcript` | MVP |
 | POST | `/api/meetings/{meeting_id}/utterances/{utterance_id}/correct` | MVP |
 | POST | `/api/meetings/{meeting_id}/qa` | MVP |
-| POST | `/api/qa` | provisional (CON-14) |
+| POST | `/api/qa` | should-have (CON-14) |
 | POST | `/api/meetings/{meeting_id}/summarize` | MVP |
 | GET | `/api/meetings/{meeting_id}/summary` | MVP |
 | GET | `/api/meetings/{meeting_id}/export` | MVP |
@@ -169,9 +174,9 @@ Create a meeting and get its join link.
 
 ### GET /api/meetings
 
-**Provisional (CON-14).** List meetings for the history view, newest first.
+**CON-14.** List meetings for the history view, newest first.
 
-**Request** — query parameters, all optional: `q` (case-insensitive substring of `title`), `status` (`created`, `live` or `ended`), `from` and `to` (inclusive `created_at` bounds, ISO 8601 UTC), `limit` (default 50, maximum 200) and `offset` (default 0).
+**Request** — query parameters, all optional: `q` (case-insensitive substring of `title`, at most 200 characters, `%` and `_` matched literally; blank means no filter), `status` (`created`, `live` or `ended`), `from` and `to` (inclusive `created_at` bounds: an ISO 8601 date such as `2026-09-21`, meaning the start of that day for `from` and its last millisecond for `to`, or a date-time with a zone, converted to UTC), `limit` (default 50, maximum 200) and `offset` (default 0). Ordered newest first by `created_at`, ties by `meeting_id`; `total` counts every meeting matching the filters, ignoring `limit`/`offset`.
 
 **Response** — `200`.
 
@@ -185,7 +190,9 @@ Create a meeting and get its join link.
       "created_at": "2026-09-21T11:30:00.000Z",
       "started_at": "2026-09-21T11:31:12.000Z",
       "ended_at": "2026-09-21T12:02:40.000Z",
-      "participant_count": 3
+      "participant_count": 3,
+      "has_summary": true,
+      "has_export": true
     }
   ],
   "total": 1
@@ -197,7 +204,7 @@ Create a meeting and get its join link.
 | Status | Code | When |
 |---|---|---|
 | 200 | — | success, possibly an empty list |
-| 400 | `invalid_request` | bad `status`, date, `limit` or `offset` |
+| 400 | `invalid_request` | bad `status`, `from`/`to` date, over-long `q`, `limit` or `offset` |
 
 **Side effects** — none. Read-only.
 
@@ -266,6 +273,67 @@ Meeting detail and the dashboard's snapshot of devices and live health.
 | 404 | `meeting_not_found` | unknown meeting |
 
 **Side effects** — none. Gauges are read from memory and are not audit-derived (`data-model.md`).
+
+### PATCH /api/meetings/{meeting_id}
+
+Rename a meeting, in any status (ADR-27).
+
+**Request** — exactly one key, `title`: a non-empty string, whitespace collapsed, at most 200 characters.
+
+```json
+{ "title": "Sprint planning (week 39)" }
+```
+
+**Response** — `200` with the updated meeting.
+
+```json
+{
+  "meeting": {
+    "meeting_id": "0d4f6a52-7c1b-4e7a-b0a3-51e1f4c2a9d8",
+    "title": "Sprint planning (week 39)",
+    "status": "ended",
+    "created_at": "2026-09-21T11:30:00.000Z",
+    "started_at": "2026-09-21T11:31:12.000Z",
+    "ended_at": "2026-09-21T12:02:40.000Z"
+  }
+}
+```
+
+**Status codes**
+
+| Status | Code | When |
+|---|---|---|
+| 200 | — | renamed, or the title was already this |
+| 400 | `invalid_request` | missing, blank, non-string or over-long `title`, or another key |
+| 404 | `meeting_not_found` | unknown meeting |
+| 413 | `payload_too_large` | body over 64 KiB |
+| 415 | `unsupported_media_type` | not JSON |
+
+**Side effects** — `Meeting.title` updated; audit `meeting_renamed`; push `meeting_status`. A DOCX rendered before the rename becomes stale, so the next download re-renders it with the new title. The summary is not affected. Idempotent: the same title again writes nothing.
+
+### DELETE /api/meetings/{meeting_id}
+
+Permanently delete a meeting and everything it owns (ADR-27). There is no undo.
+
+**Request** — no body.
+
+**Response** — `200` with what was removed.
+
+```json
+{ "deleted": { "meeting_id": "0d4f6a52-7c1b-4e7a-b0a3-51e1f4c2a9d8", "utterance_count": 212, "device_count": 3, "qa_query_count": 4 } }
+```
+
+**Status codes**
+
+| Status | Code | When |
+|---|---|---|
+| 200 | — | deleted |
+| 400 | `invalid_request` | bad meeting ID |
+| 404 | `meeting_not_found` | unknown or already deleted meeting |
+| 409 | `meeting_active` | a phone is still connected; end the meeting first |
+| 409 | `summary_in_progress` | a summary is being written; delete after it finishes |
+
+**Side effects** — one transaction removes the meeting's devices, participants, utterances, connection events, transcript chunks and vectors, summaries, action items, export rows, `ModelExecution` rows, its `QAQuery` rows and the multi-meeting history queries that cited its chunks, and every audit event with its `meeting_id`. It then writes audit `meeting_deleted` (no `meeting_id`; payload `deleted_meeting_id` and counts). The DOCX files are removed after commit. A meeting that is `live` but has no connected phone (for example, abandoned before a restart) can be deleted without ending it. Not idempotent: a second call is `404`.
 
 ### POST /api/meetings/{meeting_id}/devices
 
@@ -646,28 +714,71 @@ The most recent few seconds of speech may not yet be searchable because chunking
 
 ### POST /api/qa
 
-**Provisional (CON-14).** Ask across past meetings (`mode: history`), including a question about one ended meeting from the post-meeting view.
+**CON-14.** Ask across past meetings (`mode: history`), including a question about one ended meeting from the post-meeting view. Launched only from the history view (`/history`) and the post-meeting view; never used for a live question.
 
-**Request** — `meeting_ids` is a non-empty array of meeting IDs, or null for all ended meetings.
+**Request** — `question` as for live Q&A; `mode` must be `history` (omitted means `history`); `meeting_ids` is a non-empty array of meeting IDs, duplicates ignored, at most `[qa].history_max_meetings` (50), or null/omitted for **all ended meetings**. The all-ended scope excludes `created` and `live` meetings. An explicitly listed meeting that has not ended is rejected (`409 meeting_not_ended`), so a running meeting's questions stay on its path-scoped live endpoint and the two scopes cannot be confused.
 
 ```json
-{ "question": "When did we last discuss the beta launch?", "meeting_ids": ["0d4f6a52-7c1b-4e7a-b0a3-51e1f4c2a9d8"], "mode": "history" }
+{ "question": "When did we last discuss the beta launch?", "meeting_ids": ["0d4f6a52-7c1b-4e7a-b0a3-51e1f4c2a9d8", "8a1c3e5f-2b4d-4e6f-9a0b-1c2d3e4f5a6b"], "mode": "history" }
 ```
 
-**Response** — `200` with the same `{ query, citations }` shape and the same three outcomes as the live endpoint. `query.mode` is `history`; `query.meeting_id` is set when exactly one meeting was searched and null otherwise (`data-model.md`). Each citation carries its own `meeting_id` so results can be told apart across meetings. The scope of a multi-meeting query is recorded in the audit payload (`qa_query.meeting_ids`), since `QAQuery` has no column for it; CON-14 may propose one.
+**Response** — `200` with the live endpoint's `{ query, citations, reason, unindexed_utterances }` and the same three outcomes and reasons (`rag-and-qa.md`), plus `scope`. `query.mode` is `history`; `query.meeting_id` is the meeting when exactly one was searched and null for several (`data-model.md`). Each citation adds its meeting's identity: `meeting_title` and `meeting_started_at` (`started_at`, or `created_at` if the meeting never started); time within that meeting is `t_start - meeting_started_at`. `scope.all_ended` says whether the body asked for all ended meetings; `scope.coverage` lists every meeting in the resolved scope, oldest first, with its index `state` — `searched`, `partial` (searched, but `unindexed_utterances` lines were not searchable), `empty` (nothing transcribed), `not_indexed` or `failed` (not searched), or `model_mismatch` — so a meeting is never silently left out.
+
+```json
+{
+  "query": {
+    "query_id": "5d2e8f14-6a3b-4c79-8e01-9b4f2a7c6d38",
+    "meeting_id": null,
+    "mode": "history",
+    "question": "When did we last discuss the beta launch?",
+    "answer": "In Sprint planning, Priya proposed shipping the beta on Friday.",
+    "cited_chunk_ids": ["2f9e6d13-a7c4-4b80-9e52-6d1b8a4c0f37"],
+    "status": "answered",
+    "created_at": "2026-09-27T09:12:44.120Z",
+    "error": null
+  },
+  "citations": [
+    {
+      "chunk_id": "2f9e6d13-a7c4-4b80-9e52-6d1b8a4c0f37",
+      "chunk_index": 12,
+      "meeting_id": "0d4f6a52-7c1b-4e7a-b0a3-51e1f4c2a9d8",
+      "meeting_title": "Sprint planning",
+      "meeting_started_at": "2026-09-21T11:31:12.000Z",
+      "utterance_id_start": "9c2a7e10-3b4d-4f6a-8e15-7a0d5c1b2e34",
+      "utterance_id_end": "1a6d3f82-9e07-4b5c-8a14-c2e9f0b7d635",
+      "speakers": ["Priya", "Sam"],
+      "t_start": "2026-09-21T11:34:12.400Z",
+      "t_end": "2026-09-21T11:34:18.300Z",
+      "utterance_ids": ["9c2a7e10-3b4d-4f6a-8e15-7a0d5c1b2e34", "1a6d3f82-9e07-4b5c-8a14-c2e9f0b7d635"],
+      "text": "[Priya, 00:03:12] We should ship the beta on Friday.\n[Sam, 00:03:16] Friday works for me."
+    }
+  ],
+  "reason": null,
+  "unindexed_utterances": 0,
+  "scope": {
+    "all_ended": false,
+    "coverage": [
+      { "meeting_id": "0d4f6a52-7c1b-4e7a-b0a3-51e1f4c2a9d8", "title": "Sprint planning", "started_at": "2026-09-21T11:31:12.000Z", "state": "searched", "unindexed_utterances": 0 },
+      { "meeting_id": "8a1c3e5f-2b4d-4e6f-9a0b-1c2d3e4f5a6b", "title": "Design review", "started_at": "2026-09-24T15:02:00.000Z", "state": "searched", "unindexed_utterances": 0 }
+    ]
+  }
+}
+```
+
+History-specific outcomes: all ended meetings requested and none exist → `no_grounding`, reason `no_ended_meetings`; every scoped meeting is empty → `nothing_transcribed_yet`; a scoped meeting whose vectors came from another embedding model or dimension → `failed`, reason `embedding_model_mismatch`, `error.code` `retrieval_failed`, and an `error.message` naming the meeting; nothing is searched in that case. Meetings with some searchable chunks are searched even if another scoped meeting is `not_indexed` or `failed`; `scope.coverage` reports those.
 
 **Status codes**
 
 | Status | Code | When |
 |---|---|---|
-| 200 | — | `answered`, `no_grounding`, or `failed` |
-| 400 | `invalid_request` | empty question, empty `meeting_ids` array, bad ID, or `mode` other than `history` |
-| 404 | `meeting_not_found` | a listed meeting does not exist |
-| 409 | `meeting_not_ended` | a listed meeting is still running |
+| 200 | — | `answered`, `no_grounding`, or `failed`; read `query.status` |
+| 400 | `invalid_request` | empty or over-long question, `meeting_ids` not a non-empty array of UUID v4 strings (the bad values are named), more than 50 meetings, or `mode` other than `history` |
+| 404 | `meeting_not_found` | a listed meeting does not exist (every missing ID is named) |
+| 409 | `meeting_not_ended` | a listed meeting has not ended; ask it from its live dashboard |
 | 413 | `payload_too_large` | body over 64 KiB |
 | 415 | `unsupported_media_type` | not JSON |
 
-**Side effects** — as for live Q&A; the push goes to the dashboard of each searched meeting that has one open.
+**Side effects** — as for live Q&A (a `QAQuery`, `ModelExecution` rows, audit `qa_query` with `mode: history` and the resolved scope in `meeting_ids`), except that **nothing is pushed**: the asker receives the HTTP response, and no live dashboard panel ever shows a history answer. History queries only read stored data; a live meeting's devices, STT and indexing are unaffected, and the answer generation queues behind STT and other questions exactly as live Q&A does. "All ended meetings" exposes every past meeting's content to anyone who can reach the laptop; the access boundary is the LAN and the laptop (ADR-10).
 
 **Not restored after reload.** No endpoint lists past `QAQuery` rows in the MVP, so a reloaded dashboard does not redisplay earlier answers (G18, proposed, ADR-15). Answers remain stored and in the audit stream; a list route can be added later without changing anything here.
 
@@ -1079,7 +1190,7 @@ Every success criterion in `requirements.md` and every step in `demo.md` maps to
 | Criterion 4 — Wi-Fi interruption recovers as the same participant | Same identity, no meeting restart | `WS /ws/signal/{meeting_id}` `join` with `is_reconnect`, `connection_event`, `device_status` |
 | Criterion 5 — live Q&A with citation | Grounded answer with who and when | `POST …/qa`, `qa_answer`, `citations` |
 | Criterion 6 — summary, action items, DOCX | End the meeting, read the summary, download the file | `POST …/end`, `summary_ready`, `GET …/summary`, `export_ready`, `GET …/export` |
-| Criterion 7 — later ask across meetings | List past meetings and ask across them | `GET /`, `GET /api/meetings`, `POST /api/qa` (provisional, CON-14) |
+| Criterion 7 — later ask across meetings | List past meetings and ask across them | `GET /history`, `GET /meetings/{meeting_id}`, `GET /api/meetings`, `POST /api/qa` (CON-14) |
 | Criterion 8 — shared phone, flagged and correctable | Enroll, low-confidence markers, correction | `POST …/enroll` (provisional, CON-13), `low_confidence`, `POST …/correct`, `utterance_updated` |
 | Demo step 1 — the problem | Talking point | none needed; no system feature |
 | Demo step 2 — phones join | As criterion 1 | as criterion 1 |

@@ -56,13 +56,30 @@ Functional and legible beats visually elaborate (`requirements.md`). The fronten
 - Summary text, action items (with owner if inferred), all speaker-attributed and confidence-aware exactly as the live view was.
 - Summary status (pending, ready, failed with its reason), a staleness notice with a regenerate action, and the transcript, readable whatever the summary's status. Served at `/meetings/{meeting_id}` for a live meeting too, as the "summarize now" entry point (the dashboard links to it and goes there after "End meeting"). CON-10 built a deliberately minimal version (`client/post_meeting.html`); the planned UI redesign replaces its look.
 - Export/download button (DOCX).
-- Q&A box remains available in history mode against this specific meeting.
+- Q&A box remains available in history mode against this specific meeting. Implemented (CON-14): an "Ask about this
+  meeting" panel labelled "History · This meeting only", open once the meeting has ended (while it runs, the panel
+  points to the live dashboard instead). The page also lists the participants, and each transcript line has the
+  anchor `#u-<utterance_id>` that history citations link to; landing on one highlights it.
 
 ### 4. Meeting history view
 
 - List of past meetings (title, date, participant count).
 - Entry point into cross-meeting Q&A (`mode: "history"`) — search across some or all past meetings.
 - This is the required front door for the should-have cross-meeting RAG feature (`requirements.md`) — build them together, not history-search before there's a place to launch it from, and not the reverse either.
+- Implemented (CON-14) at `/history` (linked from the home page nav and the post-meeting header;
+  `client/history.html`, `history.js`, and `history_qa.js`, which the post-meeting page shares). Meetings are listed
+  newest first with title, date, participant count, status, and Summary/DOCX badges. There's a title search and
+  From/To date filters, 50 meetings per page with "Show more". An ended meeting's title opens its post-meeting view,
+  and a running one opens its dashboard. Only ended meetings have a selection checkbox. The Q&A panel chooses "All
+  ended meetings" or "Selected meetings", and a "History" tag with the scope in words ("Searching 3 meetings") is
+  always visible above the question. Answer cards repeat that tag. Their three outcomes are styled like the live
+  panel's. Each source names its meeting, date, speakers and time within that meeting, and links to that line in
+  the meeting's transcript. Meetings that were only partly searched, or not searched at all, are listed under the
+  answer. Answers are not restored after a reload.
+- Each row also has **Rename** (an inline title editor) and **Delete**. Delete opens a dialog that stays disabled until
+  the exact meeting title is typed, then erases the meeting permanently (ADR-27). The post-meeting view has the same
+  two actions: Rename next to the title, and a "Delete meeting" section at the bottom that returns to `/history`
+  afterwards. Shared code is in `client/meeting_actions.js`.
 
 ## What the frontend explicitly does not do
 

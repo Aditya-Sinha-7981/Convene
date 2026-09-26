@@ -116,8 +116,36 @@ Each question has its own `QAQuery`, and a failure in one does not affect anothe
 
 ## History mode specifics
 
-- Spans multiple `Meeting` rows; `QAQuery.meeting_id` is null in this mode (see `data-model.md`).
-- Requires the meeting-history dashboard view (`frontend.md`) to exist as the entry point — there's no reason to build history-mode retrieval before there's a UI surface to launch it from.
+Implemented (CON-14) in `QAService.ask_history` (`server/rag/qa.py`), reached only from `POST /api/qa`:
+
+- **Scope.** `{question, mode: "history", meeting_ids}`. `meeting_ids` is a non-empty explicit list (duplicates
+  ignored, at most `[qa].history_max_meetings` = 50) or null/omitted for all ended meetings. All-ended excludes
+  `created` and `live` meetings; an explicitly listed meeting that has not ended is rejected (`meeting_not_ended`),
+  so a running meeting is only ever asked through its path-scoped live endpoint. An unknown id is
+  `meeting_not_found` with the ids named (`api.md` is authoritative over the work order's `invalid_request`).
+- **Retrieval.** `search_meetings` takes the scope explicitly; live mode's `search_meeting` is the one-meeting case.
+  Each meeting in scope gets its own partition-filtered `vec0` KNN query and the hits are merged, so closer chunks in
+  meetings outside the scope can never crowd out a requested one. As-of is "now"; the same `top_k` and
+  `min_similarity` apply. A single threshold across meetings is unverified on real data (CON-12 rehearsals).
+- **Prompt.** The live rules plus a `Meeting: <title> (<date>)` line at the top of each excerpt, and an instruction
+  to name the meeting when facts come from more than one. Titles are collapsed to one line inside the fence.
+- **Citations** add `meeting_title` and `meeting_started_at` to the live shape, resolved from stored rows.
+- **Index state per meeting** (`scope.coverage` in the response): `searched`, `partial`, `empty`, `not_indexed`,
+  `failed`, `model_mismatch`. Meetings with ready chunks are searched even when another scoped meeting is not; the
+  others are reported, never silently dropped. With nothing searchable the live outcomes apply
+  (`nothing_transcribed_yet`, `not_indexed_yet`, `index_unavailable`); no ended meetings at all is
+  `no_grounding`/`no_ended_meetings`.
+- **Embedding model guard.** Besides the database-wide `TranscriptIndexMeta` check at startup, a history query checks
+  each scoped meeting's most recent embedding `ModelExecution` for its ready chunks. A meeting embedded by another
+  model (or a database whose index meta differs) fails the whole query as `failed`/`embedding_model_mismatch`,
+  naming the meeting, and nothing is searched.
+- **Persistence.** A history query over exactly one meeting stores it in `QAQuery.meeting_id`; it is null only when
+  several were searched. The resolved scope is the `qa_query` audit payload's `meeting_ids` (no schema change).
+- **No push.** History answers are not sent as `qa_answer`, so a live dashboard panel never shows another scope.
+- **Entry points.** The history view (`/history`) and the post-meeting view's "Ask about this meeting" box, both
+  labelled "History" with the scope spelled out (`frontend.md`).
+- **Access.** "All ended meetings" exposes every past meeting to anyone who can reach the laptop; the boundary is the
+  LAN and the laptop (ADR-10).
 
 ## Failure handling
 

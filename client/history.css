@@ -1,0 +1,108 @@
+/* History view (CON-14) and the history Q&A panel it shares with the post-meeting view. Indigo is Convene's own
+   action and the "History" scope tag; red is only a system error; "not found" stays neutral. */
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.muted { color: var(--muted); }
+
+.hx-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: min(1160px, calc(100% - 32px)); margin: 0 auto; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.hx-new { min-height: 38px; padding: 0 14px; font-size: 14px; }
+.hx { width: min(1160px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 56px; }
+.hx-head h1 { margin: 0 0 .3rem; font-size: clamp(26px, 4vw, 34px); font-weight: 750; letter-spacing: -.025em; }
+.hx-head p { max-width: 44rem; margin: 0 0 24px; font-size: 15px; }
+.hx-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+
+.hx-filters { display: flex; flex-wrap: wrap; gap: 10px; }
+.hx-field { display: grid; gap: 4px; flex: 0 1 150px; min-width: 0; font-size: 12px; font-weight: 650; color: var(--ink-2); }
+.hx-field.hx-grow { flex: 1 1 200px; }
+.hx-field .field { min-height: 40px; padding: 8px 10px; font-size: 14px; }
+.hx-list-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; margin: 10px 0 4px; font-size: 13px; }
+.hx-link { padding: 0; border: 0; background: none; color: var(--accent); font-size: 13px; font-weight: 600; text-decoration: underline; }
+.hx-error { margin: 6px 0; color: var(--danger); font-size: 14px; }
+.hx-error:empty { display: none; }
+.hx-empty { padding: 24px 4px; }
+
+.hx-meetings { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.hx-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-sm); }
+.hx-pick { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.hx-pick:disabled { opacity: .35; }
+.hx-main { min-width: 0; }
+.hx-title { display: block; overflow: hidden; color: var(--ink); font-size: 15px; font-weight: 650; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+.hx-title:hover { color: var(--accent); text-decoration: underline; }
+.hx-meta { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.hx-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.hx-badge { padding: 1px 8px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--ink-2); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.hx-badge.is-live { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-hover); }
+.hx-badge.is-created { color: var(--muted); }
+.hx-more { margin-top: 12px; }
+.hx-actions { display: flex; gap: 10px; width: 100%; justify-content: flex-end; margin-top: 2px; }
+.hx-danger { color: var(--danger); }
+
+/* Rename and delete (client/meeting_actions.js), shared with the post-meeting view. */
+.ma-rename { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ma-rename .field { flex: 1 1 14rem; min-height: 36px; padding: 6px 10px; font-size: 15px; }
+.ma-rename .btn { min-height: 36px; padding: 0 12px; font-size: 13px; }
+.ma-error { flex-basis: 100%; margin: 4px 0 0; color: var(--danger); font-size: 13px; }
+.ma-error:empty { display: none; }
+.ma-dialog { width: min(28rem, calc(100vw - 32px)); padding: 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.ma-dialog::backdrop { background: rgba(29, 27, 36, .35); }
+.ma-dialog h2 { margin: 0 0 8px; font-size: 18px; }
+.ma-dialog p { margin: 0 0 12px; color: var(--ink-2); font-size: 14px; overflow-wrap: anywhere; }
+.ma-dialog label { display: grid; gap: 6px; font-size: 13px; font-weight: 650; }
+.ma-dialog .field { min-height: 40px; }
+.ma-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.ma-actions .btn { min-height: 38px; padding: 0 14px; font-size: 14px; }
+.ma-danger { border-color: transparent; background: var(--danger); color: #fff; }
+
+.hx-scope { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 8px 0 0; padding: 0; border: 0; font-size: 14px; }
+.hx-scope label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.hx-scope input { accent-color: var(--accent); }
+
+/* History Q&A panel */
+.hq-panel { position: sticky; top: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
+.hq-panel-head { padding: 16px 16px 0; }
+.hq-panel-head h2 { margin: 0; font-size: 17px; font-weight: 700; }
+.hq-form { display: grid; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.hq-scope { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--ink-2); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.hq-scope-tag, .hq-mode { flex: none; padding: 1px 8px; border: 1px solid var(--accent-line); border-radius: 999px; background: var(--accent-soft); color: var(--accent-hover); font-size: 11px; font-weight: 700; letter-spacing: .02em; }
+.hq-form textarea { width: 100%; min-height: 76px; resize: vertical; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); font-size: 14px; line-height: 1.5; }
+.hq-form textarea:focus { border-color: var(--accent); outline: 0; box-shadow: 0 0 0 3px var(--accent-soft); }
+.hq-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.hq-actions .btn { min-height: 38px; padding: 0 18px; font-size: 14px; }
+.hq-hint { color: var(--muted); font-size: 12px; line-height: 1.4; }
+.hq-empty { margin: 0; padding: 16px; font-size: 13px; }
+.hq-answers { display: grid; gap: 10px; margin: 0; padding: 14px 16px; list-style: none; }
+.hq-answers:empty { display: none; }
+.hq-card { padding: 12px; border: 1px solid var(--line); border-left-width: 3px; border-radius: 10px; background: var(--surface); }
+.hq-card.answered { border-left-color: var(--accent); }
+.hq-card.no_grounding { border-left-color: var(--idle); background: var(--bg); }
+.hq-card.failed { border-left-color: var(--danger); background: var(--danger-soft); }
+.hq-card.pending { border-style: dashed; border-left-style: solid; border-left-color: var(--accent); }
+.hq-card-head { display: flex; justify-content: space-between; gap: 8px; }
+.hq-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.hq-mode { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hq-status { color: var(--muted); font-size: 12px; font-weight: 700; }
+.answered .hq-status { color: var(--accent-hover); }
+.failed .hq-status { color: var(--danger); }
+.hq-time { flex: none; color: var(--muted); font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+.hq-question { margin: 6px 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.hq-body { margin: 0; color: var(--ink); font-size: 14px; line-height: 1.55; }
+.hq-detail { display: block; margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.hq-retry { min-height: 32px; margin-top: 8px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); font-size: 13px; font-weight: 600; }
+.hq-sources { margin-top: 8px; }
+.hq-sources summary { color: var(--accent-hover); font-size: 12px; font-weight: 650; cursor: pointer; }
+.hq-citations { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.hq-citation { display: grid; gap: 2px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink-2); font-size: 12px; line-height: 1.45; text-decoration: none; }
+.hq-citation:hover { border-color: var(--accent-line); background: var(--accent-soft); }
+.hq-citation:focus-visible { outline: 3px solid var(--accent-line); outline-offset: 2px; }
+.hq-cite-meeting { color: var(--ink); font-weight: 650; }
+.hq-citation strong { color: var(--accent-hover); font-weight: 650; }
+.hq-excerpt { overflow-wrap: anywhere; }
+
+@media (max-width: 880px) {
+  .hx-grid { grid-template-columns: minmax(0, 1fr); }
+  .hq-panel { position: static; }
+}
+@media (max-width: 520px) {
+  .hx-row { grid-template-columns: auto minmax(0, 1fr); }
+  .hx-badges { grid-column: 2; justify-content: flex-start; }
+  .hx-field { flex: 1 1 130px; }
+}

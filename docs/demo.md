@@ -32,7 +32,7 @@ One clean, rehearsed flow beats showing every feature (`project-context.md`). Th
 | Likely question | Answer |
 |---|---|
 | "Why not just use Otter/Fireflies?" | They guess speaker identity from one mixed mic; we get it from which phone the audio came from, which is inherently more reliable, and audio/transcription stay local with zero per-meeting AI cost. |
-| "What if two people share one phone?" | We support enrollment-based classification for that case, with low-confidence flagging and one-click manual correction — see `speaker-attribution.md`. Say this honestly as a real, tested feature; don't oversell its accuracy. |
+| "What if two people share one phone?" | The shared-device enrollment/classification feature is planned next. For the demo, each speaker has their own phone; manual correction remains available for any transcript row. |
 | "What happens if it mishears something?" | Every line carries a confidence score and is correctable in one click — wrong output is visible and fixable, never silently authoritative. |
 | "Does this scale beyond a hackathon?" | Today it's one laptop, one meeting at a time by design (`requirements.md` non-goals) — the architecture (adapters, structured data model) is built to extend, but scaling to multi-tenant/cloud is a deliberately separate, later problem. |
 
