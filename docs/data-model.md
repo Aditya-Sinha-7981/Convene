@@ -168,8 +168,27 @@ evidence (empty unless answered). The reason for `no_grounding`/`failed` is in t
 | summary_id | TEXT (UUID) | FK → Summary |
 | meeting_id | TEXT (UUID) | FK → Meeting |
 | text | TEXT | |
-| owner_participant_id | TEXT (UUID), nullable | set if the LLM/user identified an owner |
-| status | TEXT | `open` \| `done` |
+| owner_participant_id | TEXT (UUID), nullable | set if the LLM/user identified an owner; a manual edit may set only a participant of this item's own meeting (ADR-28) |
+| status | TEXT | `open` \| `done` \| `cancelled`. The summary pipeline always inserts `open`; `done` and `cancelled` are set only by a manual edit (CON-16). `cancelled` is the non-destructive "remove from my list": items are never deleted except with their meeting |
+| due_date | TEXT (date), nullable | CON-16: a calendar date `YYYY-MM-DD` with no time, compared as a UTC date; null until a person sets one. The summary pipeline never sets it |
+
+Index: `(summary_id)`; `(status, due_date)` for the global action-item list.
+
+Migration `0009` rebuilt this table to widen the `status` check and add `due_date`; every existing row was copied unchanged with `due_date` null. An item belongs to one `Summary`: a regenerated summary inserts new items and does not carry edits over, so lists show only the items of each meeting's **current** summary. Superseded items and their audit history stay in the database and remain editable by ID (ADR-28). The item's change history is its `action_item_updated` and `action_item_note_added` audit events; no change log or "last changed" column is stored (ADR-13, ADR-18).
+
+### ActionItemNote
+
+CON-16. A manual update attached to an existing `ActionItem`, typically from a later meeting where its progress was mentioned, so a follow-up never needs a duplicate item. Notes are append-only: they are never edited or deleted except by meeting deletion (below).
+
+| Field | Type | Notes |
+|---|---|---|
+| note_id | TEXT (UUID) | PK |
+| action_item_id | TEXT (UUID) | FK → ActionItem |
+| source_meeting_id | TEXT (UUID) | FK → Meeting; the meeting the update was mentioned in, which may be the item's own meeting or a later one |
+| text | TEXT | 1–2000 characters after trimming; meeting content, so never copied into an audit payload |
+| created_at | TEXT (ISO 8601) | |
+
+Index: `(action_item_id, created_at)`, `(source_meeting_id)`.
 
 ### Export
 
@@ -247,6 +266,8 @@ The complete set. Payloads reference records by ID and never contain transcript 
 | `summary_failed` | `summary` | `summary_id`, `error_code`, `attempts`, `duration_ms`, `drain_timed_out` |
 | `export_created` | `export` | `export_id`, `summary_id`, `input_as_of_seq`, `type` |
 | `export_failed` | `export` | `export_id`, `error_code` |
+| `action_item_updated` | `api` | `action_item_id`, `summary_id`, `from`, `to`, `via` |
+| `action_item_note_added` | `api` | `note_id`, `action_item_id`, `source_meeting_id` |
 
 Payload value sets:
 
@@ -265,6 +286,8 @@ Payload value sets:
   meeting-end attempt stopped waiting for queued STT and summarized the lines that existed (`summarization.md`).
   `summary_failed.error_code`: `summary_generation_failed` \| `summary_invalid_output` \| `transcript_too_long` \|
   `transcript_empty`. Payloads carry ids and counts, never transcript text.
+- `action_item_updated` (CON-16) records one manual edit of an `ActionItem`. Its `meeting_id` is the item's own meeting. `from` and `to` are objects with the same keys, only the fields that changed, drawn from `owner_participant_id`, `due_date` and `status`. `from` holds the values immediately before the edit and `to` the values after it, so every prior value can be recovered, as with `utterance_corrected`. Values are IDs, dates and enum values, never item text. `via` is `edit` for a direct edit, or `note` when the status change was sent with a note (`action_item_note_added` is written in the same transaction). A no-op edit writes no event.
+- `action_item_note_added` (CON-16) has the item's meeting as its `meeting_id`. `source_meeting_id` names the meeting the update came from. The note text lives only in the `ActionItemNote` row.
 - `summary_generated.input_as_of_seq` and `export_created.input_as_of_seq` are the `seq` high-water mark of the transcript the artifact was built from. They are how staleness is derived (see below), so no extra column is needed.
 
 <!-- example: audit -->
@@ -299,11 +322,11 @@ Payload value sets:
 
 Which values are derived from the audit stream and which are live gauges (resolving the tension between ADR-13 and values that change every second):
 
-- **Derived from `AuditEvent` / `ConnectionEvent` (durable, replayable):** device `status`, `reconnect_count`, every connection change, meeting `status`, utterance creation and correction, Q&A results, summary and export outcomes, and **staleness**. A summary is *stale* when the latest `utterance_corrected` or `utterance_created` audit event for the meeting has `seq` greater than the current summary's `summary_generated.input_as_of_seq`. An export is stale when its `export_created.input_as_of_seq` is below the same high-water mark or below a newer current summary's, or when a `meeting_renamed` event for the meeting is newer than its `export_created` event (the title is in the file). No stored flag exists; nothing can disagree with the stream.
+- **Derived from `AuditEvent` / `ConnectionEvent` (durable, replayable):** device `status`, `reconnect_count`, every connection change, meeting `status`, utterance creation and correction, Q&A results, summary and export outcomes, and **staleness**. A summary is *stale* when the latest `utterance_corrected` or `utterance_created` audit event for the meeting has `seq` greater than the current summary's `summary_generated.input_as_of_seq`. An export is stale when its `export_created.input_as_of_seq` is below the same high-water mark or below a newer current summary's, or when a `meeting_renamed` or `action_item_updated` event for the meeting is newer than its `export_created` event (the title and each action item's owner and status are in the file). An action-item edit does **not** make the summary stale, because it does not change the transcript; a note changes nothing in the file and affects neither. An item's **last change** (`last_changed_at`, `last_changed_by` in `api.md`) is derived the same way: its newest `action_item_updated` or `action_item_note_added` event (`manual`), or otherwise its summary's `summary_generated` event (`summary`). No stored flag exists; nothing can disagree with the stream.
 - **Live gauges (ephemeral, never persisted, never used to answer "what happened"):** `last_audio_age_ms`, `audio_duration_s`, `stt_backlog`, `stt_dropped_windows`. `stt_backlog` is the number of the device's windows queued for or being transcribed; `stt_dropped_windows` is how many the overload policy has dropped since the server started (each drop is also an audit event). They are computed in memory, served in `GET /api/meetings/{meeting_id}` and the `device_gauges` dashboard event (`api.md`), and reset by a server restart. A gauge never contradicts the audit stream because it describes the present instant, not history; the audit-visible consequences (a drop, a reconnect, a resumed stream) are separate events.
 
 ## Retention
 
 No automatic deletion for the hackathon build — data volumes at this scale don't need it. Retention policy is an explicit deferred item (see `requirements.md` non-goals), not an oversight.
 
-A user can permanently delete one meeting (`DELETE /api/meetings/{meeting_id}`, ADR-27). That removes every row the meeting owns, including its audit events, and the multi-meeting `QAQuery` rows that cited its chunks. It leaves one `meeting_deleted` audit event with no `meeting_id`, holding only the deleted id and counts. `meeting_deleted` is the one event whose payload names a meeting that no longer exists.
+A user can permanently delete one meeting (`DELETE /api/meetings/{meeting_id}`, ADR-27). That removes every row the meeting owns, including its audit events, and the multi-meeting `QAQuery` rows that cited its chunks. Its action items go with it, together with every `ActionItemNote` attached to them, including notes added from other meetings. The notes the meeting was the **source** of are deleted too, even when they sit on another meeting's item, along with their `action_item_note_added` events. A status change sent with such a note stays on the item, and its `action_item_updated` event stays, because it describes the surviving item. It leaves one `meeting_deleted` audit event with no `meeting_id`, holding only the deleted id and counts. `meeting_deleted` is the one event whose payload names a meeting that no longer exists.

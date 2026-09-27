@@ -54,6 +54,7 @@ Functional and legible beats visually elaborate (`requirements.md`). The fronten
 ### 3. Post-meeting view
 
 - Summary text, action items (with owner if inferred), all speaker-attributed and confidence-aware exactly as the live view was.
+- Action items are editable in place (CON-16). Each shows its owner, due date, status and note count. The owner is picked from this meeting's participants or "Unassigned"; the due date is a date field with a clear action; the status buttons (Open, Done, Cancelled) take one click. "Add note" appends a note from this meeting, and "Notes (n)" shows the existing ones. Every change is sent to the server, and the row redraws from the server's reply. A failed save shows the error and leaves the row showing the stored values; nothing is updated optimistically. The Regenerate and Summarize actions warn that edits to the current action items will not carry over to a new summary (ADR-28).
 - Summary status (pending, ready, failed with its reason), a staleness notice with a regenerate action, and the transcript, readable whatever the summary's status. Served at `/meetings/{meeting_id}` for a live meeting too, as the "summarize now" entry point (the dashboard links to it and goes there after "End meeting"). CON-10 built a deliberately minimal version (`client/post_meeting.html`); the planned UI redesign replaces its look.
 - Export/download button (DOCX).
 - Q&A box remains available in history mode against this specific meeting. Implemented (CON-14): an "Ask about this
@@ -80,6 +81,20 @@ Functional and legible beats visually elaborate (`requirements.md`). The fronten
   the exact meeting title is typed, then erases the meeting permanently (ADR-27). The post-meeting view has the same
   two actions: Rename next to the title, and a "Delete meeting" section at the bottom that returns to `/history`
   afterwards. Shared code is in `client/meeting_actions.js`.
+
+### Action items
+
+- Implemented (CON-16) at `/action-items` (`client/action_items.html`, `action_items.js`, `action_items.css`), linked
+  from the home page nav, `/history` and the post-meeting header. It lists action items across all meetings from
+  `GET /api/action-items`. The server decides what appears: open items by default, sorted by due date (no due
+  date last), 50 per page with "Show more". Filters: status (Open, Done, Cancelled, All), owner name, due from/to,
+  "Overdue only". Sort: due date or recently changed. Each row shows the item, its owner, due date, status, note
+  count and last change ("edited" or "from summary"), and the originating meeting's title and date, linking to
+  `/meetings/{meeting_id}`.
+- Rows have the same inline edits as the post-meeting view, but the owner picker lists the participants of the
+  item's own meeting, read from that meeting. "Add note" asks which meeting the update came from, offering ended
+  meetings newest first, and can mark the item done in the same request. Overdue is shown with the error colour
+  and the word "Overdue", never with amber, which is reserved for "Needs review". The server computes `overdue`.
 
 ### Demo database inspector
 

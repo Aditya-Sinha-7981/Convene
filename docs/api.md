@@ -2,7 +2,7 @@
 
 Single FastAPI process (ADR-01). REST for request/response operations, WebSocket for signaling and live push feeds. This document is authoritative for endpoint shape — other docs describe *when* these are called, not their exact contracts. Stored field names come from `data-model.md` and are never renamed here; where the API adds a computed field it is listed under [Derived fields](#derived-fields).
 
-**Implementation status (through CON-09):** implemented and covered by automated loopback tests: `POST /api/meetings`, `GET /api/meetings/{meeting_id}`, `POST …/devices`, `POST …/end`, `GET …/transcript`, and `POST …/utterances/{utterance_id}/correct`; signaling and dashboard WebSockets; and the pages `/`, `/join/{meeting_id}`, `/dashboard/{meeting_id}`, and `/static/…`. The dashboard feed includes `meeting_status`, `device_status`, `connection_event`, `device_gauges`, `utterance`, and `utterance_updated`; the dashboard consumes server-computed labels and low-confidence state. Live Q&A (`POST …/qa`, the `qa_answer` push) is implemented by CON-09. Summarization (`POST …/summarize`, `GET …/summary`, the `summary_ready` and `summary_failed` pushes, summarization started by `end`, and the post-meeting page `/meetings/{meeting_id}`) is implemented by CON-10. Export is implemented by CON-11. The history list (`GET /api/meetings`), history Q&A (`POST /api/qa`) and the `/history` page are implemented by CON-14, and rename (`PATCH`) and delete (`DELETE /api/meetings/{meeting_id}`) by ADR-27. Enrollment routes remain unimplemented. None of this has been verified on real phones. A route section below describes the contract, not a claim that the route exists.
+**Implementation status (through CON-09):** implemented and covered by automated loopback tests: `POST /api/meetings`, `GET /api/meetings/{meeting_id}`, `POST …/devices`, `POST …/end`, `GET …/transcript`, and `POST …/utterances/{utterance_id}/correct`; signaling and dashboard WebSockets; and the pages `/`, `/join/{meeting_id}`, `/dashboard/{meeting_id}`, and `/static/…`. The dashboard feed includes `meeting_status`, `device_status`, `connection_event`, `device_gauges`, `utterance`, and `utterance_updated`; the dashboard consumes server-computed labels and low-confidence state. Live Q&A (`POST …/qa`, the `qa_answer` push) is implemented by CON-09. Summarization (`POST …/summarize`, `GET …/summary`, the `summary_ready` and `summary_failed` pushes, summarization started by `end`, and the post-meeting page `/meetings/{meeting_id}`) is implemented by CON-10. Export is implemented by CON-11. The history list (`GET /api/meetings`), history Q&A (`POST /api/qa`) and the `/history` page are implemented by CON-14, and rename (`PATCH`) and delete (`DELETE /api/meetings/{meeting_id}`) by ADR-27. Action-item editing, notes and the global list (`/api/action-items…`, the `/action-items` page) are implemented by CON-16. Enrollment routes remain unimplemented. None of this has been verified on real phones. A route section below describes the contract, not a claim that the route exists.
 
 **Status of decisions:** contract choices that change a documented behavior or the schema are marked **(proposed)** and recorded as ADR-15 to ADR-18 in `decisions.md`, pending project-lead confirmation. Shapes marked **provisional** belong to should-have features and are finalized by CON-13 (enrollment) and CON-14 (history).
 
@@ -14,7 +14,7 @@ Single FastAPI process (ADR-01). REST for request/response operations, WebSocket
 - **Transcript ordering.** By `t_start` ascending, ties broken by `utterance_id` ascending, which is stable but not chronological. `t_start` is on the server clock (`stt-pipeline.md` defines the time base), so the relative order of lines from *different* devices is only as accurate as that clock and the windowing; treat close timestamps across devices as unordered. The dashboard also receives lines in arrival order and must sort by this rule.
 - **`seq`.** A strictly increasing integer taken from `AuditEvent.seq` (`data-model.md`). Every durable dashboard event carries the `seq` of the audit event that caused it, and snapshot responses carry `as_of_seq`, the highest committed `seq` at the moment the snapshot was read. `seq` values are not contiguous per meeting (other meetings share the counter). Several pushes caused by one audit event may share a `seq`.
 - **Content types.** Requests with a body use `application/json; charset=utf-8`; any other type is `415 unsupported_media_type`. JSON bodies are limited to 64 KiB (`413 payload_too_large`). Responses are `application/json; charset=utf-8` except the export download and the HTML pages. A `POST` with no body is treated as `{}`.
-- **Validation.** Any malformed or out-of-range body, query parameter or path ID returns `400 invalid_request`. Limits: `title` at most 200 characters; `display_name` 1–80 characters after trimming; `question` 1–2000 characters after trimming; `declared_speaker_count` per the device section.
+- **Validation.** Any malformed or out-of-range body, query parameter or path ID returns `400 invalid_request`. Limits: `title` at most 200 characters; `display_name` 1–80 characters after trimming; `question` 1–2000 characters after trimming; action-item note `text` 1–2000 characters after trimming; `declared_speaker_count` per the device section.
 - **Idempotency.** Each endpoint states its own. Reads never change state, with the documented exception of `GET …/export`.
 - **Q&A outcome versus error.** A Q&A request that is well-formed and reaches the retrieval layer always returns `200` with the persisted `QAQuery`, whether its `status` is `answered`, `no_grounding` or `failed`. The error envelope is reserved for request-level errors (unknown meeting, empty question, wrong meeting state). `no_grounding` and `failed` are results, not HTTP errors, so the dashboard can tell "the system does not know" from "the system is broken" (`rag-and-qa.md`). (G8, proposed, ADR-15.)
 
@@ -27,7 +27,7 @@ Single FastAPI process (ADR-01). REST for request/response operations, WebSocket
 | 202 | Accepted; work continues in the background and its result arrives by push |
 | 302 | The dashboard route of an ended meeting redirecting to the post-meeting view |
 | 400 | Invalid request or unsupported format |
-| 404 | Unknown meeting, device, participant, utterance or summary |
+| 404 | Unknown meeting, device, participant, utterance, summary or action item |
 | 409 | Request is valid but the current state forbids it |
 | 413 | Body over 64 KiB |
 | 415 | Unsupported content type |
@@ -51,6 +51,7 @@ Single FastAPI process (ADR-01). REST for request/response operations, WebSocket
 | `participant_not_found` | 404 | no such participant in this meeting |
 | `utterance_not_found` | 404 | no such utterance in this meeting |
 | `summary_not_found` | 404 | no summary attempt exists for this meeting |
+| `action_item_not_found` | 404 | no such action item (CON-16) |
 | `meeting_ended` | 409 | the operation needs a meeting that has not ended |
 | `meeting_not_ended` | 409 | history Q&A named a meeting that has not ended |
 | `meeting_active` | 409 | a phone is still connected, so the meeting cannot be deleted |
@@ -86,8 +87,15 @@ API views may add computed fields to a stored entity. They are computed on the s
 | Utterance | `speaker_label` | display name of the current participant; if `participant_id` is null, `Speaker on Phone <n>` where `<n>` is the device's 1-based rank by `joined_at` in the meeting (ties by `device_id`) |
 | Utterance | `low_confidence` | true when `attribution_confidence` is below the server's configured threshold or `attribution_method` is `generic_unresolved`. The threshold is server configuration; **clients never compare confidence numbers** (G20) |
 | Summary | `stale` | the transcript changed after the summary was built (`data-model.md`, "Derived state") |
-| Export | `stale` | the transcript or current summary changed after the file was rendered |
+| Export | `stale` | the transcript, current summary, meeting title or an action item's owner or status changed after the file was rendered |
 | ActionItem | `owner_display_name` | display name of `owner_participant_id`, or null |
+| ActionItem | `meeting_title` | title of the item's originating meeting (CON-16) |
+| ActionItem | `meeting_started_at` | `started_at` of the originating meeting, or its `created_at` if it never started (CON-16) |
+| ActionItem | `note_count` | number of `ActionItemNote` rows attached to the item (CON-16) |
+| ActionItem | `last_changed_at` | timestamp of the item's newest `action_item_updated` or `action_item_note_added` audit event, else of its summary's `summary_generated` event (`data-model.md`, "Derived state") |
+| ActionItem | `last_changed_by` | the channel of that change: `manual` or `summary`. Never a person: there are no accounts (ADR-10) |
+| ActionItem | `overdue` | true when `status` is `open` and `due_date` is before today's UTC date. Clients never compare dates themselves |
+| ActionItemNote | `source_meeting_title` | title of the note's `source_meeting_id` meeting |
 | QAQuery | `error` | null unless `status = failed`, then `{ "code": "retrieval_failed" \| "generation_failed", "message": "..." }` |
 
 ## Route index
@@ -110,6 +118,10 @@ API views may add computed fields to a stored entity. They are computed on the s
 | POST | `/api/meetings/{meeting_id}/summarize` | MVP |
 | GET | `/api/meetings/{meeting_id}/summary` | MVP |
 | GET | `/api/meetings/{meeting_id}/export` | MVP |
+| GET | `/api/action-items` | should-have (CON-16) |
+| GET | `/api/action-items/{action_item_id}` | should-have (CON-16) |
+| PATCH | `/api/action-items/{action_item_id}` | should-have (CON-16) |
+| POST | `/api/action-items/{action_item_id}/notes` | should-have (CON-16) |
 | GET | `/api/database` | demo support |
 | WS | `/ws/signal/{meeting_id}` | MVP |
 | WS | `/ws/dashboard/{meeting_id}` | MVP |
@@ -126,6 +138,7 @@ These return HTML for a browser, not JSON. Assets are served from the same proce
 | GET | `/join/{meeting_id}` | Join page (phone) | 200, 404 |
 | GET | `/dashboard/{meeting_id}` | Live dashboard, including the join QR while the meeting is `created` or `live` | 200, 302 to `/meetings/{meeting_id}` if the meeting has ended, 404 |
 | GET | `/meetings/{meeting_id}` | Post-meeting view: summary, action items, export, and Q&A in history mode | 200, 404 |
+| GET | `/action-items` | Global action-item list: open items across meetings, with edits and notes (CON-16) | 200 |
 | GET | `/database` | Read-only local SQLite inspector for the demo laptop | 200 |
 | GET | `/static/{path}` | Scripts, styles and images | 200, 404 |
 
@@ -864,7 +877,14 @@ Read the summary and action items for the post-meeting view and dashboard.
       "text": "Write the release notes",
       "owner_participant_id": "a8d20f6b-4c39-4e15-8b72-9e1c3d5a7f06",
       "status": "open",
-      "owner_display_name": "Sam"
+      "due_date": "2026-09-25",
+      "owner_display_name": "Sam",
+      "meeting_title": "Sprint planning",
+      "meeting_started_at": "2026-09-21T11:31:12.000Z",
+      "note_count": 1,
+      "last_changed_at": "2026-09-22T09:14:03.210Z",
+      "last_changed_by": "manual",
+      "overdue": false
     },
     {
       "action_item_id": "0e9b4d61-7a35-4c82-b1f0-6d2c8a5e3b17",
@@ -873,7 +893,14 @@ Read the summary and action items for the post-meeting view and dashboard.
       "text": "Confirm the beta date with the client",
       "owner_participant_id": null,
       "status": "open",
-      "owner_display_name": null
+      "due_date": null,
+      "owner_display_name": null,
+      "meeting_title": "Sprint planning",
+      "meeting_started_at": "2026-09-21T11:31:12.000Z",
+      "note_count": 0,
+      "last_changed_at": "2026-09-21T12:03:31.400Z",
+      "last_changed_by": "summary",
+      "overdue": false
     }
   ],
   "latest_attempt": {
@@ -891,7 +918,7 @@ Read the summary and action items for the post-meeting view and dashboard.
 }
 ```
 
-A null `owner_participant_id` (shown as "Unassigned" in the export) is a normal outcome, not a failure. `stale` is true when utterances were created or corrected after the summary was built; the UI offers "regenerate", which calls `POST …/summarize`.
+A null `owner_participant_id` (shown as "Unassigned" in the export) is a normal outcome, not a failure. Each action item has the same view as in [`GET /api/action-items`](#get-apiaction-items) (CON-16 added `due_date` and the derived fields; existing fields are unchanged). A regenerated summary brings new items with `status = open`; edits to the previous summary's items do not carry over (ADR-28). `stale` is true when utterances were created or corrected after the summary was built; the UI offers "regenerate", which calls `POST …/summarize`.
 
 **Status codes**
 
@@ -909,7 +936,7 @@ Download the DOCX minutes (`export.md`). This `GET` may do work: if no current, 
 
 **Request** — query parameter `format`, default and only value `docx`.
 
-**Response** — `200` with the file: `Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document` and `Content-Disposition: attachment; filename="<meeting_id>.docx"`. The file name is the meeting UUID, never derived from the title. The body is the binary DOCX, not JSON. A file rendered before a correction or a newer summary is re-rendered before it is served; an out-of-date file is never served silently. If that re-render fails the request fails with `export_render_failed`.
+**Response** — `200` with the file: `Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document` and `Content-Disposition: attachment; filename="<meeting_id>.docx"`. The file name is the meeting UUID, never derived from the title. The body is the binary DOCX, not JSON. A file rendered before a correction, a newer summary, a rename or an action-item edit is re-rendered before it is served; an out-of-date file is never served silently. If that re-render fails the request fails with `export_render_failed`.
 
 Errors use the JSON error shape:
 
@@ -981,6 +1008,218 @@ Read the current ready export, latest attempt, and derived `stale` flag for the 
 | 422 | `enrollment_low_quality` | no usable embedding could be produced; the participant is marked `failed` and falls back to the generic-label path |
 
 **Side effects** — creates the `Participant` if needed, stores a `SpeakerEnrollment`, audit `enrollment_completed` or `enrollment_failed`, push `device_status`. The device leaves `enrolling` once all declared speakers have been enrolled or have failed.
+
+## REST: Action items
+
+CON-16. Action items come only from summaries (`summarization.md`). These routes edit and annotate the stored rows. They never call a model, never create or delete an item, and work with no phone connected. Every change is written with its audit event in one transaction (`data-model.md`). Edits are last-write-wins: there is one laptop, and no version check exists (ADR-28). Nothing is pushed to dashboards; pages re-read after their own request.
+
+### GET /api/action-items
+
+The global action-item list across every meeting. By default it returns open items only, so a meeting with many closed items never pushes open work off the first page.
+
+**Request** — query parameters, all optional:
+
+- `status`: `open` (default), `done` or `cancelled`, a comma-separated set of them, or `all`.
+- `owner`: the owner's display name, matched exactly, ignoring case and repeated whitespace (1–80 characters). Participants belong to one meeting, so this is how one person's items are found across meetings. Blank means no filter.
+- `meeting_id`: only items that came from this meeting. An unknown meeting gives an empty list.
+- `due_after`, `due_before`: inclusive `YYYY-MM-DD` bounds on `due_date`. Items without a due date are excluded when either bound is set.
+- `overdue`: `true` for overdue items only (`overdue` in the derived fields); `false` or absent means no filter.
+- `sort`: `due` (default) orders by due date ascending with no-due-date items last, ties by `last_changed_at` newest first. `recent` orders by `last_changed_at` newest first. Final ties are broken by `action_item_id`.
+- `limit`: default 50, maximum 200. `offset`: default 0.
+
+Only the items of each meeting's current summary (its most recent `ready` one) are listed. Items of superseded summary attempts are never listed. `total` counts every matching item, ignoring `limit` and `offset`.
+
+**Response** — `200`.
+
+```json
+{
+  "action_items": [
+    {
+      "action_item_id": "f0a3c5e7-1b92-4d68-8c4a-3e7d9b1f2a60",
+      "summary_id": "b6d1e8a3-5c72-4f09-a3d4-8e0b2c7f1a56",
+      "meeting_id": "0d4f6a52-7c1b-4e7a-b0a3-51e1f4c2a9d8",
+      "text": "Write the release notes",
+      "owner_participant_id": "a8d20f6b-4c39-4e15-8b72-9e1c3d5a7f06",
+      "status": "open",
+      "due_date": "2026-09-25",
+      "owner_display_name": "Sam",
+      "meeting_title": "Sprint planning",
+      "meeting_started_at": "2026-09-21T11:31:12.000Z",
+      "note_count": 1,
+      "last_changed_at": "2026-09-22T09:14:03.210Z",
+      "last_changed_by": "manual",
+      "overdue": true
+    }
+  ],
+  "total": 1
+}
+```
+
+**Status codes**
+
+| Status | Code | When |
+|---|---|---|
+| 200 | — | success, possibly an empty list |
+| 400 | `invalid_request` | unknown `status` or `sort`, bad date, bad `meeting_id`, over-long `owner`, `overdue` not `true`/`false`, bad `limit` or `offset` |
+
+**Side effects** — none. Read-only.
+
+### GET /api/action-items/{action_item_id}
+
+One action item with its notes, oldest first. Works for an item of a superseded summary too.
+
+**Request** — no body.
+
+**Response** — `200`.
+
+```json
+{
+  "action_item": {
+    "action_item_id": "f0a3c5e7-1b92-4d68-8c4a-3e7d9b1f2a60",
+    "summary_id": "b6d1e8a3-5c72-4f09-a3d4-8e0b2c7f1a56",
+    "meeting_id": "0d4f6a52-7c1b-4e7a-b0a3-51e1f4c2a9d8",
+    "text": "Write the release notes",
+    "owner_participant_id": "a8d20f6b-4c39-4e15-8b72-9e1c3d5a7f06",
+    "status": "open",
+    "due_date": "2026-09-25",
+    "owner_display_name": "Sam",
+    "meeting_title": "Sprint planning",
+    "meeting_started_at": "2026-09-21T11:31:12.000Z",
+    "note_count": 1,
+    "last_changed_at": "2026-09-22T09:14:03.210Z",
+    "last_changed_by": "manual",
+    "overdue": true
+  },
+  "notes": [
+    {
+      "note_id": "4c7e2a90-8d13-4b5f-9e26-1a0f3d8c7b54",
+      "action_item_id": "f0a3c5e7-1b92-4d68-8c4a-3e7d9b1f2a60",
+      "source_meeting_id": "6a1d9e37-2f84-4c0b-a5e9-7d3b8c2f1e40",
+      "text": "Draft is with Priya for review.",
+      "created_at": "2026-09-22T09:14:03.210Z",
+      "source_meeting_title": "Weekly sync"
+    }
+  ]
+}
+```
+
+**Status codes**
+
+| Status | Code | When |
+|---|---|---|
+| 200 | — | success |
+| 400 | `invalid_request` | bad action item ID |
+| 404 | `action_item_not_found` | unknown action item |
+
+**Side effects** — none.
+
+### PATCH /api/action-items/{action_item_id}
+
+Edit an item's owner, due date or status. This is a row update and never re-runs the model.
+
+**Request** — any non-empty subset of these keys. Any other key is rejected.
+
+- `owner_participant_id`: a participant of the item's own meeting, or null for "Unassigned". Participants of other meetings are rejected (ADR-28).
+- `due_date`: a valid calendar date `YYYY-MM-DD`, or null.
+- `status`: `open`, `done` or `cancelled`.
+
+```json
+{ "status": "done", "due_date": "2026-09-25" }
+```
+
+**Response** — `200` with the updated item (the view of `GET /api/action-items`). `changed` is false when every sent value already matched the row.
+
+```json
+{
+  "action_item": {
+    "action_item_id": "f0a3c5e7-1b92-4d68-8c4a-3e7d9b1f2a60",
+    "summary_id": "b6d1e8a3-5c72-4f09-a3d4-8e0b2c7f1a56",
+    "meeting_id": "0d4f6a52-7c1b-4e7a-b0a3-51e1f4c2a9d8",
+    "text": "Write the release notes",
+    "owner_participant_id": "a8d20f6b-4c39-4e15-8b72-9e1c3d5a7f06",
+    "status": "done",
+    "due_date": "2026-09-25",
+    "owner_display_name": "Sam",
+    "meeting_title": "Sprint planning",
+    "meeting_started_at": "2026-09-21T11:31:12.000Z",
+    "note_count": 1,
+    "last_changed_at": "2026-09-23T16:40:12.004Z",
+    "last_changed_by": "manual",
+    "overdue": false
+  },
+  "changed": true
+}
+```
+
+**Status codes**
+
+| Status | Code | When |
+|---|---|---|
+| 200 | — | updated, or nothing to change |
+| 400 | `invalid_request` | empty body, unknown key, owner not a participant of the item's meeting, invalid date or status; the message names the field |
+| 404 | `action_item_not_found` | unknown action item |
+| 413 | `payload_too_large` | body over 64 KiB |
+| 415 | `unsupported_media_type` | not JSON |
+
+**Side effects** — the `ActionItem` row is updated, and audit `action_item_updated` (`via: edit`) is written in the same transaction, with before and after values for the changed fields only. A no-op writes nothing. An edit makes the meeting's DOCX stale, so the next download re-renders it; the summary is not affected. It is allowed while a summary is being regenerated, because the running attempt writes new items. Idempotent: repeating the request changes nothing more.
+
+### POST /api/action-items/{action_item_id}/notes
+
+Attach an update to an existing item, from the meeting where it was mentioned, optionally changing the item's status at the same time. The update never creates a new item.
+
+**Request**
+
+- `source_meeting_id` (required): the meeting the update came from, which may be the item's own meeting or a later one. It must exist.
+- `text` (required): 1–2000 characters after trimming.
+- `status` (optional): `open`, `done` or `cancelled`, applied as an edit.
+
+```json
+{ "source_meeting_id": "6a1d9e37-2f84-4c0b-a5e9-7d3b8c2f1e40", "text": "Draft is with Priya for review.", "status": "done" }
+```
+
+**Response** — `201` with the note and the item after the change.
+
+```json
+{
+  "note": {
+    "note_id": "4c7e2a90-8d13-4b5f-9e26-1a0f3d8c7b54",
+    "action_item_id": "f0a3c5e7-1b92-4d68-8c4a-3e7d9b1f2a60",
+    "source_meeting_id": "6a1d9e37-2f84-4c0b-a5e9-7d3b8c2f1e40",
+    "text": "Draft is with Priya for review.",
+    "created_at": "2026-09-22T09:14:03.210Z",
+    "source_meeting_title": "Weekly sync"
+  },
+  "action_item": {
+    "action_item_id": "f0a3c5e7-1b92-4d68-8c4a-3e7d9b1f2a60",
+    "summary_id": "b6d1e8a3-5c72-4f09-a3d4-8e0b2c7f1a56",
+    "meeting_id": "0d4f6a52-7c1b-4e7a-b0a3-51e1f4c2a9d8",
+    "text": "Write the release notes",
+    "owner_participant_id": "a8d20f6b-4c39-4e15-8b72-9e1c3d5a7f06",
+    "status": "done",
+    "due_date": "2026-09-25",
+    "owner_display_name": "Sam",
+    "meeting_title": "Sprint planning",
+    "meeting_started_at": "2026-09-21T11:31:12.000Z",
+    "note_count": 1,
+    "last_changed_at": "2026-09-22T09:14:03.210Z",
+    "last_changed_by": "manual",
+    "overdue": false
+  }
+}
+```
+
+**Status codes**
+
+| Status | Code | When |
+|---|---|---|
+| 201 | — | note added |
+| 400 | `invalid_request` | missing, blank or over-long `text`, bad `source_meeting_id`, unknown `status`, or another key |
+| 404 | `action_item_not_found` | unknown action item |
+| 404 | `meeting_not_found` | unknown `source_meeting_id` |
+| 413 | `payload_too_large` | body over 64 KiB |
+| 415 | `unsupported_media_type` | not JSON |
+
+**Side effects** — one transaction inserts the `ActionItemNote` and writes audit `action_item_note_added`. If `status` differs from the item's status, the same transaction updates it and writes audit `action_item_updated` with `via: note`. A status change makes the DOCX stale; the note alone does not, because notes are not in the file. Not idempotent: each call appends a note.
 
 ## WebSocket: `/ws/signal/{meeting_id}`
 

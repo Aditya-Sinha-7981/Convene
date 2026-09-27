@@ -1,0 +1,44 @@
+/* Action items (CON-16): the global /action-items page and the editable rows it shares with the post-meeting view.
+   Indigo marks Convene's own controls; "Overdue" uses the error colour and the word, never amber, which is reserved
+   for "Needs review". */
+.ai-page { max-width: 60rem; }
+.ai-filters { align-items: end; }
+.ai-check { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
+.ai-check input { accent-color: var(--accent); }
+.ai-overdue-filter { min-height: 40px; }
+
+.ai-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.ai-row { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-sm); }
+.ai-row[data-status="done"] .ai-text, .ai-row[data-status="cancelled"] .ai-text { color: var(--muted); }
+.ai-row[data-status="cancelled"] .ai-text { text-decoration: line-through; }
+.ai-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; }
+.ai-text { flex: 1 1 18rem; margin: 0; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.ai-tags { display: flex; gap: 4px; }
+.ai-tag { padding: 1px 8px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--ink-2); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.ai-tag.is-overdue { border-color: var(--danger-line); background: var(--danger-soft); color: var(--danger); }
+.ai-tag.is-done { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-hover); }
+
+.ai-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ai-controls .field { width: auto; min-height: 34px; padding: 4px 8px; font-size: 14px; }
+.ai-owner { max-width: 14rem; }
+.ai-status { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 9px; overflow: hidden; }
+.ai-status-btn { min-height: 32px; padding: 0 12px; border: 0; border-right: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-2); font-size: 13px; font-weight: 600; cursor: pointer; }
+.ai-status-btn:last-child { border-right: 0; }
+.ai-status-btn[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+.ai-status-btn:disabled { cursor: default; opacity: .6; }
+.ai-status-btn:focus-visible { outline: 3px solid var(--accent-line); outline-offset: -3px; }
+
+.ai-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; color: var(--muted); font-size: 13px; }
+.ai-meeting { color: var(--accent); font-weight: 600; }
+.ai-error { margin: 0; color: var(--danger); font-size: 13px; }
+.ai-error:empty { display: none; }
+.ai-notes { padding-left: 10px; border-left: 2px solid var(--line); }
+.ai-note-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.ai-note-text { margin: 0; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ai-note-meta { margin: 0; color: var(--muted); font-size: 12px; }
+.ai-note-form { display: grid; gap: 6px; }
+.ai-note-form .field { min-height: 36px; padding: 6px 10px; font-size: 14px; }
+.ai-note-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.ai-note-actions .ai-check { margin-right: auto; }
+.ai-note-actions .btn { min-height: 34px; padding: 0 12px; font-size: 13px; }
+@media (max-width: 540px) { .ai-owner { max-width: 100%; flex: 1 1 100%; } }

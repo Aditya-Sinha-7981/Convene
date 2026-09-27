@@ -535,3 +535,47 @@ is still no automatic retention policy (`data-model.md`).
 
 **Status:** Requested by the project lead on 2026-09-27 (permanent erase chosen over hiding).
 
+
+---
+
+### ADR-28: Action items are edited as rows, tracked through the audit stream, and listed from the current summary
+
+**Decision:** CON-16 makes the action items that summarization produces editable and trackable without touching the
+summary pipeline. `ActionItem.status` widens to `open` \| `done` \| `cancelled`, and a nullable date-only
+`due_date` (`YYYY-MM-DD`, compared as a UTC date) is added. Migration `0009` rebuilds the table, copying every row.
+The owner stays `owner_participant_id`, restricted to participants of the item's own meeting. A person may be
+found across meetings by display name, but there is no free-text owner. Each edit updates the row and writes one
+`action_item_updated` audit event in the same transaction. Its `from`/`to` payload holds only the changed fields, so
+every prior value can be recovered. A no-op writes nothing. A manual update from a later meeting is an append-only
+`ActionItemNote` row with a `source_meeting_id`, plus `action_item_note_added`. It may carry a status change, which is
+recorded as a normal edit (`via: note`). Note and item text never enter audit payloads. "Last changed" (at, and
+by `summary` or `manual`) is derived from those events or `summary_generated`, with no stored column. Edits are
+last-write-wins. Lists (`GET /api/action-items`, the post-meeting view) show only each meeting's **current**
+summary's items. A regenerated summary starts fresh `open` items, and the Regenerate action warns that edits will
+not carry over. Superseded items keep their rows and history and stay editable by ID. An `action_item_updated`
+newer than a meeting's `export_created` makes the DOCX stale; summary staleness is unaffected. Meeting deletion
+(ADR-27) removes the meeting's items with all their notes, and also the notes the meeting was the source of (with
+their `action_item_note_added` events). A status change carried by such a note stays on the surviving item. The
+DOCX template does not show due dates or notes.
+
+**Rationale:** The problem statement is about follow-through, and `requirements.md` lists "action items as a tracked
+checklist (owner, status)" as a should-have. Editing a row keeps the frozen, validated summary pipeline (ADR-12,
+ADR-23) untouched. Recording changes through `emit` keeps one record of what happened (ADR-13), as corrections do
+(ADR-04). Deriving "last changed" follows ADR-18: nothing stored can disagree with the stream. Restricting owners to
+the meeting's participants keeps the FK and the exact-match owner mapping meaningful. The project lead approved every
+recommended default in CON-16 §11 on 2026-09-27.
+
+**Alternatives considered:** Carrying edits over to a regenerated summary's items (needs matching old items to new
+ones, which is new model-adjacent logic; deferred). A free-text owner (rejected: new column, and exact names already
+collide or vary). Stored `updated_at`/`updated_by` columns (rejected: a second record that could drift from the
+stream). Optimistic version checks (`409` on a stale edit; deferred for a one-laptop demo). Automatic detection that
+a later transcript line updates an existing item (out of scope: it would run retrieval without an explicit question,
+ADR-11). Deleting items (rejected in favour of `cancelled`).
+
+**Tradeoffs:** Regenerating a summary discards the list position of edited items: their edits stay in the database
+but are no longer shown. Cross-meeting owner filtering is by display name, so "Priya" and "Priya S" are two people.
+Deriving the last change costs one audit lookup per item, which is fine at demo scale (hundreds of items) but would
+need a stored column or index at thousands. Deleting a later meeting removes the notes it was the source of,
+although a status change those notes made remains.
+
+**Status:** Approved by the project lead on 2026-09-27 (CON-16 §11: all recommended defaults).

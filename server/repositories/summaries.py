@@ -23,7 +23,8 @@ class ActionItem:
     meeting_id: str
     text: str
     owner_participant_id: str | None
-    status: str  # open | done
+    status: str  # open | done | cancelled
+    due_date: str | None = None  # YYYY-MM-DD; set only by a manual edit (CON-16)
 
 
 def _summary(row) -> Summary:
@@ -78,7 +79,25 @@ def insert_action_item(conn, item: ActionItem) -> ActionItem:
     return item
 
 
+def _action_item(row) -> ActionItem:
+    return ActionItem(**{name: row[name] for name in ActionItem.__dataclass_fields__})
+
+
 def action_items(conn, summary_id: str) -> list[ActionItem]:
     """In the order the model listed them."""
-    return [ActionItem(**{name: row[name] for name in ActionItem.__dataclass_fields__}) for row in base.query_all(
+    return [_action_item(row) for row in base.query_all(
         conn, "SELECT * FROM ActionItem WHERE summary_id = ? ORDER BY rowid", (summary_id,))]
+
+
+def get_action_item(conn, action_item_id: str) -> ActionItem | None:
+    row = base.query_one(conn, "SELECT * FROM ActionItem WHERE action_item_id = ?", (action_item_id,))
+    return _action_item(row) if row else None
+
+
+_EDITABLE = frozenset({"owner_participant_id", "due_date", "status"})
+
+
+def update_action_item(conn, action_item_id: str, changes: dict) -> ActionItem:
+    """Apply a manual edit (CON-16). Only owner, due date and status are editable; text never changes."""
+    base.update(conn, "ActionItem", "action_item_id", action_item_id, changes, _EDITABLE)
+    return get_action_item(conn, action_item_id)

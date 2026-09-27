@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<script src="/static/theme.js"></script>
+<title>Convene — Action items</title>
+<link rel="icon" href="/static/brand/logo-mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/history.css">
+<link rel="stylesheet" href="/static/action_items.css">
+</head>
+<body>
+<header class="hx-bar">
+  <a class="brand" href="/"><img src="/static/brand/logo.svg" alt="Convene home"></a>
+  <div class="hx-bar-actions"><button class="theme-toggle" type="button" data-theme-toggle></button><a class="btn btn-secondary hx-new" href="/#start">Start a meeting</a></div>
+</header>
+<main class="hx ai-page">
+  <div class="hx-head">
+    <h1>Action items</h1>
+    <p class="muted">What every meeting committed to, across all meetings. Open items are shown first by due date; change the filters to see finished or cancelled ones. Only each meeting's current summary is listed. Each item links to its meeting; all meetings are in <a href="/history">Past meetings</a>.</p>
+  </div>
+
+  <form id="filters" class="hx-filters ai-filters" role="search">
+    <label class="hx-field"><span>Status</span><select id="status" class="field">
+      <option value="open" selected>Open</option><option value="done">Done</option><option value="cancelled">Cancelled</option><option value="all">All</option>
+    </select></label>
+    <label class="hx-field hx-grow"><span>Owner</span><input id="owner" class="field" type="search" placeholder="Name, e.g. Priya" maxlength="80" autocomplete="off"></label>
+    <label class="hx-field"><span>Due from</span><input id="dueAfter" class="field" type="date"></label>
+    <label class="hx-field"><span>Due to</span><input id="dueBefore" class="field" type="date"></label>
+    <label class="hx-field"><span>Sort</span><select id="sort" class="field"><option value="due" selected>Due date</option><option value="recent">Recently changed</option></select></label>
+    <label class="ai-check ai-overdue-filter"><input id="overdue" type="checkbox"> Overdue only</label>
+  </form>
+  <div class="hx-list-meta"><span id="count" class="muted" role="status"></span></div>
+  <p id="error" class="hx-error" role="alert"></p>
+  <div id="empty" class="hx-empty" hidden>
+    <p class="mascot"><span class="mascot-art"><img src="/static/brand/mascot.svg" alt=""></span><span class="mascot-line" id="emptyText">Nothing open. Action items appear here once a meeting's summary is written.</span></p>
+  </div>
+  <ul id="items" class="ai-list"></ul>
+  <button id="more" class="btn btn-secondary hx-more" type="button" hidden>Show more</button>
+</main>
+<script type="module" src="/static/action_items.js"></script>
+</body>
+</html>

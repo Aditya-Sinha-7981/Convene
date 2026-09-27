@@ -4,6 +4,7 @@
 // a history-mode Q&A box scoped to this meeting, open once the meeting has ended.
 import { mountHistoryQA } from "/static/history_qa.js";
 import { confirmDelete, editTitle } from "/static/meeting_actions.js";
+import { actionItemRow } from "/static/action_item_row.js";
 
 const meetingId = decodeURIComponent(location.pathname.split("/").filter(Boolean).pop());
 const api = `/api/meetings/${encodeURIComponent(meetingId)}`;
@@ -83,16 +84,12 @@ function renderSummary(body) {
   }
   $("generated").textContent = current ? `Generated ${new Date(current.generated_at).toLocaleString()} by ${current.model_identifier}` : "";
 
-  const list = $("actions");
-  list.replaceChildren();
-  for (const item of body?.action_items || []) {
-    const li = document.createElement("li");
-    const owner = document.createElement("span");
-    owner.className = "owner";
-    owner.textContent = ` — ${item.owner_display_name || "Unassigned"}`;
-    li.append(item.text, owner);
-    list.append(li);
-  }
+  // CON-16: editable rows. Owners come from this meeting's participants; a note added here comes from this meeting.
+  $("actions").replaceChildren(...(body?.action_items || []).map((item) => actionItemRow(item, {
+    participants: async () => participants,
+    noteSources: async () => [{ meeting_id: meetingId, title: meeting?.title }],
+    onChange: refreshExport,  // an owner or status edit makes the DOCX out of date
+  })));
   $("noActions").hidden = !current || (body.action_items || []).length > 0;
 
   clearTimeout(pollTimer);  // a pushed event normally arrives first; this covers a dropped socket
@@ -199,7 +196,16 @@ async function refresh() {
   } catch (error) { setError(error.message); }
 }
 
+async function refreshExport() {
+  try {
+    const response = await fetch(`${api}/export/status`);
+    if (response.ok) renderExport(await json(response));
+  } catch { /* the next full refresh shows it */ }
+}
+
 async function summarize() {
+  // A new summary brings a fresh list of action items; edits to the current ones do not carry over (ADR-28).
+  if ($("actions").children.length && !confirm("Regenerating writes a new list of action items. Edits and notes on the current items will not carry over. Continue?")) return;
   busy = true;
   document.querySelectorAll("#retry, #regenerate, #summarize").forEach((button) => { button.disabled = true; });
   try {

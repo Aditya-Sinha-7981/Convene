@@ -111,7 +111,8 @@ def erase_meeting(tx: Tx, meeting_id: str, *, now: str | None = None) -> Meeting
 
     Removed: devices, participants, utterances, connection events, transcript chunks and their vectors, Q&A
     queries about it (including multi-meeting history answers that cited its chunks, since their text came from
-    it), summaries, action items, export rows, its model-execution rows and every audit event carrying its
+    it), summaries, action items and every note on them, the notes it was the source of on other meetings' items
+    (with their note events), export rows, its model-execution rows and every audit event carrying its
     ``meeting_id``. Afterwards one ``meeting_deleted`` event (no meeting_id) keeps only the id and counts.
     The caller refuses first when a phone is connected or a summary is running, and removes the export files.
     """
@@ -150,6 +151,12 @@ def erase_meeting(tx: Tx, meeting_id: str, *, now: str | None = None) -> Meeting
                      "AND (json_extract(payload, '$.related_id') = ? OR json_extract(payload, '$.query_id') = ?)",
                      (query_id, query_id))
     delete_in("QAQuery", "query_id", query_ids)
+    # CON-16 notes: those on this meeting's items (from any meeting), and those this meeting was the source of on
+    # other meetings' items, with their note events. A status change such a note made stays on the surviving item.
+    conn.execute("DELETE FROM AuditEvent WHERE event_type = 'action_item_note_added' "
+                 "AND json_extract(payload, '$.source_meeting_id') = ?", (meeting_id,))
+    conn.execute("DELETE FROM ActionItemNote WHERE source_meeting_id = ? OR action_item_id IN "
+                 "(SELECT action_item_id FROM ActionItem WHERE meeting_id = ?)", (meeting_id, meeting_id))
     for table in ("ActionItem", "Export", "Summary"):
         conn.execute(f"DELETE FROM {table} WHERE meeting_id = ?", (meeting_id,))
     delete_in("TranscriptChunkVector", "chunk_id", chunk_ids)

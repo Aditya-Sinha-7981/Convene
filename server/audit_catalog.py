@@ -54,6 +54,9 @@ CATALOG: dict[str, EventSpec] = {
     "summary_failed": _spec("summary", "summary_id", "error_code", "attempts", "duration_ms", "drain_timed_out"),
     "export_created": _spec("export", "export_id", "summary_id", "input_as_of_seq", "type"),
     "export_failed": _spec("export", "export_id", "error_code"),
+    # CON-16: manual action-item changes. Payloads carry ids, dates and enums, never item or note text.
+    "action_item_updated": _spec("api", "action_item_id", "summary_id", "from", "to", "via"),
+    "action_item_note_added": _spec("api", "note_id", "action_item_id", "source_meeting_id"),
 }
 
 # ConnectionEvent.event_type -> the AuditEvent type it projects (docs/data-model.md, ConnectionEvent).
