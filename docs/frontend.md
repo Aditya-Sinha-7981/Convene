@@ -81,6 +81,12 @@ Functional and legible beats visually elaborate (`requirements.md`). The fronten
   two actions: Rename next to the title, and a "Delete meeting" section at the bottom that returns to `/history`
   afterwards. Shared code is in `client/meeting_actions.js`.
 
+### Demo database inspector
+
+- Implemented at `/database`: a laptop-only, read-only view over the same SQLite file that stores meetings. It shows
+  application-table counts and bounded rows so a judge can see persisted meetings, transcript lines, audit events,
+  summaries, and exports. It is not a SQL console and exposes no write action.
+
 ## What the frontend explicitly does not do
 
 - No client-side attribution logic, no client-side model inference of any kind — it only displays what the server has already computed and calls existing endpoints for actions (corrections, questions, ending the meeting).

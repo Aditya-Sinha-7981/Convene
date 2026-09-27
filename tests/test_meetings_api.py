@@ -297,13 +297,37 @@ async def test_end_errors(http, server):
         assert response.status == 400
 
 
+# --- read-only database inspector ----------------------------------------------------------
+
+
+async def test_database_inspector_lists_application_tables_and_saved_meetings(http, server):
+    meeting_id = await make_meeting(http, server)
+    async with http.get(f"{server.base_url}/api/database") as response:
+        assert response.status == 200
+        overview = await response.json()
+    counts = {item["name"]: item["count"] for item in overview["tables"]}
+    assert counts["Meeting"] == 1 and {"Utterance", "AuditEvent", "Export"} <= set(counts)
+
+    async with http.get(f"{server.base_url}/api/database?table=Meeting") as response:
+        assert response.status == 200
+        table = await response.json()
+    assert table["table"] == "Meeting" and table["total"] == 1 and table["limit"] == 100
+    assert set(table["columns"]) == ENTITY_FIELDS["Meeting"]
+    assert [row["meeting_id"] for row in table["rows"]] == [meeting_id]
+
+    async with http.get(f"{server.base_url}/api/database?table=sqlite_master") as response:
+        assert response.status == 400
+        assert_error(await response.json(), "invalid_request")
+
+
 # --- pages and routing ----------------------------------------------------------------------
 
 
 async def test_pages_are_served_locally(http, server):
     meeting_id = await make_meeting(http, server)
     base = server.base_url
-    for path in ("/", f"/join/{meeting_id}", f"/dashboard/{meeting_id}", "/static/app.js", "/static/dashboard.js"):
+    for path in ("/", "/database", f"/join/{meeting_id}", f"/dashboard/{meeting_id}", "/static/app.js", "/static/dashboard.js",
+                 "/static/database.js", "/static/database.css"):
         async with http.get(base + path) as response:
             assert response.status == 200, path
     async with http.get(f"{base}/join/{meeting_id}") as response:

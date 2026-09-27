@@ -29,6 +29,21 @@ CLIENT_DIR = Path(__file__).resolve().parents[1] / "client"
 MAX_BODY_BYTES = 64 * 1024
 router = APIRouter()
 
+# A deliberately small, read-only database browser for the demo laptop.  These are application
+# tables only: SQLite's internal and sqlite-vec implementation tables are never exposed.
+_DATABASE_TABLES = (
+    "Meeting", "Device", "Participant", "Utterance", "ConnectionEvent", "AuditEvent",
+    "ModelExecution", "TranscriptChunk", "TranscriptIndexMeta", "QAQuery", "Summary",
+    "ActionItem", "Export",
+)
+_DATABASE_ORDER = {
+    "Meeting": "created_at DESC", "Device": "joined_at DESC", "Participant": "display_name ASC",
+    "Utterance": "t_start DESC", "ConnectionEvent": "timestamp DESC", "AuditEvent": "seq DESC",
+    "ModelExecution": "started_at DESC", "TranscriptChunk": "created_at DESC",
+    "TranscriptIndexMeta": "meeting_id ASC", "QAQuery": "created_at DESC", "Summary": "created_at DESC",
+    "ActionItem": "created_at DESC", "Export": "created_at DESC",
+}
+
 
 class ApiError(Exception):
     def __init__(self, status: int, code: str, message: str):
@@ -258,6 +273,28 @@ async def metrics(request: Request):
     return _runtime(request).peers.diagnostics()
 
 
+@router.get("/api/database")
+async def database_inspector(request: Request):
+    """A bounded, read-only view of persisted application records for the local demo."""
+    selected = request.query_params.get("table")
+    if selected is not None and selected not in _DATABASE_TABLES:
+        raise ApiError(400, "invalid_request", "table is not available in the database viewer")
+
+    def read(tx):
+        counts = [{"name": name, "count": tx.conn.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0]}
+                  for name in _DATABASE_TABLES]
+        if selected is None:
+            return {"tables": counts}
+        columns = [row["name"] for row in tx.conn.execute(f'PRAGMA table_info("{selected}")')]
+        rows = [dict(row) for row in tx.conn.execute(
+            f'SELECT * FROM "{selected}" ORDER BY {_DATABASE_ORDER[selected]} LIMIT 100')]
+        return {"table": selected, "columns": columns, "rows": rows,
+                "total": next(item["count"] for item in counts if item["name"] == selected), "limit": 100,
+                "tables": counts}
+
+    return await _runtime(request).db.run(read)
+
+
 # -- pages ----------------------------------------------------------------------------------
 
 
@@ -297,6 +334,12 @@ async def home():
 async def history_page():
     """Past meetings and cross-meeting Q&A (CON-14)."""
     return _page("history.html")
+
+
+@router.get("/database")
+async def database_page():
+    """Judge-facing, read-only SQLite inspector. Kept separate from the meeting workflow."""
+    return _page("database.html")
 
 
 @router.get("/join/{meeting_id}")

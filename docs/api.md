@@ -110,6 +110,7 @@ API views may add computed fields to a stored entity. They are computed on the s
 | POST | `/api/meetings/{meeting_id}/summarize` | MVP |
 | GET | `/api/meetings/{meeting_id}/summary` | MVP |
 | GET | `/api/meetings/{meeting_id}/export` | MVP |
+| GET | `/api/database` | demo support |
 | WS | `/ws/signal/{meeting_id}` | MVP |
 | WS | `/ws/dashboard/{meeting_id}` | MVP |
 
@@ -125,11 +126,42 @@ These return HTML for a browser, not JSON. Assets are served from the same proce
 | GET | `/join/{meeting_id}` | Join page (phone) | 200, 404 |
 | GET | `/dashboard/{meeting_id}` | Live dashboard, including the join QR while the meeting is `created` or `live` | 200, 302 to `/meetings/{meeting_id}` if the meeting has ended, 404 |
 | GET | `/meetings/{meeting_id}` | Post-meeting view: summary, action items, export, and Q&A in history mode | 200, 404 |
+| GET | `/database` | Read-only local SQLite inspector for the demo laptop | 200 |
 | GET | `/static/{path}` | Scripts, styles and images | 200, 404 |
 
 The prototype's `GET /app.js` is replaced by `/static/`. Serving these pages is the frontend tasks' work; the routes exist so no page needs a guessed URL.
 
 ## REST: Meetings
+
+### GET /api/database
+
+Demo-only, read-only inspection of the local SQLite database. With no query parameter it returns counts for the
+application tables. Pass one of those exact table names as `table` to receive its columns and up to its newest 100
+rows. SQLite internal tables, vector implementation tables, arbitrary SQL, and all writes are unavailable.
+
+**Request** — no body. Optional query parameter `table`, one of the table names returned by the overview.
+
+**Response** — `200`. The overview returns table counts; a selected table additionally returns its columns and rows.
+
+```json
+{
+  "table": "Meeting",
+  "columns": ["meeting_id", "title", "status", "created_at", "started_at", "ended_at"],
+  "rows": [{"meeting_id": "0d4f6a52-7c1b-4e7a-b0a3-51e1f4c2a9d8", "title": "Sprint planning", "status": "ended", "created_at": "2026-09-21T11:30:00.000Z", "started_at": null, "ended_at": "2026-09-21T12:02:40.000Z"}],
+  "total": 1,
+  "limit": 100,
+  "tables": [{"name": "Meeting", "count": 1}]
+}
+```
+
+**Status codes**
+
+| Status | Code | When |
+|---|---|---|
+| 200 | — | overview or selected application table |
+| 400 | `invalid_request` | unavailable or internal SQLite table requested |
+
+**Side effects** — none. This route is intended for the laptop's local demo server, which has no authentication.
 
 ### POST /api/meetings
 

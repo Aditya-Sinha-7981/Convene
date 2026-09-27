@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<script src="/static/theme.js"></script>
+<title>Convene database</title>
+<link rel="icon" href="/static/brand/logo-mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/database.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/"><img src="/static/brand/logo.svg" alt="Convene"></a>
+  <nav aria-label="Convene"><a href="/">New meeting</a><a href="/history">Past meetings</a></nav>
+  <button class="theme-toggle" type="button" data-theme-toggle></button>
+</header>
+<main>
+  <section class="intro">
+    <p class="eyebrow">Local SQLite · read only</p>
+    <h1>Meeting records, saved on this laptop.</h1>
+    <p>This is the live database behind Convene. It contains meeting records, participants, transcript lines, audit events, summaries, and exports—no cloud database involved.</p>
+  </section>
+  <p id="error" class="error" role="alert" hidden></p>
+  <section class="inspector" aria-label="Database inspector">
+    <aside><h2>Tables</h2><div id="tables" class="tables" aria-label="Database tables"></div></aside>
+    <section class="records">
+      <header><div><p class="eyebrow">Stored rows</p><h2 id="table-title">Loading…</h2></div><button id="refresh" class="button" type="button">Refresh</button></header>
+      <p id="meta" class="meta"></p>
+      <div class="grid-wrap"><table id="records"><thead></thead><tbody></tbody></table></div>
+    </section>
+  </section>
+</main>
+<script src="/static/database.js"></script>
+</body>
+</html>

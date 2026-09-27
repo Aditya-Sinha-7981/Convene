@@ -13,6 +13,7 @@ The operational instructions for the current prototype are in the [root README](
 | Need | Read |
 |---|---|
 | Goal, scope, priorities | [Project context](project-context.md), [requirements](requirements.md) |
+| Plain-language product status | [Feature status](feature-status.md) |
 | Components and decisions | [Architecture](architecture.md), [decisions](decisions.md) |
 | Stored records and endpoints | [Data model](data-model.md), [API](api.md) |
 | Audio and speaker identity | [Transport](transport.md), [STT pipeline](stt-pipeline.md), [speaker attribution](speaker-attribution.md) |
