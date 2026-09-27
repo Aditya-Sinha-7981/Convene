@@ -315,6 +315,12 @@ async def test_database_inspector_lists_application_tables_and_saved_meetings(ht
     assert set(table["columns"]) == ENTITY_FIELDS["Meeting"]
     assert [row["meeting_id"] for row in table["rows"]] == [meeting_id]
 
+    # The inspector must work for every listed application table, including tables without timestamps.
+    for item in overview["tables"]:
+        async with http.get(f"{server.base_url}/api/database?table={item['name']}") as response:
+            assert response.status == 200, item["name"]
+            assert (await response.json())["table"] == item["name"]
+
     async with http.get(f"{server.base_url}/api/database?table=sqlite_master") as response:
         assert response.status == 400
         assert_error(await response.json(), "invalid_request")

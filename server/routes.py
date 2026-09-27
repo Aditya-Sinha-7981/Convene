@@ -36,15 +36,6 @@ _DATABASE_TABLES = (
     "ModelExecution", "TranscriptChunk", "TranscriptIndexMeta", "QAQuery", "Summary",
     "ActionItem", "Export",
 )
-_DATABASE_ORDER = {
-    "Meeting": "created_at DESC", "Device": "joined_at DESC", "Participant": "display_name ASC",
-    "Utterance": "t_start DESC", "ConnectionEvent": "timestamp DESC", "AuditEvent": "seq DESC",
-    "ModelExecution": "started_at DESC", "TranscriptChunk": "created_at DESC",
-    "TranscriptIndexMeta": "meeting_id ASC", "QAQuery": "created_at DESC", "Summary": "created_at DESC",
-    "ActionItem": "created_at DESC", "Export": "created_at DESC",
-}
-
-
 class ApiError(Exception):
     def __init__(self, status: int, code: str, message: str):
         super().__init__(message)
@@ -286,8 +277,9 @@ async def database_inspector(request: Request):
         if selected is None:
             return {"tables": counts}
         columns = [row["name"] for row in tx.conn.execute(f'PRAGMA table_info("{selected}")')]
-        rows = [dict(row) for row in tx.conn.execute(
-            f'SELECT * FROM "{selected}" ORDER BY {_DATABASE_ORDER[selected]} LIMIT 100')]
+        # All application tables are ordinary SQLite rowid tables. Ordering by insertion order keeps this inspector
+        # generic: tables such as Summary and ActionItem intentionally do not have a created_at column.
+        rows = [dict(row) for row in tx.conn.execute(f'SELECT * FROM "{selected}" ORDER BY rowid DESC LIMIT 100')]
         return {"table": selected, "columns": columns, "rows": rows,
                 "total": next(item["count"] for item in counts if item["name"] == selected), "limit": 100,
                 "tables": counts}
