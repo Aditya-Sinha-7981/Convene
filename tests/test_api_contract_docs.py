@@ -32,7 +32,8 @@ KEY_ENTITY = {
     "event": "ConnectionEvent",
     "query": "QAQuery",
     "summary": "Summary", "latest_summary": "Summary", "latest_attempt": "Summary",
-    "action_items": "ActionItem",
+    "action_items": "ActionItem", "action_item": "ActionItem",
+    "note": "ActionItemNote", "notes": "ActionItemNote",
     "export": "Export", "latest_export": "Export",
     "enrollment": "SpeakerEnrollment",
 }

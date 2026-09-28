@@ -12,7 +12,7 @@ DOCX only for the hackathon build (`requirements.md` — PDF/Markdown export is 
 
 1. **Title block** — meeting title, date, participant list (display names, pulled from `Participant`, not typed by the model).
 2. **Summary section** — `Summary.summary_text`, rendered as plain paragraphs.
-3. **Action items section** — a table: item text, owner (or "Unassigned"), status — from `ActionItem` rows.
+3. **Action items section** — a table: item text, owner (or "Unassigned"), status — from `ActionItem` rows. Owner and status are the current stored values, including manual edits (CON-16). Due dates and notes are not rendered (ADR-28).
 4. **Full transcript appendix** — every `Utterance` in order, speaker label + timestamp + text, with corrected utterances shown using their corrected attribution (never the original — `speaker-attribution.md`). Low-confidence/generic-label lines are visually distinguished (e.g. italicized or footnoted) in the export, not just in the live dashboard — the export should carry the same honesty about attribution confidence that the live view does.
 
 ## Generation flow
@@ -23,6 +23,10 @@ DOCX only for the hackathon build (`requirements.md` — PDF/Markdown export is 
 4. An `Export` attempt row is created (`pending`, then `ready`), `export_created` AuditEvent fired. Attempts are
    retained so a failed retry cannot replace a prior ready file.
 5. Dashboard surfaces a download link once the `Export` row exists.
+
+## Staleness
+
+A rendered file is stale, and `GET …/export` re-renders it before serving, when the transcript or current summary changed after it was rendered, when the meeting was renamed, or when an action item of the meeting was edited (`action_item_updated`). The rule is in `data-model.md`, "Derived state". A note added to an item changes nothing in the file and does not make it stale.
 
 ## Failure handling
 

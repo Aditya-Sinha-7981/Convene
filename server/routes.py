@@ -11,8 +11,9 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import meetings as service
+from .action_items import service as action_items, views as action_item_views
 from .attribution.views import utterance_view
-from .errors import (AmbiguousDisplayNameError, ColorTakenError, DatabaseBusyError, DeviceConflictError, DeviceNotFoundError,
+from .errors import (ActionItemNotFoundError, AmbiguousDisplayNameError, ColorTakenError, DatabaseBusyError, DeviceConflictError, DeviceNotFoundError,
                      MeetingActiveError, MeetingEndedError, MeetingNotEndedError, MeetingNotFoundError, ParticipantNotFoundError, StorageError,
                      SummaryInProgressError, SummaryNotFoundError, TranscriptEmptyError, UtteranceNotFoundError,
                      ValidationError)
@@ -34,7 +35,7 @@ router = APIRouter()
 _DATABASE_TABLES = (
     "Meeting", "Device", "Participant", "Utterance", "ConnectionEvent", "AuditEvent",
     "ModelExecution", "TranscriptChunk", "TranscriptIndexMeta", "QAQuery", "Summary",
-    "ActionItem", "Export",
+    "ActionItem", "ActionItemNote", "Export",
 )
 class ApiError(Exception):
     def __init__(self, status: int, code: str, message: str):
@@ -258,6 +259,93 @@ async def get_export_status(meeting_id: str, request: Request):
     return await _runtime(request).export.payload(_meeting_id(meeting_id))
 
 
+def _action_item_id(value: str) -> str:
+    if not is_uuid4(value):
+        raise ApiError(400, "invalid_request", "action item id must be a UUID v4")
+    return value
+
+
+def _due_bound(value: str | None, name: str) -> str | None:
+    if value is None or value == "":
+        return None
+    try:
+        if len(value) != 10 or datetime.strptime(value, "%Y-%m-%d").strftime("%Y-%m-%d") != value:
+            raise ValueError
+    except ValueError as exc:
+        raise ApiError(400, "invalid_request", f"{name} must be a date YYYY-MM-DD") from exc
+    return value
+
+
+@router.get("/api/action-items")
+async def list_action_items(request: Request):
+    """Global action-item list (CON-16): open items only unless ``status`` says otherwise."""
+    params = request.query_params
+    raw_status = (params.get("status") or "open").strip()
+    statuses = action_item_views.STATUSES if raw_status == "all" else tuple(dict.fromkeys(raw_status.split(",")))
+    if any(status not in action_item_views.STATUSES for status in statuses):
+        raise ApiError(400, "invalid_request", "status must be open, done, cancelled, a comma-separated set, or all")
+    sort = params.get("sort", "due")
+    if sort not in action_item_views.SORTS:
+        raise ApiError(400, "invalid_request", "sort must be due or recent")
+    try:
+        limit, offset = int(params.get("limit", "50")), int(params.get("offset", "0"))
+    except ValueError as exc:
+        raise ApiError(400, "invalid_request", "limit and offset must be integers") from exc
+    if not 1 <= limit <= 200 or offset < 0:
+        raise ApiError(400, "invalid_request", "limit must be 1..200 and offset must be non-negative")
+    owner = " ".join((params.get("owner") or "").split()) or None
+    if owner is not None and len(owner) > 80:
+        raise ApiError(400, "invalid_request", "owner is longer than 80 characters")
+    meeting_id = params.get("meeting_id") or None
+    if meeting_id is not None and not is_uuid4(meeting_id):
+        raise ApiError(400, "invalid_request", "meeting_id must be a UUID v4")
+    overdue = params.get("overdue", "false")
+    if overdue not in ("true", "false"):
+        raise ApiError(400, "invalid_request", "overdue must be true or false")
+    filters = {"statuses": statuses, "owner": owner, "meeting_id": meeting_id, "overdue": overdue == "true",
+               "due_after": _due_bound(params.get("due_after"), "due_after"),
+               "due_before": _due_bound(params.get("due_before"), "due_before"),
+               "sort": sort, "limit": limit, "offset": offset}
+    return await _runtime(request).db.run(lambda tx: action_item_views.list_items(tx.conn, **filters))
+
+
+@router.get("/api/action-items/{action_item_id}")
+async def get_action_item(action_item_id: str, request: Request):
+    action_item_id = _action_item_id(action_item_id)
+    return await _runtime(request).db.run(lambda tx: action_item_views.detail(tx.conn, action_item_id))
+
+
+@router.patch("/api/action-items/{action_item_id}")
+async def edit_action_item(action_item_id: str, request: Request):
+    """Owner, due date and status edits: a row update plus one audit event, never a model call."""
+    action_item_id = _action_item_id(action_item_id)
+    body = await read_json_body(request)
+
+    def edit(tx):
+        changed = action_items.update_action_item(tx, action_item_id, body)
+        return {"action_item": action_item_views.item_view(tx.conn, action_item_id), "changed": changed}
+
+    return await _runtime(request).db.run(edit)
+
+
+@router.post("/api/action-items/{action_item_id}/notes")
+async def add_action_item_note(action_item_id: str, request: Request):
+    """Append a note from the meeting it was mentioned in; never creates an item."""
+    action_item_id = _action_item_id(action_item_id)
+    body = await read_json_body(request)
+    unknown = sorted(set(body) - {"source_meeting_id", "text", "status"})
+    if unknown:
+        raise ApiError(400, "invalid_request", f"unknown field(s): {', '.join(unknown)}")
+
+    def add(tx):
+        note = action_items.add_action_item_note(tx, action_item_id, body.get("source_meeting_id"), body.get("text"),
+                                                 body.get("status"))
+        return {"note": action_item_views.note_view(tx.conn, note),
+                "action_item": action_item_views.item_view(tx.conn, action_item_id)}
+
+    return JSONResponse(await _runtime(request).db.run(add), status_code=201)
+
+
 @router.get("/metrics")
 async def metrics(request: Request):
     """Read-only per-device diagnostics (not part of the contract; nothing may depend on it)."""
@@ -328,6 +416,12 @@ async def history_page():
     return _page("history.html")
 
 
+@router.get("/action-items")
+async def action_items_page():
+    """Action items across meetings (CON-16)."""
+    return _page("action_items.html")
+
+
 @router.get("/database")
 async def database_page():
     """Judge-facing, read-only SQLite inspector. Kept separate from the meeting workflow."""
@@ -383,6 +477,7 @@ async def dashboard_feed(websocket: WebSocket, meeting_id: str):
 
 _STORAGE_ERRORS = [
     (MeetingNotFoundError, 404, "meeting_not_found"),
+    (ActionItemNotFoundError, 404, "action_item_not_found"),
     (DeviceNotFoundError, 404, "device_not_found"),
     (UtteranceNotFoundError, 404, "utterance_not_found"),
     (ParticipantNotFoundError, 404, "participant_not_found"),

@@ -1,9 +1,10 @@
-"""Summary API views: stored rows plus the derived fields in docs/api.md (``owner_display_name``, ``stale``)."""
+"""Summary API views: stored rows plus the derived fields in docs/api.md (``stale``; action items use the CON-16 view)."""
 from dataclasses import asdict
 
+from ..action_items.views import items_for_summary
 from ..attribution.staleness import artifact_is_stale
 from ..errors import SummaryNotFoundError
-from ..repositories import audit_events, meetings, participants, summaries
+from ..repositories import audit_events, meetings, summaries
 
 
 def summary_view(summary) -> dict | None:
@@ -25,12 +26,7 @@ def summary_payload(conn, meeting_id: str) -> dict:
     if latest is None:
         raise SummaryNotFoundError(f"no summary attempt exists for meeting {meeting_id}")
     current = summaries.current(conn, meeting_id)
-    names = {person.participant_id: person.display_name for person in participants.list_for_meeting(conn, meeting_id)}
-    items = []
-    for item in summaries.action_items(conn, current.summary_id) if current is not None else []:
-        view = asdict(item)
-        view["owner_display_name"] = names.get(item.owner_participant_id)
-        items.append(view)
+    items = items_for_summary(conn, current.summary_id) if current is not None else []
     return {"summary": summary_view(current), "action_items": items, "latest_attempt": summary_view(latest),
             "stale": is_stale(conn, meeting_id, current), "summary_pending": latest.status == "pending",
             "as_of_seq": audit_events.max_seq(conn)}

@@ -54,6 +54,10 @@ class SummaryNotFoundError(NotFoundError):
     """`summary_not_found`: no summary attempt exists for this meeting."""
 
 
+class ActionItemNotFoundError(NotFoundError):
+    """`action_item_not_found`: no such action item (CON-16)."""
+
+
 class SummaryInProgressError(StorageError):
     """`summary_in_progress`: an attempt for this meeting is already running."""
 

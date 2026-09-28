@@ -63,9 +63,11 @@ class ExportService:
             export_seq = audit_events.export_created_seq(conn, current.export_id)
             summary_seq = audit_events.summary_generated_seq(conn, summary.summary_id)
             renamed_seq = audit_events.latest_seq(conn, meeting_id, "meeting_renamed")  # the title is in the file
+            edited_seq = audit_events.latest_seq(conn, meeting_id, "action_item_updated")  # owner and status too
             stale = (export_seq is None or artifact_is_stale(conn, meeting_id, export_seq) or
                      summary_seq is None or export_seq < summary_seq or
-                     (renamed_seq is not None and renamed_seq > export_seq))
+                     (renamed_seq is not None and renamed_seq > export_seq) or
+                     (edited_seq is not None and edited_seq > export_seq))
         return {"summary": summary, "current": current, "stale": stale}
 
     async def _render(self, meeting_id: str):
