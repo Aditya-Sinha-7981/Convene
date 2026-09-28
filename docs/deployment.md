@@ -23,7 +23,7 @@ A single config file (or `.env`) holds:
 
 - Resource-type → model mappings (`models.md`) — the one place model choice is ever configured.
 - Cloud fallback credentials (Groq/Gemini API keys), only read if a fallback is explicitly activated (ADR-06) — absence of these keys must never break the default local path.
-- Server port (`--port`), data directory paths (`[paths]` in `config/convene.toml`: `data/convene.db`, `data/exports/`; relative paths resolve from the repository root).
+- Server port (`--port`), data directory paths (`[paths]` in `config/convene.toml`: `data/convene.db`, `data/exports/`, `data/policies/`; relative paths resolve from the repository root). Policy PDF extraction requires the pinned pure-Python `pypdf` package and multipart upload requires `python-multipart`; install both from `requirements.txt` before going offline.
 
 ## Local models setup (one-time, before demo day)
 

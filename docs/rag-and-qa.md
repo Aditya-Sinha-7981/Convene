@@ -116,6 +116,8 @@ Each question has its own `QAQuery`, and a failure in one does not affect anothe
 
 ## History mode specifics
 
+**Policies (CON-17).** `POST /api/qa` accepts additive `sources`: `meetings` (default, preserving existing callers), `policies`, or `both`. Policy search uses current, fully indexed versions only. In `both`, meeting and policy indexes apply their own configured relevance threshold and cap first; selected results are interleaved deterministically rather than score-merged. Policy excerpts begin `Policy: <title> (version <n>, <date>)`; citations have `source_type: policy`, while meeting citations have `source_type: meeting`.
+
 Implemented (CON-14) in `QAService.ask_history` (`server/rag/qa.py`), reached only from `POST /api/qa`:
 
 - **Scope.** `{question, mode: "history", meeting_ids}`. `meeting_ids` is a non-empty explicit list (duplicates

@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = ROOT / "config" / "convene.toml"
-DEFAULT_PATHS = {"database": "data/convene.db", "exports": "data/exports"}
+DEFAULT_PATHS = {"database": "data/convene.db", "exports": "data/exports", "policies": "data/policies"}
 
 
 class ConfigError(Exception):
@@ -118,6 +118,14 @@ class QaConfig:
 
 
 @dataclass(frozen=True)
+class PoliciesConfig:
+    storage_dir: str = "data/policies"
+    max_upload_bytes: int = 20 * 1024 * 1024
+    min_similarity: float = 0.50
+    per_source_cap: int = 5
+
+
+@dataclass(frozen=True)
 class SummaryConfig:
     """``[summary]``: end-of-meeting summarization (CON-10). Limits were measured on the reference laptop."""
     max_input_tokens: int = 16000            # a longer prompt fails with ``transcript_too_long``; never truncated
@@ -201,6 +209,7 @@ class Settings:
     root: Path
     database_path: Path
     exports_dir: Path
+    policies_dir: Path | None = None
     stt: SttModelConfig = SttModelConfig()
     embedding: EmbeddingModelConfig = EmbeddingModelConfig()
     reasoning: ReasoningModelConfig = ReasoningModelConfig()
@@ -208,6 +217,7 @@ class Settings:
     attribution: AttributionConfig = AttributionConfig()
     rag: RagConfig = RagConfig()
     qa: QaConfig = QaConfig()
+    policies: PoliciesConfig = PoliciesConfig()
     summary: SummaryConfig = SummaryConfig()
     network: NetworkConfig = NetworkConfig()
 
@@ -230,13 +240,16 @@ def load_settings(config_path: Path | None = None, *, root: Path | None = None) 
         raise ConfigError(f"{path}: [paths] must be a table")
     merged = {**DEFAULT_PATHS, **paths}
     resolved = {}
-    for key in ("database", "exports"):
+    for key in ("database", "exports", "policies"):
         value = merged[key]
         if not isinstance(value, str) or not value.strip():
             raise ConfigError(f"{path}: paths.{key} must be a non-empty string")
         candidate = Path(value).expanduser()
         resolved[key] = candidate if candidate.is_absolute() else root / candidate
-    settings = Settings(root=root, database_path=resolved["database"], exports_dir=resolved["exports"],
+    policies = _section(PoliciesConfig, data.get("policies", {}), path, "policies")
+    policies_dir = Path(policies.storage_dir).expanduser()
+    policies_dir = policies_dir if policies_dir.is_absolute() else root / policies_dir
+    settings = Settings(root=root, database_path=resolved["database"], exports_dir=resolved["exports"], policies_dir=policies_dir,
                         stt=_section(SttModelConfig, data.get("models", {}).get("stt", {}), path, "models.stt"),
                         embedding=_section(EmbeddingModelConfig, data.get("models", {}).get("embedding", {}), path,
                                            "models.embedding"),
@@ -245,7 +258,7 @@ def load_settings(config_path: Path | None = None, *, root: Path | None = None) 
                         pipeline=_section(PipelineConfig, data.get("pipeline", {}), path, "pipeline"),
                         attribution=_section(AttributionConfig, data.get("attribution", {}), path, "attribution"),
                         rag=_section(RagConfig, data.get("rag", {}), path, "rag"),
-                        qa=_section(QaConfig, data.get("qa", {}), path, "qa"),
+                        qa=_section(QaConfig, data.get("qa", {}), path, "qa"), policies=policies,
                         summary=_section(SummaryConfig, data.get("summary", {}), path, "summary"),
                         network=_section(NetworkConfig, data.get("network", {}), path, "network"))
     if settings.rag.hard_max_tokens >= settings.embedding.max_tokens:

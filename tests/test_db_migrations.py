@@ -10,12 +10,13 @@ from server.errors import DatabaseOpenError, MigrationError, SchemaVersionError
 from tests.test_api_contract_docs import ENTITY_FIELDS, ENUMS
 
 CORE_TABLES = {"Meeting", "Device", "Participant", "Utterance", "ConnectionEvent", "AuditEvent"}
-LATEST_VERSION = 9  # 0001 core, 0002 ModelExecution, 0003/4 transcript chunks (CON-08), 0005 QAQuery (CON-09),
+LATEST_VERSION = 10 # 0001 core, 0002 ModelExecution, 0003/4 transcript chunks (CON-08), 0005 QAQuery (CON-09),
                     # 0006 Summary and ActionItem (CON-10), 0007 Participant.color (ADR-25), 0008 Export (CON-11),
                     # 0009 ActionItem lifecycle and ActionItemNote (CON-16)
 SUMMARY_TABLES = {"Summary", "ActionItem", "ActionItemNote"}
 TABLES_SO_FAR = CORE_TABLES | SUMMARY_TABLES | {"ModelExecution", "TranscriptChunk", "TranscriptIndexMeta",
-                                                "TranscriptChunkVector", "QAQuery", "Export"}
+                                                "TranscriptChunkVector", "QAQuery", "Export", "PolicyDocument",
+                                                "PolicyVersion", "PolicyChunk", "PolicyChunkVector"}
 
 
 def schema(conn):
@@ -25,7 +26,7 @@ def schema(conn):
 def tables(conn):
     # sqlite-vec creates implementation tables alongside its declared virtual table.
     return {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
-            if not r[0].startswith("TranscriptChunkVector_")}
+            if not r[0].startswith(("TranscriptChunkVector_", "PolicyChunkVector_"))}
 
 
 def test_creates_the_schema_from_an_empty_file(tmp_path):

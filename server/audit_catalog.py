@@ -57,6 +57,11 @@ CATALOG: dict[str, EventSpec] = {
     # CON-16: manual action-item changes. Payloads carry ids, dates and enums, never item or note text.
     "action_item_updated": _spec("api", "action_item_id", "summary_id", "from", "to", "via"),
     "action_item_note_added": _spec("api", "note_id", "action_item_id", "source_meeting_id"),
+    "policy_created": _spec("policy", "policy_id", "title", "tag_count", meeting_required=False),
+    "policy_version_added": _spec("policy", "policy_id", "policy_version_id", "version_number", "byte_size", "content_hash", meeting_required=False),
+    "policy_extract_failed": _spec("policy", "policy_version_id", "error_code", meeting_required=False),
+    "policy_index_failed": _spec("policy", "policy_version_id", "error_code", meeting_required=False),
+    "policy_indexed": _spec("policy", "policy_id", "policy_version_id", "version_number", "chunk_count", meeting_required=False),
 }
 
 # ConnectionEvent.event_type -> the AuditEvent type it projects (docs/data-model.md, ConnectionEvent).

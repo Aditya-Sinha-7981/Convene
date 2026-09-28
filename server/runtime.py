@@ -18,6 +18,7 @@ from .rag.indexer import TranscriptIndexer
 from .rag.qa import QAService
 from .summary import SummaryService
 from .export import ExportService
+from .policies import PolicyService
 from .transport.audio import AudioSink, CountingSink
 from .transport.peers import PeerManager
 
@@ -63,6 +64,7 @@ class Runtime:
         self.qa: QAService | None = None
         self.summary: SummaryService | None = None
         self.export: ExportService | None = None
+        self.policies: PolicyService | None = None
         self._hooks: list[tuple[str, MeetingEndedHook]] = []
         self._log_task: asyncio.Task | None = None
 
@@ -158,7 +160,7 @@ class Runtime:
         # Always present so a question is always recorded; without models it answers ``failed`` with the reason.
         self.qa = QAService(self.db, self.settings.qa, embedding=self.embedding_adapter,
                             reasoning=self.reasoning_adapter, indexer=self.indexer,
-                            priority=self.pipeline.priority if self.pipeline else None)
+                            priority=self.pipeline.priority if self.pipeline else None, policies_config=self.settings.policies)
         # Always present, like Q&A: without a model an attempt is recorded as failed with the reason.
         self.summary = SummaryService(self.db, self.settings.summary, reasoning=self.reasoning_adapter,
                                       priority=self.pipeline.priority if self.pipeline else None,
@@ -166,6 +168,9 @@ class Runtime:
         self.export = ExportService(self.db, self.settings.exports_dir,
                                     low_confidence_threshold=self.settings.attribution.low_confidence_threshold)
         self.summary.on_ready = self.export.on_summary_ready
+        self.policies = PolicyService(self.db, self.settings, self.embedding_adapter,
+                                      priority=self.pipeline.priority if self.pipeline else None)
+        await self.policies.start()
         interrupted = await self.summary.reconcile()
         if interrupted:
             log.info("startup reconciliation: %d interrupted summary attempt(s) marked failed", interrupted)
@@ -217,6 +222,8 @@ class Runtime:
             await self.attribution.drain()
         if self.indexer is not None:
             await self.indexer.stop()
+        if self.policies is not None:
+            await asyncio.gather(*self.policies._tasks, return_exceptions=True)
         self.db.close()
 
     async def _log_metrics(self) -> None:

@@ -117,3 +117,19 @@ def chunk_utterances(utterances: Sequence[ChunkInput], meeting_started_at: str, 
     return [ChunkSpec(chunk[0].utterance_id, chunk[-1].utterance_id, index,
                       "\n".join(render_line(item, meeting_started_at) for item in chunk), chunk[0].split)
             for index, chunk in enumerate(chunks)]
+
+
+def chunk_text(text: str, prefix: str, *, target_tokens: int, hard_max_tokens: int, count_tokens=approximate_tokens) -> list[str]:
+    """Plain policy text: paragraph, then sentence, then word boundaries under the RAG cap."""
+    pieces=[]; current=""
+    for paragraph in (p.strip() for p in text.split("\n\n") if p.strip()):
+        for sentence in _SENTENCES.split(paragraph) or [paragraph]:
+            sentence=sentence.strip()
+            while sentence:
+                candidate=(current+" "+sentence).strip()
+                if current and count_tokens(prefix+"\n"+candidate)>hard_max_tokens:
+                    pieces.append(prefix+"\n"+current); current=""; continue
+                current=candidate; sentence=""
+                if count_tokens(prefix+"\n"+current)>=target_tokens: pieces.append(prefix+"\n"+current); current=""
+    if current: pieces.append(prefix+"\n"+current)
+    return pieces

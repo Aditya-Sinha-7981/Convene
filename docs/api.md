@@ -1449,6 +1449,10 @@ A dashboard that loads, reloads, or loses its socket has to rebuild its state wi
 
 The server reads a snapshot and its `as_of_seq` in one transaction, so the cursor is exactly consistent with the rows. The post-meeting view uses the same procedure and additionally the summary endpoint.
 
+## REST: Policies (CON-17)
+
+Policy upload is the only exception to the JSON-only/64 KiB body convention: `POST /api/policies` accepts `multipart/form-data` fields `title`, optional `tags` (JSON string array), and `file`; `POST /api/policies/{policy_id}/versions` accepts `file`. Both return `202` with the newly retained `PolicyVersion` in `status: "pending"`; extraction/indexing continues locally in the background. The configured `[policies].max_upload_bytes` limit applies. `GET /api/policies` lists documents with the latest upload and current (newest ready) version; `GET /api/policies/{policy_id}` returns all versions; `GET /api/policies/{policy_id}/versions/{version_id}/download` returns the exact retained binary. Unsupported or spoofed format is `400 unsupported_format`, oversize is `413 payload_too_large`, and an unknown policy is `404 policy_not_found`.
+
 ## Demo traceability
 
 Every success criterion in `requirements.md` and every step in `demo.md` maps to a serving endpoint or event. A row that says "none" would be a gap; there are none in the MVP, and the should-have rows name their provisional routes.

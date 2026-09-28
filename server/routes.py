@@ -6,7 +6,7 @@ from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, FastAPI, Request, WebSocket
+from fastapi import APIRouter, FastAPI, Request, WebSocket, UploadFile, File, Form
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -19,7 +19,7 @@ from .errors import (ActionItemNotFoundError, AmbiguousDisplayNameError, ColorTa
                      ValidationError)
 from .ids import is_uuid4
 from .timeutil import utc_now
-from .repositories import audit_events, meetings as meetings_repo, utterances
+from .repositories import audit_events, meetings as meetings_repo, utterances, policies
 from .summary.views import summary_payload
 from .export.service import ExportRenderError, MIME
 from .transport.signaling import signaling_endpoint
@@ -36,6 +36,7 @@ _DATABASE_TABLES = (
     "Meeting", "Device", "Participant", "Utterance", "ConnectionEvent", "AuditEvent",
     "ModelExecution", "TranscriptChunk", "TranscriptIndexMeta", "QAQuery", "Summary",
     "ActionItem", "ActionItemNote", "Export",
+    "PolicyDocument", "PolicyVersion", "PolicyChunk",
 )
 class ApiError(Exception):
     def __init__(self, status: int, code: str, message: str):
@@ -223,6 +224,81 @@ async def ask_history(request: Request):
     """History Q&A (CON-14): scope is in the body, ended meetings only. Never used for live questions."""
     body = await read_json_body(request)
     return await _runtime(request).qa.ask_history(body)
+
+
+def _tags(raw: str | None) -> list[str]:
+    if raw is None or not raw.strip(): return []
+    values = json.loads(raw)
+    if not isinstance(values, list) or any(not isinstance(v, str) for v in values):
+        raise ApiError(400, "invalid_request", "tags must be a JSON array of strings")
+    return list(dict.fromkeys(" ".join(v.split()).casefold() for v in values if " ".join(v.split())))
+
+
+@router.post("/api/policies")
+async def create_policy(request: Request, title: str = Form(...), tags: str | None = Form(None), file: UploadFile = File(...)):
+    title = " ".join(title.split())
+    if not 1 <= len(title) <= 200: raise ApiError(400, "invalid_request", "title must be 1 to 200 characters")
+    data = await file.read()
+    try: return JSONResponse(await _runtime(request).policies.upload(title, _tags(tags), file.filename or "upload", data), status_code=202)
+    except OverflowError: raise ApiError(413, "payload_too_large", "policy file exceeds the configured upload limit")
+    except ValueError as exc: raise ApiError(400, "invalid_request", str(exc)) from exc
+    except KeyError: raise ApiError(404, "policy_not_found", "no such policy")
+    except Exception as exc:
+        from .policies.extract import ExtractionError
+        if isinstance(exc, ExtractionError): raise ApiError(400, exc.code, exc.message)
+        raise
+
+
+@router.post("/api/policies/{policy_id}/versions")
+async def add_policy_version(policy_id: str, request: Request, file: UploadFile = File(...)):
+    if not is_uuid4(policy_id): raise ApiError(400, "invalid_request", "policy id must be a UUID v4")
+    data = await file.read()
+    try: return JSONResponse(await _runtime(request).policies.upload(None, [], file.filename or "upload", data, policy_id), status_code=202)
+    except OverflowError: raise ApiError(413, "payload_too_large", "policy file exceeds the configured upload limit")
+    except KeyError: raise ApiError(404, "policy_not_found", "no such policy")
+
+
+@router.post("/api/policies/{policy_id}/versions/{version_id}/retry")
+async def retry_policy_version(policy_id: str, version_id: str, request: Request):
+    if not is_uuid4(policy_id) or not is_uuid4(version_id): raise ApiError(400,"invalid_request","policy ids must be UUID v4")
+    await read_json_body(request)
+    try:
+        version=await _runtime(request).policies.retry(version_id)
+        if version.policy_id != policy_id: raise KeyError(version_id)
+    except KeyError: raise ApiError(404,"policy_not_found","no such policy version")
+    except FileNotFoundError: raise ApiError(500,"internal_error","the retained original file is missing")
+    return JSONResponse({"version":asdict(version)},status_code=202)
+
+
+@router.get("/api/policies")
+async def list_policies(request: Request):
+    def read(tx):
+        result=[]
+        for document in policies.documents(tx.conn):
+            versions=policies.versions(tx.conn,document.policy_id); ready=next((v for v in versions if v.status == "ready"),None)
+            result.append({"policy":asdict(document),"current_version":asdict(ready) if ready else None,"latest_version":asdict(versions[0]) if versions else None})
+        return {"policies":result}
+    return await _runtime(request).db.run(read)
+
+
+@router.get("/api/policies/{policy_id}")
+async def get_policy(policy_id: str, request: Request):
+    def read(tx):
+        document=policies.document(tx.conn,policy_id)
+        if not document: raise ApiError(404,"policy_not_found","no such policy")
+        return {"policy":asdict(document),"versions":[asdict(v) for v in policies.versions(tx.conn,policy_id)]}
+    return await _runtime(request).db.run(read)
+
+
+@router.get("/api/policies/{policy_id}/versions/{version_id}/download")
+async def download_policy(policy_id: str, version_id: str, request: Request):
+    def read(tx):
+        version=policies.version(tx.conn,version_id)
+        if not version or version.policy_id != policy_id: raise ApiError(404,"policy_not_found","no such policy version")
+        return version
+    version=await _runtime(request).db.run(read)
+    base = _runtime(request).settings.policies_dir or _runtime(request).settings.root / "data/policies"
+    return FileResponse(base / version.storage_path, media_type=version.media_type, filename=version.original_filename)
 
 
 @router.post("/api/meetings/{meeting_id}/summarize")
@@ -420,6 +496,19 @@ async def history_page():
 async def action_items_page():
     """Action items across meetings (CON-16)."""
     return _page("action_items.html")
+
+
+@router.get("/policies")
+async def policies_page():
+    return _page("policies.html")
+
+
+@router.get("/policies/{policy_id}")
+async def policy_page(policy_id: str, request: Request):
+    if not is_uuid4(policy_id):
+        return _not_found_page()
+    found=await _runtime(request).db.run(lambda tx: policies.document(tx.conn,policy_id))
+    return _page("policy.html") if found else _not_found_page()
 
 
 @router.get("/database")
