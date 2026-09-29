@@ -230,9 +230,9 @@ The single source of truth (ADR-13) — see `architecture.md` lifecycle sections
 |---|---|---|
 | event_id | TEXT (UUID) | PK |
 | seq | INTEGER | **(proposed)** unique, strictly increasing across the whole database, assigned by the single `emit` write path inside the same transaction as the row (`max(seq) + 1`; there is one writer). It is the ordering key for dashboard resynchronization (`api.md`). It survives restarts because it is stored |
-| meeting_id | TEXT (UUID), nullable | null only for the types that can occur outside a single meeting: `server_started`, `model_load`, `model_error`, `signaling_error` (a join for an unknown meeting), and `qa_query` (a history query across several meetings). Every other type requires it, and `emit` enforces that |
+| meeting_id | TEXT (UUID), nullable | null for process-wide events and policy events (`server_started`, model events, unknown-meeting signaling errors, multi-scope `qa_query`, `meeting_deleted`, and every `policy_*` event). Every other type requires it, and `emit` enforces that |
 | event_type | TEXT | one of the catalog below; a value outside the catalog is rejected by the `emit` path |
-| component | TEXT | emitting component: `api`, `transport`, `registry`, `stt`, `attribution`, `speaker`, `rag`, `summary`, `export`, `models` |
+| component | TEXT | emitting component: `api`, `transport`, `registry`, `stt`, `attribution`, `speaker`, `rag`, `summary`, `export`, `models`, `policy` |
 | timestamp | TEXT (ISO 8601) | |
 | payload | TEXT (JSON) | object with the keys listed for that `event_type` |
 

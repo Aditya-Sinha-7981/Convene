@@ -272,11 +272,20 @@ async def retry_policy_version(policy_id: str, version_id: str, request: Request
 
 @router.get("/api/policies")
 async def list_policies(request: Request):
+    query = " ".join((request.query_params.get("q") or "").split()).casefold()
+    tag = " ".join((request.query_params.get("tag") or "").split()).casefold()
+    if len(query) > 200 or len(tag) > 80:
+        raise ApiError(400, "invalid_request", "policy filters are too long")
     def read(tx):
         result=[]
         for document in policies.documents(tx.conn):
+            tags = json.loads(document.tags)
+            if query and query not in document.title.casefold():
+                continue
+            if tag and tag not in tags:
+                continue
             versions=policies.versions(tx.conn,document.policy_id); ready=next((v for v in versions if v.status == "ready"),None)
-            result.append({"policy":asdict(document),"current_version":asdict(ready) if ready else None,"latest_version":asdict(versions[0]) if versions else None})
+            result.append({"policy":{**asdict(document), "tags": tags},"current_version":asdict(ready) if ready else None,"latest_version":asdict(versions[0]) if versions else None})
         return {"policies":result}
     return await _runtime(request).db.run(read)
 

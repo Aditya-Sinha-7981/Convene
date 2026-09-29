@@ -47,6 +47,7 @@ Single FastAPI process (ADR-01). REST for request/response operations, WebSocket
 | `invalid_request` | 400 | malformed body, query parameter or ID; violated a limit |
 | `unsupported_format` | 400 | export `format` other than `docx` |
 | `meeting_not_found` | 404 | no such meeting |
+| `policy_not_found` | 404 | no such policy or policy version |
 | `device_not_found` | 404 | no such device in this meeting |
 | `participant_not_found` | 404 | no such participant in this meeting |
 | `utterance_not_found` | 404 | no such utterance in this meeting |
@@ -115,6 +116,12 @@ API views may add computed fields to a stored entity. They are computed on the s
 | POST | `/api/meetings/{meeting_id}/utterances/{utterance_id}/correct` | MVP |
 | POST | `/api/meetings/{meeting_id}/qa` | MVP |
 | POST | `/api/qa` | should-have (CON-14) |
+| POST | `/api/policies` | should-have (CON-17) |
+| GET | `/api/policies` | should-have (CON-17) |
+| GET | `/api/policies/{policy_id}` | should-have (CON-17) |
+| POST | `/api/policies/{policy_id}/versions` | should-have (CON-17) |
+| POST | `/api/policies/{policy_id}/versions/{version_id}/retry` | should-have (CON-17) |
+| GET | `/api/policies/{policy_id}/versions/{version_id}/download` | should-have (CON-17) |
 | POST | `/api/meetings/{meeting_id}/summarize` | MVP |
 | GET | `/api/meetings/{meeting_id}/summary` | MVP |
 | GET | `/api/meetings/{meeting_id}/export` | MVP |
@@ -139,6 +146,8 @@ These return HTML for a browser, not JSON. Assets are served from the same proce
 | GET | `/dashboard/{meeting_id}` | Live dashboard, including the join QR while the meeting is `created` or `live` | 200, 302 to `/meetings/{meeting_id}` if the meeting has ended, 404 |
 | GET | `/meetings/{meeting_id}` | Post-meeting view: summary, action items, export, and Q&A in history mode | 200, 404 |
 | GET | `/action-items` | Global action-item list: open items across meetings, with edits and notes (CON-16) | 200 |
+| GET | `/policies` | Versioned local policy list/detail entry point (CON-17) | 200 |
+| GET | `/policies/{policy_id}` | Read-only policy versions and original downloads (CON-17) | 200, 404 |
 | GET | `/database` | Read-only local SQLite inspector for the demo laptop | 200 |
 | GET | `/static/{path}` | Scripts, styles and images | 200, 404 |
 
@@ -1452,6 +1461,127 @@ The server reads a snapshot and its `as_of_seq` in one transaction, so the curso
 ## REST: Policies (CON-17)
 
 Policy upload is the only exception to the JSON-only/64 KiB body convention: `POST /api/policies` accepts `multipart/form-data` fields `title`, optional `tags` (JSON string array), and `file`; `POST /api/policies/{policy_id}/versions` accepts `file`. Both return `202` with the newly retained `PolicyVersion` in `status: "pending"`; extraction/indexing continues locally in the background. The configured `[policies].max_upload_bytes` limit applies. `GET /api/policies` lists documents with the latest upload and current (newest ready) version; `GET /api/policies/{policy_id}` returns all versions; `GET /api/policies/{policy_id}/versions/{version_id}/download` returns the exact retained binary. Unsupported or spoofed format is `400 unsupported_format`, oversize is `413 payload_too_large`, and an unknown policy is `404 policy_not_found`.
+
+### POST /api/policies
+
+**Request** — `multipart/form-data`: `title` (1–200 characters), optional `tags` (JSON array of strings), and `file` (PDF or DOCX, up to `[policies].max_upload_bytes`).
+
+**Response** — `202`: `{ "policy": {…}, "version": { "status": "pending", … } }`.
+
+```json
+{"policy":{"policy_id":"0d4f6a52-7c1b-4e7a-b0a3-51e1f4c2a9d8","title":"Travel rules"},"version":{"policy_version_id":"1d4f6a52-7c1b-4e7a-b0a3-51e1f4c2a9d8","status":"pending"}}
+```
+
+**Status codes** — `202` accepted; `400 invalid_request` or `unsupported_format`; `413 payload_too_large`; `500 internal_error` for storage failure.
+
+| Status | Code | When |
+|---|---|---|
+| 202 | — | retained and queued |
+| 400 | `invalid_request` / `unsupported_format` | invalid fields or file |
+| 413 | `payload_too_large` | configured upload limit exceeded |
+| 500 | `internal_error` | atomic storage failed |
+
+**Side effects** — atomically retains the original, inserts `PolicyDocument` and version 1, emits `policy_created` and `policy_version_added`, then starts local background extraction/indexing. Not idempotent.
+
+### GET /api/policies
+
+**Request** — optional `q` title substring and `tag`, each case-insensitive.
+
+**Response** — `200`: `{ "policies": [{ "policy": {…}, "current_version": {…} | null, "latest_version": {…} }] }`.
+
+```json
+{"policies":[]}
+```
+
+**Status codes** — `200`; `400 invalid_request` for overlong filters.
+
+| Status | Code | When |
+|---|---|---|
+| 200 | — | success |
+| 400 | `invalid_request` | invalid filter |
+
+**Side effects** — none.
+
+### GET /api/policies/{policy_id}
+
+**Request** — UUID policy id.
+
+**Response** — `200`: `{ "policy": {…}, "versions": [{…}] }`, versions newest first.
+
+```json
+{"policy":{"policy_id":"0d4f6a52-7c1b-4e7a-b0a3-51e1f4c2a9d8","title":"Travel rules"},"versions":[]}
+```
+
+**Status codes** — `200`; `404 policy_not_found`.
+
+| Status | Code | When |
+|---|---|---|
+| 200 | — | success |
+| 404 | `policy_not_found` | unknown policy |
+
+**Side effects** — none.
+
+### POST /api/policies/{policy_id}/versions
+
+**Request** — `multipart/form-data` with `file` only.
+
+**Response** — `202` with the new pending version.
+
+```json
+{"version":{"policy_version_id":"1d4f6a52-7c1b-4e7a-b0a3-51e1f4c2a9d8","status":"pending"}}
+```
+
+**Status codes** — `202`; `400 invalid_request` or `unsupported_format`; `404 policy_not_found`; `413 payload_too_large`; `500 internal_error`.
+
+| Status | Code | When |
+|---|---|---|
+| 202 | — | retained and queued |
+| 400 | `invalid_request` / `unsupported_format` | invalid id or file |
+| 404 | `policy_not_found` | unknown policy |
+| 413 | `payload_too_large` | configured upload limit exceeded |
+| 500 | `internal_error` | atomic storage failed |
+
+**Side effects** — atomically retains a new immutable original and starts background extraction/indexing. Not idempotent.
+
+### POST /api/policies/{policy_id}/versions/{version_id}/retry
+
+**Request** — JSON `{}`; both ids are UUIDs.
+
+**Response** — `202` with the retained version.
+
+```json
+{}
+```
+
+**Status codes** — `202`; `400 invalid_request`; `404 policy_not_found`; `500 internal_error` if its retained source is absent.
+
+| Status | Code | When |
+|---|---|---|
+| 202 | — | retry queued |
+| 400 | `invalid_request` | malformed id/body |
+| 404 | `policy_not_found` | unknown policy/version |
+| 500 | `internal_error` | retained original missing |
+
+**Side effects** — resubmits a failed retained version to local extraction/indexing; source bytes and version number never change.
+
+### GET /api/policies/{policy_id}/versions/{version_id}/download
+
+**Request** — no body.
+
+**Response** — `200` with the original PDF/DOCX bytes and original display filename.
+
+```json
+{"download":"binary response"}
+```
+
+**Status codes** — `200`; `404 policy_not_found`.
+
+| Status | Code | When |
+|---|---|---|
+| 200 | — | binary download |
+| 404 | `policy_not_found` | unknown policy/version |
+
+**Side effects** — none.
 
 ## Demo traceability
 

@@ -76,7 +76,11 @@ class VectorStore:
 
     def upsert_policy(self, conn, chunk_id: str, version_id: str, vector) -> None:
         if len(vector) != self.dimension: raise ValidationError(f"embedding dimension {len(vector)} differs from configured {self.dimension}")
-        conn.execute("INSERT INTO PolicyChunkVector(policy_chunk_id, policy_version_id, embedding) VALUES (?, ?, ?)", (chunk_id, version_id, _blob(vector)))
+        exists = conn.execute("SELECT 1 FROM PolicyChunkVector WHERE policy_chunk_id = ?", (chunk_id,)).fetchone()
+        if exists:
+            conn.execute("UPDATE PolicyChunkVector SET embedding = ? WHERE policy_chunk_id = ?", (_blob(vector), chunk_id))
+        else:
+            conn.execute("INSERT INTO PolicyChunkVector(policy_chunk_id, policy_version_id, embedding) VALUES (?, ?, ?)", (chunk_id, version_id, _blob(vector)))
 
     def search(self, conn, meeting_id: str, vector, limit: int) -> list[VectorHit]:
         if len(vector) != self.dimension:

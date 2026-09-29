@@ -1,1 +1,34 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Policy · Convene</title><link rel="stylesheet" href="/static/theme.css"><body><main><p><a href="/policies">Policies</a></p><section id="policy"></section></main><script src="/static/policy.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<script src="/static/theme.js"></script>
+<title>Convene — Policy</title>
+<link rel="icon" href="/static/brand/logo-mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/history.css">
+<link rel="stylesheet" href="/static/policies.css">
+</head>
+<body>
+<header class="hx-bar">
+  <a class="brand" href="/"><img src="/static/brand/logo.svg" alt="Convene home"></a>
+  <div class="hx-bar-actions"><a class="hx-link" href="/policies">All policies</a><button class="theme-toggle" type="button" data-theme-toggle></button><a class="btn btn-secondary hx-new" href="/#start">Start a meeting</a></div>
+</header>
+<main class="hx pol-page">
+  <nav class="pol-breadcrumb" aria-label="Breadcrumb"><a href="/policies">Policies and rules</a><span aria-hidden="true">/</span><span id="policy-crumb">Policy</span></nav>
+  <div class="pol-layout pol-detail-layout">
+    <section id="policy" class="pol-detail" aria-live="polite"></section>
+    <aside class="pol-card pol-upload" aria-labelledby="uploadHeading">
+      <div class="pol-card-head"><p class="pol-kicker">Keep it current</p><h2 id="uploadHeading">Upload a new version</h2><p>The current indexed version remains available while this file is processed.</p></div>
+      <form id="version-upload" class="pol-form">
+        <label class="pol-file"><span>Replacement document</span><input name="file" type="file" required accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><small>PDF and DOCX only. The original file stays available to download.</small></label>
+        <button class="btn btn-primary" type="submit">Upload version</button><p id="message" class="pol-message" role="status"></p>
+      </form>
+    </aside>
+  </div>
+</main>
+<script src="/static/policy.js"></script>
+</body>
+</html>

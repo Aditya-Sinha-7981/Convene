@@ -1,1 +1,48 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Convene policies</title><link rel="stylesheet" href="/static/theme.css"><body><main><p><a href="/">Convene</a></p><h1>Policies and rules</h1><p>Uploaded versions are retained locally and processed in the background.</p><form id="upload"><label>Title <input name="title" required maxlength="200"></label><label>Tags (JSON array) <input name="tags" placeholder='["travel"]'></label><label>PDF or DOCX <input name="file" type="file" required accept=".pdf,.docx"></label><button>Upload policy</button></form><p id="message"></p><section id="list"></section></main><script src="/static/policies.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<script src="/static/theme.js"></script>
+<title>Convene — Policies</title>
+<link rel="icon" href="/static/brand/logo-mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/history.css">
+<link rel="stylesheet" href="/static/policies.css">
+</head>
+<body>
+<header class="hx-bar">
+  <a class="brand" href="/"><img src="/static/brand/logo.svg" alt="Convene home"></a>
+  <div class="hx-bar-actions"><a class="hx-link" href="/history">Past meetings</a><button class="theme-toggle" type="button" data-theme-toggle></button><a class="btn btn-secondary hx-new" href="/#start">Start a meeting</a></div>
+</header>
+<main class="hx pol-page">
+  <div class="hx-head pol-head">
+    <p class="pol-eyebrow">Knowledge base</p>
+    <h1>Policies and rules</h1>
+    <p class="muted">Keep the documents your team relies on close to the meeting record. New uploads are processed locally in the background; the last successfully indexed version stays searchable until its replacement is ready.</p>
+  </div>
+  <div class="pol-layout">
+    <section class="pol-library" aria-labelledby="libraryHeading">
+      <div class="pol-library-head">
+        <div><h2 id="libraryHeading">Your policy library</h2><p class="muted">Search a title or open a policy to review its versions.</p></div>
+        <label class="pol-search"><span class="sr-only">Filter policies by title</span><input id="filter" class="field" type="search" placeholder="Search policies" maxlength="200" autocomplete="off"></label>
+      </div>
+      <p id="list-error" class="hx-error" role="alert"></p>
+      <div id="empty" class="pol-empty" hidden><p class="mascot"><span class="mascot-art"><img src="/static/brand/mascot.svg" alt=""></span><span class="mascot-line" id="empty-text">No policies match that search.</span></p></div>
+      <section id="list" class="pol-list" aria-live="polite" aria-label="Policies"></section>
+    </section>
+    <aside class="pol-card pol-upload" aria-labelledby="uploadHeading">
+      <div class="pol-card-head"><p class="pol-kicker">Add to library</p><h2 id="uploadHeading">Upload a policy</h2><p>PDF and DOCX only, up to your configured upload limit.</p></div>
+      <form id="upload" class="pol-form">
+        <label class="pol-field"><span>Title</span><input class="field" name="title" required maxlength="200" placeholder="e.g. Travel and expenses"></label>
+        <label class="pol-field"><span>Tags <small>optional, JSON array</small></span><input class="field" name="tags" placeholder='["travel", "finance"]' maxlength="1000"></label>
+        <label class="pol-file"><span>Document</span><input name="file" type="file" required accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><small>Text must be extractable. Scanned PDFs are reported as failed; Convene does not run OCR.</small></label>
+        <button class="btn btn-primary" type="submit">Upload policy</button><p id="message" class="pol-message" role="status"></p>
+      </form>
+    </aside>
+  </div>
+</main>
+<script src="/static/policies.js"></script>
+</body>
+</html>
