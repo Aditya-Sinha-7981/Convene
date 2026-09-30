@@ -106,6 +106,16 @@ Functional and legible beats visually elaborate (`requirements.md`). The fronten
   panel's. Each source names its meeting, date, speakers and time within that meeting, and links to that line in
   the meeting's transcript. Meetings that were only partly searched, or not searched at all, are listed under the
   answer. Answers are not restored after a reload.
+- The right-hand panel has two tabs over the same selection: **Ask** (the Q&A panel above) and **Summaries (n)**
+  (`client/history_summaries.js`). Summaries lists every ticked meeting, oldest first: its title (a link to the
+  meeting), date and participant count, then its stored summary text. There is no new model call and no new route;
+  it reads `GET /api/meetings/{id}/summary` for each meeting. A meeting states it instead when it has no summary
+  ("Summarize now"), its latest attempt failed ("Try again"), a summary is being written, it has nothing
+  transcribed, or its summary is stale (open the meeting to regenerate). "Summarize all n without a summary" starts
+  them with `POST …/summarize` one at a time, each after the previous one finishes. Each is tried once, and a failure
+  shows on its card without stopping the rest. When one finishes, the list reloads so its Summary badge appears.
+  **Copy all** copies the titles, dates and summaries as plain text, separated by `---`. **Download DOCX** gets
+  the same meetings as one document from `GET /api/summaries/download` (built on the server from stored rows).
 - Each row also has **Rename** (an inline title editor) and **Delete**. Delete opens a dialog that stays disabled until
   the exact meeting title is typed, then erases the meeting permanently (ADR-27). The post-meeting view has the same
   two actions: Rename next to the title, and a "Delete meeting" section at the bottom that returns to `/history`

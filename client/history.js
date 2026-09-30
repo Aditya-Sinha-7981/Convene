@@ -2,10 +2,11 @@
 // Only ended meetings can be selected; the scope label above the question box always says what will be searched.
 import { meetingDate, mountHistoryQA } from "/static/history_qa.js";
 import { confirmDelete, editTitle } from "/static/meeting_actions.js";
+import { mountSummaries } from "/static/history_summaries.js";
 
 const $ = (id) => document.getElementById(id);
 const PAGE = 50, MAX_SELECTED = 50;
-const selected = new Map();  // meeting_id -> title; kept across filter changes
+const selected = new Map();  // meeting_id -> meeting row (title, dates, count); kept across filter changes
 let rows = [], total = 0, loading = null, filterTimer = null;
 
 const STATUS = { ended: "Ended", live: "Live", created: "Not started" };
@@ -19,11 +20,24 @@ function scope() {
   const n = selected.size;
   if (n === 0) return { meeting_ids: [], label: "No meetings selected", ready: false, hint: "Tick one or more ended meetings in the list." };
   if (n > MAX_SELECTED) return { meeting_ids: [], label: `${n} meetings selected`, ready: false, hint: `Select at most ${MAX_SELECTED} meetings.` };
-  const label = n === 1 ? `Searching “${[...selected.values()][0] || "Untitled meeting"}”` : `Searching ${n} meetings`;
+  const label = n === 1 ? `Searching “${[...selected.values()][0].title || "Untitled meeting"}”` : `Searching ${n} meetings`;
   return { meeting_ids: [...selected.keys()], sources: sources(), label: sources() === "both" ? `${label} and current policies` : label, ready: true };
 }
 
 const qa = mountHistoryQA({ root: $("qa"), scope });
+const sums = mountSummaries({ root: $("sums"), selection: () => [...selected.values()], onSummarized: () => load() });
+
+// The right-hand panel works on the same selection two ways: ask a question, or read the summaries.
+function showTab(which) {
+  const asking = which === "ask";
+  $("tabAsk").setAttribute("aria-selected", String(asking));
+  $("tabSum").setAttribute("aria-selected", String(!asking));
+  $("qa").hidden = !asking;
+  $("sums").hidden = asking;
+  if (!asking) sums.refresh();
+}
+$("tabAsk").onclick = () => showTab("ask");
+$("tabSum").onclick = () => showTab("summaries");
 
 function query(offset) {
   const params = new URLSearchParams({ limit: String(PAGE), offset: String(offset) });
@@ -52,7 +66,7 @@ function row(meeting) {
   pick.checked = selected.has(meeting.meeting_id);
   pick.setAttribute("aria-label", ended ? `Include ${meeting.title || "Untitled meeting"} in the search` : "Only ended meetings can be searched here");
   pick.onchange = () => {
-    if (pick.checked) selected.set(meeting.meeting_id, meeting.title); else selected.delete(meeting.meeting_id);
+    if (pick.checked) selected.set(meeting.meeting_id, meeting); else selected.delete(meeting.meeting_id);
     if (pick.checked && mode() === "all") document.querySelector("input[name=scope][value=selected]").checked = true;
     renderSelection();
   };
@@ -84,7 +98,7 @@ function row(meeting) {
   rename.onclick = () => editTitle(title, meeting, (updated) => {
     if (!updated) return;
     Object.assign(meeting, updated);
-    if (selected.has(meeting.meeting_id)) selected.set(meeting.meeting_id, meeting.title);
+    if (selected.has(meeting.meeting_id)) selected.set(meeting.meeting_id, meeting);
     render();
   });
   const remove = document.createElement("button");
@@ -107,7 +121,9 @@ function row(meeting) {
 function renderSelection() {
   $("clearSel").hidden = selected.size === 0;
   $("clearSel").textContent = `Clear selection (${selected.size})`;
+  $("tabSum").textContent = selected.size ? `Summaries (${selected.size})` : "Summaries";
   qa.refreshScope();
+  if (!$("sums").hidden) sums.refresh();
 }
 
 function render() {
@@ -129,6 +145,7 @@ async function load(append = false) {
     if (loading !== url) return;  // a newer filter already replaced this request
     if (!response.ok) throw new Error(body.error?.message || "Could not load meetings.");
     rows = append ? rows.concat(body.meetings) : body.meetings;
+    for (const meeting of rows) if (selected.has(meeting.meeting_id)) selected.set(meeting.meeting_id, meeting);
     total = body.total;
     $("error").textContent = "";
     render();

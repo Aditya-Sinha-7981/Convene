@@ -45,6 +45,17 @@ attached, and says why the person got it, in the mascot's voice (`server/mail/me
 HTML-escaped. The meeting must have ended. If rendering fails, nothing is sent. A refused address does not stop the
 others. Only the button sends: nothing is emailed when a meeting ends.
 
+## Summaries of selected meetings
+
+A third fixed template (`render_summaries` in `server/export/report_renderer.py`), served by
+`GET /api/summaries/download` for the meetings ticked on the history page. It has "Convene meeting summaries", the
+generation date, and the counts. Then, oldest first, each meeting gets a heading (title and UTC date), its
+participants, and its current summary paragraphs. A stale summary is marked "may be out of date". A meeting without
+one says "No summary yet.", that its last attempt failed with the error code, or that one was still being written.
+No action items or transcript. Rows come from the same per-meeting builder as the periodic report
+(`server/reports/service.py`). It is regenerated on each download, with no `Export` row, file or model call. The
+limit is `[reports].max_meetings`.
+
 ## Generation flow
 
 1. Triggered after summarization completes (automatically) or manually re-triggered from the dashboard.

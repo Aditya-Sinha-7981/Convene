@@ -26,6 +26,8 @@ notes.
 - Answers include links back to the relevant speaker and moment in the meeting.
 - If the meeting did not contain enough evidence, Convene says so instead of inventing an answer.
 - Past meetings can be listed, searched by title and date, and queried individually or together after they end.
+- Several past meetings can be ticked to read their summaries one after another, each under its title. Meetings
+  without a summary can be summarized from there, one at a time, and the set can be downloaded as one DOCX.
 
 ### Meeting wrap-up
 
