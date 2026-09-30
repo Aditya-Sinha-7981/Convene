@@ -706,3 +706,28 @@ SQLite file in plain text, like the transcript.
 **Status:** Adopted 2026-09-30 at the user's request. Needs one real send with the user's verified domain before any
 claim that mail arrives.
 
+### ADR-34: Choose who gets the minutes by email, and which parts each person gets
+
+**Decision:** Extends ADR-33. `POST /api/meetings/{id}/email` takes an optional `recipients` list. Each entry names a
+participant with an address and a non-empty subset of `summary`, `action_items` and `transcript`. Participants not
+listed get nothing. Without the list, everyone gets everything, as before. The title block (title, date, participants)
+is always included. The DOCX renderer takes a `sections` argument and keeps its fixed order. The full selection still
+attaches the exported file itself. Any other selection is rendered in memory, once per distinct set of sections,
+before anything is sent. It gets no `Export` row or file. The email body names what is attached. `minutes_emailed`
+records the sections per participant. On the post-meeting page, everyone who gave an address starts ticked with every
+part. Presets ("Everything", "Summary + action items", "Action items only") apply to the ticked people, and each
+person's parts can be changed one by one. Participants without an address are listed but cannot be picked.
+
+**Rationale:** The user asked for it: the full transcript is too much, or too sensitive, for everyone who asked
+for the minutes, while a few people need all of it. Choosing per person covers both in one send.
+
+**Alternatives considered:** Separate sends per group (rejected: more clicks, and the second send warns about
+re-sending); a new `Export` row per selection (rejected: an export is the meeting's document, and staleness is
+tracked for it; an attachment variant is derived and throwaway); a separate "Decisions" part (not offered: decisions
+are not a stored field; they sit inside the summary text).
+
+**Tradeoffs:** The choice lives only in the open page. A reload resets it to everyone and everything. A person given
+only part of the minutes can still see the whole participant list in the title block.
+
+**Status:** Adopted 2026-09-30 at the user's request.
+

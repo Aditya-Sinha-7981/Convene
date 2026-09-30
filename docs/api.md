@@ -1004,7 +1004,7 @@ Who in this meeting asked for the minutes by email, and whether this server can 
 
 **Request** — no body.
 
-**Response** — `200`. `configured` is false when the server was started without `RESEND_API_KEY`; `sender` is the configured `CONVENE_MAIL_FROM`, or null. `sending` is true while a send for this meeting is running. `last_sent_at` is the last successful send to that address, or null.
+**Response** — `200`. `configured` is false when the server was started without `RESEND_API_KEY`; `sender` is the configured `CONVENE_MAIL_FROM`, or null. `sending` is true while a send for this meeting is running. `sections` lists the parts a recipient can be given, in template order (ADR-34). `last_sent_at` is the last successful send to that address, or null.
 
 ```json
 {
@@ -1012,6 +1012,7 @@ Who in this meeting asked for the minutes by email, and whether this server can 
   "sender": "Convene <minutes@example.com>",
   "meeting_ended": true,
   "sending": false,
+  "sections": ["summary", "action_items", "transcript"],
   "recipients": [
     {
       "participant_id": "3e8b1d47-52a9-4c60-b7f2-0a9c6d4e8b15",
@@ -1035,11 +1036,20 @@ Who in this meeting asked for the minutes by email, and whether this server can 
 
 ### POST /api/meetings/{meeting_id}/email
 
-Email the DOCX minutes to every participant of this meeting who gave an address at join (ADR-33). This is the only way anything is emailed: nothing is sent when a meeting ends. The attachment is the same current, non-stale file that `GET …/export` serves, rendered first if needed. Each recipient gets a separate message, so no one sees another person's address. Sending uses Resend over the internet, so it needs a connection; the rest of Convene does not. Pressing it again sends again to everyone.
+Email the DOCX minutes to the chosen participants of this meeting who gave an address at join, each with the parts chosen for them (ADR-33, ADR-34). This is the only way anything is emailed: nothing is sent when a meeting ends. Someone given every part gets the same current, non-stale file that `GET …/export` serves, rendered first if needed. Any other choice is rendered in memory from the same stored rows with the same fixed template: the title block (title, date, participants) and only the chosen sections. It is an attachment, not an export, so it has no `Export` row or file. Every attachment is rendered before the first message goes out. Each recipient gets a separate message, so no one sees another person's address. Sending uses Resend over the internet, so it needs a connection; the rest of Convene does not. Pressing it again sends again to everyone.
 
-**Request** — no body (an empty JSON object is accepted).
+**Request** — optional `recipients`: who gets what. Each entry is a `participant_id` that gave an address in this meeting and a non-empty `sections` list drawn from `summary`, `action_items` and `transcript` (any order; the document keeps template order). A participant may appear once. Omitted (or no body), everyone who gave an address gets every section. Participants not listed get nothing.
 
-**Response** — `200` once every recipient was tried. `failed` lists the addresses Resend refused or could not be reached for, with the reason; one failure does not stop the others. `recipients` is the same list as `GET …/email`, after the send.
+```json
+{
+  "recipients": [
+    { "participant_id": "3e8b1d47-52a9-4c60-b7f2-0a9c6d4e8b15", "sections": ["summary", "action_items", "transcript"] },
+    { "participant_id": "5b2e8f14-7a3c-4d09-8e61-2c4f9a7b3d50", "sections": ["summary", "action_items"] }
+  ]
+}
+```
+
+**Response** — `200` once every chosen recipient was tried. `failed` lists the addresses Resend refused or could not be reached for, with the reason; one failure does not stop the others. `recipients` is the same list as `GET …/email`, after the send.
 
 ```json
 {
@@ -1079,7 +1089,7 @@ Email the DOCX minutes to every participant of this meeting who gave an address 
 | Status | Code | When |
 |---|---|---|
 | 200 | — | every recipient was tried; see `failed` |
-| 400 | `invalid_request` | the meeting id is not a UUID v4, or the body is not JSON |
+| 400 | `invalid_request` | the meeting id is not a UUID v4, the body is not JSON, or `recipients` is empty, names a participant twice or one without an address here, or has an empty or unknown section |
 | 404 | `meeting_not_found` | unknown meeting |
 | 409 | `meeting_not_ended` | the meeting has not ended |
 | 409 | `mail_not_configured` | the server has no Resend key and sender |
@@ -1088,7 +1098,7 @@ Email the DOCX minutes to every participant of this meeting who gave an address 
 | 409 | `summary_not_ready` | no `ready` summary exists, so there is no DOCX to attach |
 | 500 | `export_render_failed` | rendering the DOCX failed; nothing was sent |
 
-**Side effects** — possibly a DOCX render, exactly as `GET …/export`. For each accepted message, `ParticipantEmail.last_sent_at` is set. One audit `minutes_emailed` (`export_id`, `sent_participant_ids`, `failed_participant_ids`; never an address). No dashboard push.
+**Side effects** — possibly a DOCX render, exactly as `GET …/export`. For each accepted message, `ParticipantEmail.last_sent_at` is set. One audit `minutes_emailed` (`export_id`, `sent_participant_ids`, `failed_participant_ids`, `sections` per chosen participant; never an address). No dashboard push.
 
 ### POST /api/meetings/{meeting_id}/devices/{device_id}/enroll
 

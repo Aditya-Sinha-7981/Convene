@@ -21,8 +21,18 @@ def elapsed(start: str | None, value: str) -> str:
     return f"{seconds // 3600:02d}:{seconds // 60 % 60:02d}:{seconds % 60:02d}"
 
 
-def render(meeting, participants, summary, action_items, utterances) -> Document:
-    """Build the fixed minutes template. ``utterances`` are ordered server-computed views."""
+SECTIONS = ("summary", "action_items", "transcript")  # in template order; the title block is always included
+
+
+def render(meeting, participants, summary, action_items, utterances, sections=SECTIONS) -> Document:
+    """Build the fixed minutes template. ``utterances`` are ordered server-computed views.
+
+    ``sections`` picks which parts follow the title block (ADR-34: emailing a subset). The download always renders
+    all of them; the order is the template's whatever order ``sections`` lists them in.
+    """
+    unknown = set(sections) - set(SECTIONS)
+    if unknown or not sections:
+        raise ValueError(f"sections must be a non-empty subset of {SECTIONS}")
     document = Document()
     core = document.core_properties
     # Semantic document XML is stable across equivalent renders; ZIP container timestamps are not.
@@ -32,11 +42,20 @@ def render(meeting, participants, summary, action_items, utterances) -> Document
     names = ", ".join(person.display_name for person in participants) or "No participants registered"
     document.add_paragraph(f"Participants: {names}")
 
-    document.add_heading("Summary", level=1)
-    for paragraph in summary.summary_text.split("\n\n"):
-        if paragraph.strip():
-            document.add_paragraph(paragraph.strip())
+    if "summary" in sections:
+        document.add_heading("Summary", level=1)
+        for paragraph in summary.summary_text.split("\n\n"):
+            if paragraph.strip():
+                document.add_paragraph(paragraph.strip())
 
+    if "action_items" in sections:
+        _action_items(document, action_items)
+    if "transcript" in sections:
+        _transcript(document, meeting, utterances)
+    return document
+
+
+def _action_items(document, action_items) -> None:
     document.add_heading("Action items", level=1)
     if not action_items:
         document.add_paragraph("No action items")
@@ -51,6 +70,8 @@ def render(meeting, participants, summary, action_items, utterances) -> Document
             cells[1].text = item.get("owner_display_name") or "Unassigned"
             cells[2].text = item["status"]
 
+
+def _transcript(document, meeting, utterances) -> None:
     document.add_heading("Transcript appendix", level=1)
     start = meeting.started_at
     for item in utterances:
@@ -64,4 +85,3 @@ def render(meeting, participants, summary, action_items, utterances) -> Document
         if item["low_confidence"]:
             text.italic = True
             paragraph.add_run(" [needs review]").italic = True
-    return document

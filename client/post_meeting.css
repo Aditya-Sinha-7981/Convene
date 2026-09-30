@@ -44,14 +44,30 @@ form.fix select, form.fix input { max-width: 100%; padding: .35rem .5rem; border
 .pm-delete h2 { margin-top: 0; }
 .pm-danger { border-color: var(--danger-line); color: var(--danger); }
 .pm-danger:hover:not(:disabled) { border-color: var(--danger); background: var(--danger-soft); }
-/* ADR-33: the minutes by email, to the people who added an address when they joined. */
+/* ADR-33/34: the minutes by email, to the people who added an address when they joined, each with chosen parts. */
+.pm-mail-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: .8rem 0 .4rem; }
+.pm-mail-bulk .bulk-label { margin-right: 4px; color: var(--ink-2); font-size: 14px; font-weight: 600; }
+.pm-mail-bulk .link { margin-left: auto; padding: 0; }
 .pm-mail-list { margin: .6rem 0; padding: 0; list-style: none; }
-.pm-mail-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding: .45rem 0; border-top: 1px solid var(--line); font-size: 14px; }
+.pm-mail-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: .6rem .5rem; border-top: 1px solid var(--line); font-size: 14px; }
 .pm-mail-list li:last-child { border-bottom: 1px solid var(--line); }
-.pm-mail-list .who { margin: 0; }
+.pm-mail-list li.is-selected { background: var(--accent-soft); }
+.pm-mail-list li.is-unavailable { color: var(--muted); }
+.pm-mail-list li.is-unavailable .who { color: var(--muted); font-weight: 600; }
+.pm-mail-list .pick { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.pm-mail-list .pick input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.pm-mail-list .who { margin: 0; font-weight: 700; }
 .pm-mail-list .addr { color: var(--ink-2); overflow-wrap: anywhere; }
 .pm-mail-list .sent { margin-left: auto; color: var(--muted); font-size: 13px; }
 .pm-mail-list .sent.is-failed { color: var(--danger); }
+.pm-mail-list .parts { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; padding-left: 26px; }
+.pm-mail-list .parts[hidden] { display: none; }
+.pm-mail-list .part { position: relative; display: inline-flex; cursor: pointer; }
+.pm-mail-list .part input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: inherit; }
+.pm-mail-list .part span { padding: 3px 11px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--ink-2); font-size: 13px; font-weight: 600; }
+.pm-mail-list .part input:checked + span { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.pm-mail-list .part input:focus-visible + span { outline: 3px solid var(--accent-line); outline-offset: 2px; }
+.pm-mail-list .part input:disabled + span { opacity: .6; }
 .pm-mail-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem 1rem; margin-top: .8rem; }
 #mailSend { border-color: transparent; background: var(--accent); color: var(--on-accent); }
 #mailStatus { color: var(--muted); font-size: 14px; }
