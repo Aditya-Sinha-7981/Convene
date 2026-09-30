@@ -6,18 +6,22 @@
 # STT backend: CONVENE_STT=local (default) or CONVENE_STT=gemini with GEMINI_API_KEY and GEMINI_STT_MODEL
 # (demo-only cloud connector, ADR-31). They may be kept in stt.env (gitignored; see stt.env.example). .env is
 # never loaded here: it holds DNS credentials that must stay out of the server process.
+# Email (ADR-33): RESEND_API_KEY and CONVENE_MAIL_FROM, kept in mail.env (gitignored; see mail.env.example). Without
+# them the minutes can only be downloaded.
 # See tests/manual-test/DEMO_FLOW.md before using this on demo day.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-if [[ -f "$ROOT/stt.env" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "$ROOT/stt.env"
-  set +a
-fi
+for env_file in stt.env mail.env; do
+  if [[ -f "$ROOT/$env_file" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$ROOT/$env_file"
+    set +a
+  fi
+done
 
 : "${CONVENE_CERT:?Set CONVENE_CERT to the PEM certificate path.}"
 : "${CONVENE_KEY:?Set CONVENE_KEY to the PEM private-key path.}"

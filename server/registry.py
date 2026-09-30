@@ -11,6 +11,7 @@ Follows the contract in docs/api.md and docs/transport.md as completed by CON-02
 
 All functions run inside the caller's transaction (``Database.transaction()`` / ``Database.run``).
 """
+import re
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -19,13 +20,16 @@ from .audit import emit, record_connection_event
 from .db import Tx
 from .errors import DeviceConflictError, MeetingEndedError, ValidationError
 from .ids import is_uuid4, new_id
-from .repositories import connections, devices, meetings, participants, utterances
+from .repositories import connections, devices, meetings, participant_emails, participants, utterances
 from .repositories.models import ConnectionEvent, Device, Meeting, Participant
 from .timeutil import utc_now
 
 MAX_TITLE = 200
 MAX_DISPLAY_NAME = 80
 MAX_USER_AGENT = 512
+MAX_EMAIL = 254
+# Deliberately loose (ADR-33): one "@", a dot in the domain, no spaces or angle brackets. Delivery is the real check.
+EMAIL_PATTERN = re.compile(r"^[^@\s<>,;\"]+@[^@\s<>,;\"]+\.[^@\s<>,;\"]+$")
 SHARED_SPEAKER_RANGE = (2, 3)  # docs/api.md: a shared device declares 2 or 3 speakers
 RECONNECT_VIA = ("ice_restart", "new_peer")
 DISCONNECT_REASONS = ("peer_disconnected", "peer_failed", "peer_closed", "server_restart")
@@ -111,7 +115,7 @@ def erase_meeting(tx: Tx, meeting_id: str, *, now: str | None = None) -> Meeting
 
     Removed: devices, participants, utterances, connection events, transcript chunks and their vectors, Q&A
     queries about it (including multi-meeting history answers that cited its chunks, since their text came from
-    it), summaries, action items and every note on them, the notes it was the source of on other meetings' items
+    it), summaries, action items and every note on them, participants' email addresses (ADR-33), the notes it was the source of on other meetings' items
     (with their note events), export rows, its model-execution rows and every audit event carrying its
     ``meeting_id``. Afterwards one ``meeting_deleted`` event (no meeting_id) keeps only the id and counts.
     The caller refuses first when a phone is connected or a summary is running, and removes the export files.
@@ -157,7 +161,7 @@ def erase_meeting(tx: Tx, meeting_id: str, *, now: str | None = None) -> Meeting
                  "AND json_extract(payload, '$.source_meeting_id') = ?", (meeting_id,))
     conn.execute("DELETE FROM ActionItemNote WHERE source_meeting_id = ? OR action_item_id IN "
                  "(SELECT action_item_id FROM ActionItem WHERE meeting_id = ?)", (meeting_id, meeting_id))
-    for table in ("ActionItem", "Export", "Summary"):
+    for table in ("ActionItem", "Export", "Summary", "ParticipantEmail"):
         conn.execute(f"DELETE FROM {table} WHERE meeting_id = ?", (meeting_id,))
     delete_in("TranscriptChunkVector", "chunk_id", chunk_ids)
     for table in ("TranscriptChunk", "ConnectionEvent", "AuditEvent", "Utterance", "Participant", "Device", "Meeting"):
@@ -167,7 +171,7 @@ def erase_meeting(tx: Tx, meeting_id: str, *, now: str | None = None) -> Meeting
 
 def register_device(tx: Tx, meeting_id: str, device_id: str, display_name: str | None, is_shared: bool = False,
                     declared_speaker_count: int | None = None, user_agent: str | None = None, *,
-                    color: str | None = None, now: str | None = None) -> Registration:
+                    color: str | None = None, email: str | None = None, now: str | None = None) -> Registration:
     """Register a device (and, if it is not shared, its one Participant). Idempotent.
 
     * New device: ``Device`` in ``joining`` (``enrolling`` if shared) and, for a non-shared device, one
@@ -175,8 +179,12 @@ def register_device(tx: Tx, meeting_id: str, device_id: str, display_name: str |
       devices get no participants here; CON-13 creates them at enrollment.
     * ``color``: an optional palette key for that participant (ADR-25). A colour already used in the meeting is
       ``ColorTakenError``; with none, the server picks an unused one.
-    * Known ``device_id`` in this meeting: the stored rows are returned unchanged, nothing is written (a
-      different ``display_name`` or ``color`` in the replay is ignored), so a rejoining phone keeps its colour.
+    * ``email``: an optional address to send the minutes to later (ADR-33), only for a device that is not shared.
+      It is stored in ``ParticipantEmail``, never on the participant, and never audited.
+    * Known ``device_id`` in this meeting: the stored rows are returned unchanged, nothing else is written (a
+      different ``display_name`` or ``color`` in the replay is ignored), so a rejoining phone keeps its colour. The
+      one exception is a non-empty ``email``, which is stored or replaces the earlier one, so a rejoining phone can
+      add or fix its address.
     * ``device_id`` registered in another meeting, or here with a different ``is_shared``:
       ``DeviceConflictError``. Devices are never re-parented.
     * Ended meeting: ``MeetingEndedError``. Unknown meeting: ``MeetingNotFoundError``.
@@ -201,6 +209,9 @@ def register_device(tx: Tx, meeting_id: str, device_id: str, display_name: str |
         name = display_name.strip()
     if color is not None and (is_shared or not isinstance(color, str)):
         raise ValidationError("color is a palette key, and only for a device that is not shared")
+    email = normalize_email(email)
+    if email is not None and is_shared:
+        raise ValidationError("email is only for a device that is not shared")
     if user_agent is not None:
         if not isinstance(user_agent, str):
             raise ValidationError("user_agent must be a string")
@@ -216,7 +227,10 @@ def register_device(tx: Tx, meeting_id: str, device_id: str, display_name: str |
             raise DeviceConflictError(f"device {device_id} is registered in a different meeting")
         if existing.is_shared != is_shared:
             raise DeviceConflictError(f"device {device_id} is already registered with is_shared={existing.is_shared}")
-        return Registration(existing, participants.list_for_device(tx.conn, device_id), created=False)
+        people = participants.list_for_device(tx.conn, device_id)
+        if email is not None and people:
+            participant_emails.set_email(tx.conn, people[0].participant_id, meeting_id, email, now or utc_now())
+        return Registration(existing, people, created=False)
 
     now = now or utc_now()
     chosen = None if is_shared else colors.choose(participants.colors_in_meeting(tx.conn, meeting_id), color)
@@ -229,10 +243,26 @@ def register_device(tx: Tx, meeting_id: str, device_id: str, display_name: str |
         people.append(participants.create(tx.conn, Participant(
             participant_id=new_id(), meeting_id=meeting_id, device_id=device_id,
             display_name=name, enrollment_status="not_required", color=chosen)))
+        if email is not None:
+            participant_emails.set_email(tx.conn, people[0].participant_id, meeting_id, email, now)
     emit(tx, "device_registered", "registry",
          {"device_id": device_id, "is_shared": is_shared, "declared_speaker_count": declared_speaker_count,
           "user_agent": user_agent, "color": chosen}, meeting_id=meeting_id, timestamp=now)
     return Registration(device, people, created=True)
+
+
+def normalize_email(email) -> str | None:
+    """The trimmed address, or None when omitted or blank. Raises ``ValidationError`` for anything else."""
+    if email is None:
+        return None
+    if not isinstance(email, str):
+        raise ValidationError("email must be a string")
+    email = email.strip()
+    if not email:
+        return None
+    if len(email) > MAX_EMAIL or not EMAIL_PATTERN.match(email):
+        raise ValidationError("email is not a valid address")
+    return email
 
 
 def record_device_connected(tx: Tx, device_id: str, *, via: str = "new_peer", remote_addr: str | None = None,

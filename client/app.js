@@ -44,6 +44,7 @@ let generation = 0;
 let paused = false;
 
 const nameInput = document.querySelector("#name");
+const emailInput = document.querySelector("#email");
 const status = document.querySelector("#status");
 const detail = document.querySelector("#detail");
 const startButton = document.querySelector("#start");
@@ -51,6 +52,7 @@ const stopButton = document.querySelector("#stop");
 const pauseButton = document.querySelector("#pause");
 const retryButton = document.querySelector("#retry");
 nameInput.value = storageGet("name") || "";
+emailInput.value = storageGet("email") || "";  // optional address for the minutes (ADR-33), kept like the name
 
 function setStatus(value) { status.textContent = value; }
 function setDetail(value) { detail.textContent = value; }
@@ -122,7 +124,7 @@ async function register() {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ device_id: deviceId, display_name: nameInput.value.trim(), is_shared: false,
-                           color: chosenColor() }),
+                           color: chosenColor(), email: emailInput.value.trim() || null }),
   });
   let body = {};
   try { body = await response.json(); } catch { /* not JSON */ }
@@ -203,6 +205,8 @@ function connect() {
 async function start() {
   const name = nameInput.value.trim();
   if (!name) { setDetail("Enter your name first."); nameInput.focus(); return; }
+  const email = emailInput.value.trim();
+  if (email && !emailInput.checkValidity()) { setDetail("That email doesn't look right. Fix it, or leave it empty."); emailInput.focus(); return; }
   try {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error("Microphone API unavailable. Check HTTPS certificate trust.");
     stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS);
@@ -225,6 +229,7 @@ async function start() {
     return;
   }
   storageSet("name", name);
+  storageSet("email", email);
   stopped = false;
   failures = 0;
   retryDelay = 1000;

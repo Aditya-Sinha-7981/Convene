@@ -23,9 +23,11 @@ function element() {
 const plain = value => JSON.parse(JSON.stringify(value));
 
 function makePage({ meetingId = MEETING, storage = new Map(), registerReply, online = true } = {}) {
-  const els = { "#name": element(), "#status": element(), "#detail": element(), "#start": element(),
+  const els = { "#name": element(), "#email": element(), "#status": element(), "#detail": element(), "#start": element(),
                 "#stop": element(), "#pause": element(), "#retry": element() };
   els["#retry"].hidden = true;
+  // A stand-in for the browser's type=email check; the server's own check is the one that counts.
+  els["#email"].checkValidity = function () { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(this.value.trim()); };
   const timers = []; let now = 0; let nextTimer = 1;
   const sockets = []; const peers = []; const fetches = []; const mediaRequests = [];
   const windowHandlers = {}; const documentHandlers = {};
@@ -138,6 +140,28 @@ const scenarios = {
     assert.ok(seen[0].stream.getAudioTracks().length === 1);  // the live view's level meter reads this stream
   },
 
+  async "an optional email is sent trimmed with the registration and remembered for this meeting (ADR-33)"() {
+    const storage = new Map();
+    const page = makePage({ storage });
+    page.els["#email"].value = "  priya@example.com ";
+    await page.join("Priya");
+    assert.equal(page.fetches[0].init.body.email, "priya@example.com");
+    assert.equal(storage.get(`convene:${MEETING}:email`), "priya@example.com");
+    const reopened = makePage({ storage });
+    assert.equal(reopened.els["#email"].value, "priya@example.com");
+  },
+
+  async "an invalid email stops the join before the microphone is asked for (ADR-33)"() {
+    const page = makePage();
+    page.els["#name"].value = "Priya";
+    page.els["#email"].value = "priya at example";
+    await page.els["#start"].onclick(); await page.flush();
+    assert.equal(page.mediaRequests.length, 0);
+    assert.equal(page.fetches.length, 0);
+    assert.match(page.els["#detail"].textContent, /email/i);
+    assert.equal(page.els["#email"].focused, true);
+  },
+
   async "happy path: microphone, registration, join, offer, answer, connected"() {
     const page = makePage();
     const ws = await page.join("  Priya  ");
@@ -148,7 +172,7 @@ const scenarios = {
     assert.equal(reg.init.method, "POST");
     assert.equal(reg.init.headers["Content-Type"], "application/json");
     const deviceId = page.storage.get(`convene:${MEETING}:device_id`);
-    assert.deepEqual(plain(reg.init.body), { device_id: deviceId, display_name: "Priya", is_shared: false, color: null });
+    assert.deepEqual(plain(reg.init.body), { device_id: deviceId, display_name: "Priya", is_shared: false, color: null, email: null });
     assert.equal(ws.url, `wss://192.168.50.10:8443/ws/signal/${MEETING}`);
     assert.deepEqual(plain(ws.sent[0]), { type: "join", device_id: deviceId });
     assert.equal(ws.sent[1].type, "offer");

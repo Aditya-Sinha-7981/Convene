@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import network
 from .config import ConfigError, Settings, apply_stt_environment, load_settings
+from .mail.resend import MailConfigError, mailer_from_environment
 from .pipeline.mlx_whisper_adapter import build_adapter
 from .rag.embedding import build_embedding_adapter
 from .rag.reasoning import build_reasoning_adapter
@@ -29,17 +30,18 @@ log = logging.getLogger("convene")
 def create_app(settings: Settings | None = None, *, sink: AudioSink | None = None, host: str | None = None,
                port: int = 8443, transport: TransportConfig | None = None, stt_adapter=None,
                stt_loaded: bool = False, embedding_adapter=None, reasoning_adapter=None,
-               reasoning_loaded: bool = False) -> FastAPI:
+               reasoning_loaded: bool = False, mailer=None) -> FastAPI:
     """Build the application. ``host`` and ``port`` are the address phones use (for join URLs and QR codes).
 
     Pass ``stt_adapter`` to run the transcription pipeline (``stt_loaded=True`` if it is already loaded);
     without one the server does transport only and audio goes to the counting sink. Register hooks on
     ``app.state.runtime`` (``on_meeting_ended``, ``on_transcribed_window``) before the server starts. The
-    interactive API documentation pages are disabled because they load assets from a CDN.
+    interactive API documentation pages are disabled because they load assets from a CDN. ``mailer`` (ADR-33) sends
+    the minutes by email on request; without one that feature reports that it is not configured.
     """
     runtime = Runtime(settings or load_settings(), sink=sink, host=host, port=port, transport=transport,
                       stt_adapter=stt_adapter, stt_loaded=stt_loaded, embedding_adapter=embedding_adapter,
-                      reasoning_adapter=reasoning_adapter, reasoning_loaded=reasoning_loaded)
+                      reasoning_adapter=reasoning_adapter, reasoning_loaded=reasoning_loaded, mailer=mailer)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -96,7 +98,8 @@ def main(argv: list[str] | None = None) -> None:
         address = network.detect_lan_address(args.advertise_ip)
         configured_host = args.public_host if args.public_host is not None else settings.network.public_host
         public_host = network.validate_public_host(configured_host) if configured_host else None
-    except (ConfigError, ipaddress.AddressValueError, network.HostnameError) as exc:
+        mailer = mailer_from_environment(os.environ)
+    except (ConfigError, MailConfigError, ipaddress.AddressValueError, network.HostnameError) as exc:
         sys.exit(f"startup failed: {exc}")
     if address is None:
         print("No LAN address detected. Pass --advertise-ip with this machine's Wi-Fi address; "
@@ -144,11 +147,17 @@ def main(argv: list[str] | None = None) -> None:
             sys.exit(f"startup failed: {exc}")
         print(f"Reasoning model ready ({reasoning.load_seconds:.1f} s)", flush=True)
 
+    if mailer is not None:
+        print(f"Email (ADR-33): the post-meeting page can send the minutes through Resend as {mailer.sender}. "
+              "Nothing is sent unless someone presses Send.", flush=True)
+    else:
+        print("Email is not configured (no RESEND_API_KEY): the minutes can only be downloaded.", flush=True)
+
     transport = TransportConfig()
     join_host = public_host or address
     app = create_app(settings, host=join_host, port=args.port, transport=transport, stt_adapter=adapter,
                      stt_loaded=adapter is not None, embedding_adapter=embedding, reasoning_adapter=reasoning,
-                     reasoning_loaded=reasoning is not None)
+                     reasoning_loaded=reasoning is not None, mailer=mailer)
     where = join_host or "<this machine's address>"
     print(f"Open https://{where}:{args.port}/ on this laptop to start a meeting; phones join from the QR code it shows.",
           flush=True)

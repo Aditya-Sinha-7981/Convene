@@ -49,6 +49,11 @@ body { min-height: 100vh; min-height: 100dvh; }
 .swatch input:disabled + .avatar { background: var(--bg-2); color: var(--idle); transform: none; }
 .swatch input:disabled:not(:checked) + .avatar::after { content: ""; position: absolute; width: 60%; height: 2px; border-radius: 1px; background: var(--idle); transform: rotate(-45deg); }
 .color-hint { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+/* ADR-33: an optional address for the minutes, sent only when the host presses Send after the meeting. */
+.email-field { display: grid; gap: 6px; margin-top: 4px; }
+.email-field label { color: var(--ink-2); font-size: 14px; font-weight: 600; }
+.email-field label span { color: var(--muted); font-weight: 500; }
+.email-hint { margin: 0; color: var(--muted); font-size: 13px; }
 /* Once joined, the picker collapses to the person's own colour. */
 .color-picker.is-set { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
 .color-picker.is-set legend { width: 100%; }
@@ -66,7 +71,7 @@ body { min-height: 100vh; min-height: 100dvh; }
 .color-picker.is-set legend span { display: none; }
 
 /* Live view: after joining, the form gives way to the microphone orb. Stop and Try again stay available. */
-.is-live .join-card > header, .is-live .join-form > label, .is-live #name, .is-live .color-picker, .is-live #start { display: none; }
+.is-live .join-card > header, .is-live .join-form > label, .is-live #name, .is-live .email-field, .is-live .color-picker, .is-live #start { display: none; }
 .is-live .join-guide { margin-bottom: 6px; background: none; padding: 0 0 4px; }
 .is-live .join-guide .mascot-art { display: none; }
 .is-live .join-guide .mascot { justify-content: center; }

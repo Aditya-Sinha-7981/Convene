@@ -24,6 +24,7 @@ from .repositories import audit_events, meetings as meetings_repo, utterances, p
 from .summary.views import summary_payload
 from .export.service import ExportRenderError, MIME
 from .export.report_renderer import render_report_bytes
+from .mail.service import EmailInProgressError, MailNotConfiguredError, NoRecipientsError
 from .reports import service as reports
 from .transport.signaling import signaling_endpoint
 from .policies.extract import ExtractionError
@@ -347,6 +348,33 @@ async def get_export(meeting_id: str, request: Request):
 @router.get("/api/meetings/{meeting_id}/export/status")
 async def get_export_status(meeting_id: str, request: Request):
     return await _runtime(request).export.payload(_meeting_id(meeting_id))
+
+
+@router.get("/api/meetings/{meeting_id}/email")
+async def get_email_status(meeting_id: str, request: Request):
+    """Who asked for the minutes by email (masked addresses) and whether sending is configured (ADR-33)."""
+    return await _runtime(request).email.status(_meeting_id(meeting_id))
+
+
+@router.post("/api/meetings/{meeting_id}/email")
+async def send_email(meeting_id: str, request: Request):
+    """Email the current DOCX minutes to every participant who gave an address. Explicit action only (ADR-33)."""
+    meeting_id = _meeting_id(meeting_id)
+    await read_json_body(request)
+    runtime = _runtime(request)
+    try:
+        return await runtime.email.send(meeting_id)
+    except MailNotConfiguredError as exc:
+        raise ApiError(409, "mail_not_configured", str(exc)) from exc
+    except NoRecipientsError as exc:
+        raise ApiError(409, "no_recipients", str(exc)) from exc
+    except EmailInProgressError as exc:
+        raise ApiError(409, "email_in_progress", str(exc)) from exc
+    except ExportRenderError as exc:
+        state = await runtime.export.payload(meeting_id)
+        if state["export"] is None and state["latest_attempt"] is None:
+            raise ApiError(409, "summary_not_ready", "no ready summary exists for this meeting") from exc
+        raise ApiError(500, "export_render_failed", str(exc)) from exc
 
 
 def _action_item_id(value: str) -> str:
