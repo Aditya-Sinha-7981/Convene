@@ -35,6 +35,7 @@ Convene is successful if, live with only weak internet needed for the trusted-ho
 | Cross-meeting history search / RAG across past meetings | Strengthens the "knowledge base" pitch, but a single strong in-meeting Q&A demo already proves the concept |
 | Action items as a tracked checklist (owner, status) | Nice polish on top of already-extracted action items; not required for the core loop |
 | Meeting history dashboard (list/search past meetings) | Needed as the front door to cross-meeting RAG; build alongside it, not before |
+| Periodic reports across meetings in a date range (CON-18) | Answers the problem statement's "generate periodic reports"; an aggregation of stored summaries and action items with no model call, built after tracked action items |
 | Policy and rules repository | Versioned local policy files strengthen the knowledge-base pitch; CON-17 proceeds before CON-12 only by project-lead exception, and does not make the demo gate pass |
 
 ## Nice-to-have (only if there is meaningfully spare time)
@@ -43,7 +44,7 @@ Convene is successful if, live with only weak internet needed for the trusted-ho
 |---|---|
 | Export as PDF/Markdown in addition to DOCX | One format is enough to prove the concept |
 | Speaker-correction UI polish inside the exported document, not just the live view | Cosmetic once the underlying data already carries corrections |
-| Cloud STT/LLM fallback wired in and tested | Local-first is the plan; only worth wiring if local proves genuinely insufficient in testing |
+| Cloud STT/LLM fallback wired in and tested | Local-first is the plan; only worth wiring if local proves genuinely insufficient in testing. A demo-only Gemini STT connector is wired behind `CONVENE_STT=gemini` (ADR-31); cloud reasoning is not |
 | Dedicated portable Wi-Fi AP comparison | Directly inherited from DT-17's own deferred item — not required to prove the product |
 
 ## Explicitly out of scope (do not build)

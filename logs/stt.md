@@ -213,3 +213,22 @@ clip comes out as Latin-letter gibberish, never Spanish.
 (invalid `languages`, empty prompt, old `language` key rejected). `-m model`: 6 passed.
 
 **Not run:** real Hindi and code-switched speech on phones, noisy rooms, Hindi-accented English at speed.
+
+## 2026-09-30 — Demo-only Gemini STT connector (ADR-31)
+
+The user found local STT quality on real speech too weak for the demo and asked for an environment-switched cloud
+connector, keeping the local path intact.
+
+- `server/pipeline/gemini_adapter.py`: same `transcribe_window` contract. One `generateContent` REST call per VAD
+  segment (16-bit WAV inline, JSON `{"text"}` reply, temperature 0, thinking budget 0 when the model accepts it).
+  One retry on 429/5xx. The key goes only in the `x-goog-api-key` header and is never in logs or errors. Stdlib HTTP,
+  so no new dependency.
+- `config.apply_stt_environment` (server startup only): `CONVENE_STT=local|gemini`, `GEMINI_API_KEY`,
+  `GEMINI_STT_MODEL`, `CONVENE_STT_WORKERS` (default 4 in cloud mode). A missing value fails startup. `load()` makes
+  one real request, so a bad key or model fails before the meeting.
+- `scripts/start_demo.sh` loads a gitignored `stt.env` (template `stt.env.example`). It deliberately does not load
+  `.env`, which holds DNS credentials that must stay out of the server process.
+- Checks: `tests/test_gemini_stt.py` (faked HTTP: request shape, key only in a header, retry, thinking fallback, env
+  switch), plus the updated `tests/test_stt_adapter.py`. **Not run:** a real Gemini request, latency and rate limits
+  with phones, and transcript quality on real speech (no key in this session).
+- Cloud mode sends meeting audio to Google and needs internet: no offline or privacy claim for such a run.

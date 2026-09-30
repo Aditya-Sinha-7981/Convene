@@ -15,6 +15,21 @@ DOCX only for the hackathon build (`requirements.md` — PDF/Markdown export is 
 3. **Action items section** — a table: item text, owner (or "Unassigned"), status — from `ActionItem` rows. Owner and status are the current stored values, including manual edits (CON-16). Due dates and notes are not rendered (ADR-28).
 4. **Full transcript appendix** — every `Utterance` in order, speaker label + timestamp + text, with corrected utterances shown using their corrected attribution (never the original — `speaker-attribution.md`). Low-confidence/generic-label lines are visually distinguished (e.g. italicized or footnoted) in the export, not just in the live dashboard — the export should carry the same honesty about attribution confidence that the live view does.
 
+## Periodic report (CON-18)
+
+A second fixed template in the same renderer package (`server/export/report_renderer.py`, `python-docx`), covering every **ended** meeting whose `created_at` is inside an inclusive UTC date range (the same rule as `GET /api/meetings` `from`/`to`). It aggregates stored rows only: no model is called, and a meeting without a summary is reported as such, never summarized on the fly (ADR-30).
+
+1. **Title block**: "Convene report", the period as UTC dates, the generation date, and the counts (ended meetings, how many have a summary, and how many `created`/`live` meetings in range were left out).
+2. **Action items**: four figures, each followed by a table of every item behind it (item, owner or "Unassigned", due date, status, originating meeting and date), so no number is unexplained:
+   - **Opened in this period**: the items of the current summary of each meeting in the report.
+   - **Closed in this period (done)**: items from *any* meeting whose last `action_item_updated` status change with a timestamp inside the range set them to `done`. An item reopened later in the same range does not count.
+   - **Cancelled in this period**: the same rule for `cancelled`, reported separately.
+   - **Open now**: opened items whose status is `open` **when the report is generated**, not as of the end of the period (reconstructing that would need event replay).
+   Only items of each meeting's current summary count (ADR-28); items of a superseded summary never appear.
+3. **One section per meeting, oldest first**: heading (title and UTC date), duration, participants, then the summary paragraphs or an explicit state: "No summary", "Summary failed: `<error_code>`" (from the attempt's `summary_failed` event) or a pending note. A stale summary is marked "may be out of date". Then the meeting's action items (item, owner, due, status). Transcripts are not included.
+
+Determinism follows the minutes template: fixed core timestamps, UTC dates, the generation date passed in, equivalent document XML for equal data. The report is regenerated on every download from an in-memory buffer. It has no `Export` row (whose `meeting_id` is per meeting) and no file under `data/exports/`. At most `[reports].max_meetings` (default 50) meetings go in one report; a wider range is refused with a message to narrow it and is never truncated. A render failure is `500 export_render_failed` and stores nothing.
+
 ## Generation flow
 
 1. Triggered after summarization completes (automatically) or manually re-triggered from the dashboard.

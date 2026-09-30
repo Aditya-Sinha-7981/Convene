@@ -1,6 +1,6 @@
 """Settings loader: config/convene.toml with defaults. Stdlib only (tomllib)."""
 import tomllib
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, replace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -136,6 +136,12 @@ class SummaryConfig:
 
 
 @dataclass(frozen=True)
+class ReportsConfig:
+    """``[reports]``: periodic reports across meetings (CON-18). No model is involved."""
+    max_meetings: int = 50                   # a wider range is refused (400), never truncated
+
+
+@dataclass(frozen=True)
 class NetworkConfig:
     """``[network]``: optional public hostname used in participant join URLs.
 
@@ -188,6 +194,11 @@ def _check_qa(config: "QaConfig") -> None:
         raise ValueError("history_max_meetings must be positive")
 
 
+def _check_reports(config: "ReportsConfig") -> None:
+    if config.max_meetings < 1:
+        raise ValueError("max_meetings must be positive")
+
+
 def _check_summary(config: "SummaryConfig") -> None:
     if config.max_input_tokens < 256 or config.max_output_tokens < 64:
         raise ValueError("max_input_tokens must be at least 256 and max_output_tokens at least 64")
@@ -220,6 +231,7 @@ class Settings:
     policies: PoliciesConfig = PoliciesConfig()
     summary: SummaryConfig = SummaryConfig()
     network: NetworkConfig = NetworkConfig()
+    reports: ReportsConfig = ReportsConfig()
 
 
 def load_settings(config_path: Path | None = None, *, root: Path | None = None) -> Settings:
@@ -260,7 +272,8 @@ def load_settings(config_path: Path | None = None, *, root: Path | None = None) 
                         rag=_section(RagConfig, data.get("rag", {}), path, "rag"),
                         qa=_section(QaConfig, data.get("qa", {}), path, "qa"), policies=policies,
                         summary=_section(SummaryConfig, data.get("summary", {}), path, "summary"),
-                        network=_section(NetworkConfig, data.get("network", {}), path, "network"))
+                        network=_section(NetworkConfig, data.get("network", {}), path, "network"),
+                        reports=_section(ReportsConfig, data.get("reports", {}), path, "reports"))
     if settings.rag.hard_max_tokens >= settings.embedding.max_tokens:
         raise ConfigError(f"{path}: [rag].hard_max_tokens must leave margin below [models.embedding].max_tokens")
     return settings
@@ -305,6 +318,38 @@ def _section(cls, table, path: Path, name: str):
             _check_qa(built)
         elif cls is SummaryConfig:
             _check_summary(built)
+        elif cls is ReportsConfig:
+            _check_reports(built)
     except ValueError as exc:
         raise ConfigError(f"{path}: [{name}] {exc}") from exc
     return built
+
+
+STT_BACKENDS = ("local", "gemini")
+DEFAULT_CLOUD_STT_WORKERS = 4
+
+
+def apply_stt_environment(settings: Settings, environ) -> Settings:
+    """The STT backend chosen by the operator's environment, for the server process only (ADR-06, ADR-31).
+
+    ``CONVENE_STT=local`` (or unset) keeps ``[models.stt]`` exactly as configured. ``CONVENE_STT=gemini`` is the
+    deliberate, demo-only cloud connector: it needs ``GEMINI_API_KEY`` and ``GEMINI_STT_MODEL``, and raises
+    ``[pipeline].workers`` to ``CONVENE_STT_WORKERS`` (default 4) because cloud calls wait on the network, not
+    the GPU. The key itself is never copied into ``Settings``. A missing value fails startup; there is no
+    automatic fallback in either direction.
+    """
+    choice = (environ.get("CONVENE_STT") or "local").strip().lower()
+    if choice in ("local", "mlx"):
+        return settings
+    if choice != "gemini":
+        raise ConfigError(f"CONVENE_STT must be one of {', '.join(STT_BACKENDS)}, got {choice!r}")
+    model = (environ.get("GEMINI_STT_MODEL") or "").strip()
+    if not model:
+        raise ConfigError("CONVENE_STT=gemini needs GEMINI_STT_MODEL, for example gemini-2.5-flash")
+    if not (environ.get("GEMINI_API_KEY") or "").strip():
+        raise ConfigError("CONVENE_STT=gemini needs GEMINI_API_KEY in the environment")
+    raw_workers = (environ.get("CONVENE_STT_WORKERS") or str(DEFAULT_CLOUD_STT_WORKERS)).strip()
+    if not raw_workers.isdigit() or not 1 <= int(raw_workers) <= 16:
+        raise ConfigError("CONVENE_STT_WORKERS must be an integer from 1 to 16")
+    return replace(settings, stt=replace(settings.stt, runtime="gemini", model=model, revision=""),
+                   pipeline=replace(settings.pipeline, workers=int(raw_workers)))

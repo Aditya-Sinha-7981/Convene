@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<script src="/static/theme.js"></script>
+<title>Convene — Reports</title>
+<link rel="icon" href="/static/brand/logo-mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/history.css">
+<link rel="stylesheet" href="/static/reports.css">
+</head>
+<body>
+<header class="hx-bar">
+  <a class="brand" href="/"><img src="/static/brand/logo.svg" alt="Convene home"></a>
+  <div class="hx-bar-actions"><button class="theme-toggle" type="button" data-theme-toggle></button><a class="btn btn-secondary hx-new" href="/#start">Start a meeting</a></div>
+</header>
+<main class="hx rp-page">
+  <div class="hx-head">
+    <h1>Reports</h1>
+    <p class="muted">One Word document covering every ended meeting in a period: each meeting's summary and action items, and how many items were opened, closed and are still open. It is built from what Convene already stored, with no AI call. Meetings are in <a href="/history">Past meetings</a>; items are in <a href="/action-items">Action items</a>.</p>
+  </div>
+
+  <form id="range" class="rp-card">
+    <div class="rp-presets" role="group" aria-label="Quick ranges">
+      <button class="btn btn-secondary rp-preset" type="button" data-preset="this-month">This month</button>
+      <button class="btn btn-secondary rp-preset" type="button" data-preset="last-month">Last month</button>
+      <button class="btn btn-secondary rp-preset" type="button" data-preset="this-quarter">This quarter</button>
+    </div>
+    <div class="hx-filters">
+      <label class="hx-field"><span>From</span><input id="from" class="field" type="date" required></label>
+      <label class="hx-field"><span>To</span><input id="to" class="field" type="date" required></label>
+    </div>
+    <p class="rp-note muted">Dates are UTC, the same as the Past meetings filter. A meeting belongs to the day it was created.</p>
+    <p id="preview" class="rp-preview" role="status" aria-live="polite">Pick a date range.</p>
+    <p id="error" class="hx-error" role="alert"></p>
+    <div class="rp-actions"><a id="download" class="btn btn-primary" href="#" aria-disabled="true">Download report (.docx)</a></div>
+  </form>
+</main>
+<script type="module" src="/static/reports.js"></script>
+</body>
+</html>

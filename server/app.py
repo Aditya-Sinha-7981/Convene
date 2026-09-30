@@ -6,6 +6,7 @@ prototype this replaces is recoverable from Git history (commit d44ba68).
 import argparse
 import ipaddress
 import logging
+import os
 import sys
 from contextlib import asynccontextmanager
 
@@ -14,7 +15,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from . import network
-from .config import ConfigError, Settings, load_settings
+from .config import ConfigError, Settings, apply_stt_environment, load_settings
 from .pipeline.mlx_whisper_adapter import build_adapter
 from .rag.embedding import build_embedding_adapter
 from .rag.reasoning import build_reasoning_adapter
@@ -91,7 +92,7 @@ def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s", datefmt="%H:%M:%S")
 
     try:
-        settings = load_settings(args.config)
+        settings = apply_stt_environment(load_settings(args.config), os.environ)
         address = network.detect_lan_address(args.advertise_ip)
         configured_host = args.public_host if args.public_host is not None else settings.network.public_host
         public_host = network.validate_public_host(configured_host) if configured_host else None
@@ -121,8 +122,13 @@ def main(argv: list[str] | None = None) -> None:
     else:
         try:
             adapter = build_adapter(settings.stt)
-            print(f"Loading STT model {settings.stt.model} from the local cache ...", flush=True)
-            adapter.load()  # fails loudly here, not mid-meeting; never downloads
+            if settings.stt.runtime == "gemini":
+                print(f"CLOUD STT (demo only, CONVENE_STT=gemini): speech segments are sent to Google Gemini "
+                      f"({settings.stt.model}, {settings.pipeline.workers} workers). Checking the key and model ...",
+                      flush=True)
+            else:
+                print(f"Loading STT model {settings.stt.model} from the local cache ...", flush=True)
+            adapter.load()  # fails loudly here, not mid-meeting; the local model never downloads
         except Exception as exc:
             sys.exit(f"startup failed: {exc}")
         print(f"STT model ready ({adapter.load_seconds:.1f} s)", flush=True)

@@ -1,4 +1,5 @@
 """HTTP routes: the REST API and the served pages (docs/api.md). Handlers stay thin; logic is in meetings.py."""
+import asyncio
 import json
 import logging
 import re
@@ -7,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, Request, WebSocket, UploadFile, File, Form
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import meetings as service
@@ -22,6 +23,8 @@ from .timeutil import utc_now
 from .repositories import audit_events, meetings as meetings_repo, utterances, policies
 from .summary.views import summary_payload
 from .export.service import ExportRenderError, MIME
+from .export.report_renderer import render_report_bytes
+from .reports import service as reports
 from .transport.signaling import signaling_endpoint
 from .policies.extract import ExtractionError
 from .policies.service import PolicyVersionNotFailed
@@ -433,6 +436,42 @@ async def add_action_item_note(action_item_id: str, request: Request):
     return JSONResponse(await _runtime(request).db.run(add), status_code=201)
 
 
+def _report_range(request: Request) -> tuple[str, str]:
+    """Both bounds are required and parsed exactly like ``GET /api/meetings`` ``from``/``to`` (CON-18)."""
+    params = request.query_params
+    if not params.get("from") or not params.get("to"):
+        raise ApiError(400, "invalid_request", "from and to are both required")
+    return _bound(params.get("from"), "from", end_of_day=False), _bound(params.get("to"), "to", end_of_day=True)
+
+
+@router.get("/api/reports/preview")
+async def report_preview(request: Request):
+    """How many ended meetings a report over this range would hold. Renders nothing, writes nothing."""
+    from_at, to_at = _report_range(request)
+    cap = _runtime(request).settings.reports.max_meetings
+    return await _runtime(request).db.run(lambda tx: reports.preview(tx.conn, from_at, to_at, cap))
+
+
+@router.get("/api/reports/download")
+async def report_download(request: Request):
+    """The periodic report DOCX, regenerated on every request from stored rows; nothing is stored (ADR-30)."""
+    if request.query_params.get("format", "docx") != "docx":
+        raise ApiError(400, "unsupported_format", "only DOCX reports are supported")
+    from_at, to_at = _report_range(request)
+    cap = _runtime(request).settings.reports.max_meetings
+    try:
+        data = await _runtime(request).db.run(lambda tx: reports.build(tx.conn, from_at, to_at, cap))
+    except reports.ReportEmptyError as exc:
+        raise ApiError(409, "report_empty", str(exc)) from exc
+    try:
+        content = await asyncio.to_thread(render_report_bytes, data, utc_now())  # off the event loop
+    except Exception as exc:
+        log.exception("report render failed")
+        raise ApiError(500, "export_render_failed", "the report could not be rendered; retry is safe") from exc
+    name = f"convene-report-{from_at[:10]}-to-{to_at[:10]}.docx"
+    return Response(content, media_type=MIME, headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
 @router.get("/metrics")
 async def metrics(request: Request):
     """Read-only per-device diagnostics (not part of the contract; nothing may depend on it)."""
@@ -507,6 +546,12 @@ async def history_page():
 async def action_items_page():
     """Action items across meetings (CON-16)."""
     return _page("action_items.html")
+
+
+@router.get("/reports")
+async def reports_page():
+    """Periodic reports across meetings in a date range (CON-18)."""
+    return _page("reports.html")
 
 
 @router.get("/policies")

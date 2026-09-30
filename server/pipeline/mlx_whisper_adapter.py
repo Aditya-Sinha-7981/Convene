@@ -104,9 +104,19 @@ class MlxWhisperAdapter:
         return summarize_segments(self._transcribe(np.ascontiguousarray(audio, dtype=np.float32))["segments"], self.config)
 
 
-def build_adapter(config: SttModelConfig):
-    """The adapter for ``[models.stt].runtime``. Cloud runtimes are documented but not wired (docs/models.md)."""
+def build_adapter(config: SttModelConfig, environ=None):
+    """The adapter for ``[models.stt].runtime``: local ``mlx``, or ``gemini`` when the operator chose it (ADR-31).
+
+    ``gemini`` is reached only through ``config.apply_stt_environment`` (``CONVENE_STT=gemini``); its key is read
+    from the environment here so it never enters ``Settings``. Other cloud runtimes are not wired.
+    """
     if config.runtime == "mlx":
         return MlxWhisperAdapter(config)
-    raise ValueError(f"STT runtime {config.runtime!r} is not available; only 'mlx' is wired. Cloud backends are "
-                     "a manual, deliberate fallback and are not implemented (docs/models.md).")
+    if config.runtime == "gemini":
+        from .gemini_adapter import GeminiSttAdapter
+        key = ((os.environ if environ is None else environ).get("GEMINI_API_KEY") or "").strip()
+        if not key:
+            raise ValueError("STT runtime 'gemini' is not available: GEMINI_API_KEY is not set")
+        return GeminiSttAdapter(config, api_key=key)
+    raise ValueError(f"STT runtime {config.runtime!r} is not available; only 'mlx' and the demo-only 'gemini' "
+                     "connector are wired (docs/models.md).")

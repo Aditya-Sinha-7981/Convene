@@ -20,6 +20,6 @@ The operational instructions for the current prototype are in the [root README](
 | Models and meeting intelligence | [Models](models.md), [RAG and Q&A](rag-and-qa.md), [summarization](summarization.md) |
 | Versioned local policies | [Policy repository](policies.md) |
 | UI and output | [Frontend](frontend.md), [export](export.md) |
-| Running and verifying | [Deployment](deployment.md), [network and HTTPS](network-and-https.md), [domain setup](domain-setup.md), [testing](testing.md), [manual tests](manual-tests.md), [demo](demo.md) |
+| Running and verifying | [Deployment](deployment.md), [network and HTTPS](network-and-https.md), [domain setup](domain-setup.md), [testing](testing.md), [manual tests](manual-tests.md), [demo](demo.md), [demo features and flow](demo-features.md) |
 
 When a plan and a topic contract differ, follow the topic contract and update the plan. For rationale, consult `decisions.md`.

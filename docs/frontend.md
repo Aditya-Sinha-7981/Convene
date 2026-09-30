@@ -96,6 +96,15 @@ Functional and legible beats visually elaborate (`requirements.md`). The fronten
   meetings newest first, and can mark the item done in the same request. Overdue is shown with the error colour
   and the word "Overdue", never with amber, which is reserved for "Needs review". The server computes `overdue`.
 
+### Reports (CON-18)
+
+- Implemented at `/reports` (`client/reports.html`, `reports.js`, `reports.css`), linked from the home page nav and the
+  `/history` intro. From/To date inputs (the same UTC dates as the `/history` filter) and three presets (This month,
+  Last month, This quarter) that compute plain dates in the browser; the server has no preset logic. A live preview
+  line from `GET /api/reports/preview` reads, for example, "7 meetings (6 with summaries) · 2 not yet ended,
+  excluded". The download button is a link to `GET /api/reports/download` and is disabled for an invalid range, an
+  empty range, or a range over the cap. The page defaults to this month.
+
 ### Demo database inspector
 
 - Implemented at `/database`: a laptop-only, read-only view over the same SQLite file that stores meetings. It shows

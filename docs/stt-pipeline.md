@@ -99,4 +99,4 @@ This document used to fix ~1 s windows. Measurement on the reference laptop show
 
 - It does not decide who is speaking — that is entirely the Attribution Layer's job, using this stage's output plus (for shared devices) a separate speaker-embedding classification, per `speaker-attribution.md`.
 - It does not persist raw audio by default — only text and metadata cross into the `Utterance` table (`data-model.md`). There is no debug flag that saves audio.
-- It does not call a cloud model. Cloud STT is a documented manual fallback behind the same interface (`models.md`) and is not wired.
+- It does not call a cloud model unless the operator started the server with `CONVENE_STT=gemini`, the demo-only connector behind the same interface (`models.md`, ADR-31). There is no automatic fallback.
