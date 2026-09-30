@@ -14,7 +14,8 @@ const MEETING = "0d4f6a52-7c1b-4e7a-b0a3-51e1f4c2a9d8";
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 function element() {
-  return { value: "", textContent: "", disabled: false, hidden: false, onclick: null,
+  return { value: "", textContent: "", disabled: false, hidden: false, onclick: null, attrs: {},
+           setAttribute(name, value) { this.attrs[name] = value; },
            focus() { this.focused = true; }, click() { return this.onclick && this.onclick(); } };
 }
 
@@ -23,7 +24,7 @@ const plain = value => JSON.parse(JSON.stringify(value));
 
 function makePage({ meetingId = MEETING, storage = new Map(), registerReply, online = true } = {}) {
   const els = { "#name": element(), "#status": element(), "#detail": element(), "#start": element(),
-                "#stop": element(), "#retry": element() };
+                "#stop": element(), "#pause": element(), "#retry": element() };
   els["#retry"].hidden = true;
   const timers = []; let now = 0; let nextTimer = 1;
   const sockets = []; const peers = []; const fetches = []; const mediaRequests = [];
@@ -50,7 +51,7 @@ function makePage({ meetingId = MEETING, storage = new Map(), registerReply, onl
     close() { this.closed = true; }
     setState(state) { this.connectionState = state; this.onconnectionstatechange(); }
   }
-  const track = { onended: null, stopped: false, stop() { this.stopped = true; } };
+  const track = { onended: null, stopped: false, enabled: true, stop() { this.stopped = true; } };
   const stream = { getTracks: () => [track], getAudioTracks: () => [track] };
   const sandbox = {
     document: {
@@ -140,7 +141,8 @@ const scenarios = {
   async "happy path: microphone, registration, join, offer, answer, connected"() {
     const page = makePage();
     const ws = await page.join("  Priya  ");
-    assert.deepEqual(plain(page.mediaRequests), [{ audio: true, video: false }]);  // constraints unchanged from the prototype
+    // noise suppression and echo cancellation on; automatic gain off, so the far phone stays quieter (ADR-32)
+    assert.deepEqual(plain(page.mediaRequests), [{ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false }, video: false }]);
     const [reg] = page.fetches;
     assert.equal(reg.url, `/api/meetings/${MEETING}/devices`);
     assert.equal(reg.init.method, "POST");
@@ -159,6 +161,40 @@ const scenarios = {
     assert.equal(page.storage.get(`convene:${MEETING}:name`), "Priya");
     assert.equal(page.els["#start"].disabled, true);
     assert.equal(page.els["#stop"].disabled, false);
+    assert.equal(page.els["#pause"].disabled, false);
+  },
+
+  async "Pause mutes the microphone but stays in the meeting; Resume turns it back on"() {
+    const page = makePage();
+    const paused = [];
+    page.window.conveneMicPaused = value => paused.push(value);
+    const ws = await page.join();
+    const sent = ws.sent.length;
+    page.els["#pause"].onclick(); await page.flush();
+    assert.equal(page.track.enabled, false);           // silence is sent; the connection stays up
+    assert.equal(page.track.stopped, false);
+    assert.equal(ws.sent.length, sent);                 // no leave message
+    assert.equal(ws.closedByPage, undefined);
+    assert.equal(page.els["#status"].textContent, "connected");
+    assert.equal(page.els["#pause"].textContent, "Resume microphone");
+    assert.match(page.els["#detail"].textContent, /still in the meeting/);
+    page.els["#pause"].onclick(); await page.flush();
+    assert.equal(page.track.enabled, true);
+    assert.equal(page.els["#pause"].textContent, "Pause microphone");
+    assert.deepEqual(paused, [true, false]);
+    assert.deepEqual(page.pendingTimers(), []);
+  },
+
+  async "a paused phone that reconnects stays paused"() {
+    const page = makePage();
+    await page.join();
+    page.els["#pause"].onclick(); await page.flush();
+    page.peers.at(-1).setState("failed"); await page.flush();
+    await page.advance();
+    page.sockets.at(-1).onopen(); await page.flush();
+    await page.sockets.at(-1).receive({ type: "joined", is_reconnect: true, peer_active: false, participant_ids: [], device_status: "connected", reconnect_count: 1, device_id: "x" });
+    await page.flush();
+    assert.equal(page.peers.at(-1).tracks[0].enabled, false);
   },
 
   async "the consent notice is on the page"() {
@@ -274,10 +310,14 @@ const scenarios = {
     assert.deepEqual(page.pendingTimers(), [1000]);
   },
 
-  async "Stop tells the server the phone left and releases the microphone"() {
+  async "Leave tells the server the phone left and releases the microphone, even while paused"() {
     const page = makePage();
     const ws = await page.join();
+    page.els["#pause"].onclick(); await page.flush();
     page.els["#stop"].onclick(); await page.flush();
+    assert.equal(page.els["#pause"].disabled, true);
+    assert.equal(page.els["#pause"].textContent, "Pause microphone");
+    assert.match(page.els["#detail"].textContent, /left the meeting/);
     assert.deepEqual(plain(ws.sent.at(-1)), { type: "leave" });
     assert.equal(page.track.stopped, true);
     assert.equal(page.els["#status"].textContent, "stopped");

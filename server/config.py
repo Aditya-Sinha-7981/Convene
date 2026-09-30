@@ -84,6 +84,12 @@ class PipelineConfig:
     log_transcripts: bool = True             # print each transcribed line on the server console
     priority_high_backlog_windows: int = 4   # reasoning/embedding wait while more than this many windows are pending
     priority_max_wait_s: float = 3.0         # ...but never longer than this
+    # Cross-device bleed filter (ADR-32, segments mode): drop a segment whose loudness envelope matches another
+    # phone's over the same span while that phone heard it at least ``bleed_min_level_gap_db`` louder.
+    bleed_filter: bool = True
+    bleed_min_correlation: float = 0.7
+    bleed_min_level_gap_db: float = 6.0
+    bleed_max_lag_ms: int = 300
 
 
 @dataclass(frozen=True)
@@ -211,6 +217,10 @@ def _check_pipeline(config: "PipelineConfig") -> None:
         raise ValueError(f"segmentation must be 'segments' or 'fixed', got {config.segmentation!r}")
     if config.segment_min_ms >= config.segment_max_ms or config.segment_end_silence_ms <= 0:
         raise ValueError("segment_min_ms must be below segment_max_ms and segment_end_silence_ms must be positive")
+    if not 0.0 < config.bleed_min_correlation <= 1.0 or config.bleed_min_level_gap_db < 0 \
+            or not 0 <= config.bleed_max_lag_ms <= 2000:
+        raise ValueError("bleed_min_correlation must be in (0, 1], bleed_min_level_gap_db non-negative, "
+                         "bleed_max_lag_ms 0..2000")
     if config.overload_policy != "drop_oldest":
         raise ValueError("overload_policy must be 'drop_oldest' (the only policy implemented)")
 

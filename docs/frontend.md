@@ -19,7 +19,13 @@ Functional and legible beats visually elaborate (`requirements.md`). The fronten
 - Once registered with a microphone, the page switches to a live view: the name field, colour picker and Join button
   give way to an orb in the participant's colour, with their avatar in the middle, that swells and ripples with the
   microphone level (read locally from the stream being sent; never played back) and says "Hearing you" or
-  "Listening…". Stop microphone stays; stopping returns to the form.
+  "Listening…". Two controls stay: **Pause microphone** mutes the sent track (the phone keeps its connection and its
+  place in the meeting, the server receives silence, and the orb says "Paused"; Resume turns it back on, and a paused
+  phone stays paused across a reconnect), and **Leave meeting** sends `leave`, releases the microphone and returns
+  to the form. Neither control is shown before joining.
+- The microphone is requested with echo cancellation and noise suppression on and automatic gain control off, so a
+  phone far from a speaker stays quieter than the near one (the bleed filter relies on it, ADR-32). Browsers treat
+  these as hints.
 - A guide (brand mascot and a one-line message) follows the connection status. While connecting or reconnecting the
   mascot walks across its track; once live it shows the participant's own avatar. It never covers the controls.
 - The phone surface is deliberately light: locally served system fonts and small local SVGs, but no remote assets,

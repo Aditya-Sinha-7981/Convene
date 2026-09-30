@@ -119,3 +119,26 @@ def test_environment_switch(tmp_path):
                 {"CONVENE_STT": "gemini", "GEMINI_API_KEY": "k", "GEMINI_STT_MODEL": "m", "CONVENE_STT_WORKERS": "0"}):
         with pytest.raises(ConfigError):
             apply_stt_environment(settings, bad)
+
+
+@pytest.mark.parametrize(("devanagari", "latin"), [
+    ("क्या कर रहे हो", "kya kar rahe ho"),
+    ("हाँ ठीक है, मैं कल देख लूँगा", "haan theek hai, main kal dekh loonga"),
+    ("इस प्रोडक्ट को सही से काम करना ही पड़ेगा।", "is prodakt ko sahi se kaam karna hi padega."),
+    ("समझना", "samajhna"), ("कमरा", "kamra"), ("बात", "baat"), ("न", "na"),
+    ("अच्छा चलो meeting शुरू करते हैं", "accha chalo meeting shuru karte hain"),
+    ("ज़रूर फ़िर से", "zaroor fir se"), ("मुझे नहीं पता", "mujhe nahi pata"),
+    ("already Latin text", "already Latin text"),
+])
+def test_devanagari_is_written_in_hinglish_latin_letters(devanagari, latin):
+    from server.pipeline.romanize import has_devanagari, romanize
+    assert romanize(devanagari) == latin and not has_devanagari(romanize(devanagari))
+
+
+def test_a_devanagari_reply_is_stored_in_latin_letters_and_the_prompt_forbids_translation():
+    assert parse_reply(reply("कुछ भी हो जाए, demo चलेगा")).text == "kuch bhi ho jaae, demo chalega"
+    stt, _ = adapter(reply(""))
+    body = stt.payload(AUDIO)
+    system = body["systemInstruction"]["parts"][0]["text"]
+    assert "not a translator" in system and "Never output Devanagari" in system and "Wrong (translated)" in system
+    assert "Do not translate" in body["contents"][0]["parts"][1]["text"]

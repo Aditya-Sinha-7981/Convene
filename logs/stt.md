@@ -232,3 +232,29 @@ connector, keeping the local path intact.
   switch), plus the updated `tests/test_stt_adapter.py`. **Not run:** a real Gemini request, latency and rate limits
   with phones, and transcript quality on real speech (no key in this session).
 - Cloud mode sends meeting audio to Google and needs internet: no offline or privacy claim for such a run.
+
+## 2026-09-30 — Cross-device bleed filter, mic constraints, pause vs leave (ADR-32)
+
+- `server/pipeline/bleed.py`: before STT, a segment is dropped when its 20 ms loudness envelope correlates (>= 0.7,
+  best lag within ±300 ms) with another phone of the same meeting that heard it >= 6 dB louder. Two overlapping
+  speakers, equal levels, missing history and errors all keep the segment. Drops are audited as
+  `stt_window_dropped` (`bleed`) and counted per device as `bleed` in `/metrics` stats.
+- `Segmenter.levels` records each frame's level on the server clock; `[pipeline] bleed_*` settings.
+- Phone: `getUserMedia` with echo cancellation and noise suppression on, automatic gain control off. The join page
+  has Pause/Resume microphone (track disabled, connection kept) separate from Leave meeting.
+- Checks: `tests/test_bleed.py` (8, synthetic TTS speech: a 12 dB quieter, 40 ms delayed copy is dropped; two people
+  talking at once, equal levels, another meeting, and the off switch are all kept) and the join-page harness (pause,
+  paused across a reconnect, leave while paused).
+- **Not run:** real phones. The B7 bleed test (distance, count of wrong-name lines with the filter on and off), whether
+  iOS Safari and Android Chrome honour `autoGainControl: false`, and whether quiet speakers still clear the VAD with
+  gain control off.
+
+## 2026-09-30 — Gemini returned Devanagari and English translations
+
+A live test meeting on `gemini-3.6-flash` produced one line translated into English and one in Devanagari, despite the
+prompt. The local Whisper path cannot do this (English-mode decoding). Fix: a firmer prompt ("transcriber, not a
+translator", Latin letters only, right and wrong examples, repeated in the user turn), and `server/pipeline/romanize.py`,
+a deterministic Devanagari-to-Hinglish converter (inherent-a deletion at word end and in V C _ C V, common words
+spelled the usual way) applied to every Gemini reply. Tests: `tests/test_gemini_stt.py`. **Not run:** the new prompt
+against the real model. Translation can only be discouraged, not detected; if it persists, use the local model or
+another Gemini model.

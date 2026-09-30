@@ -5,8 +5,10 @@ the default stays the local mlx-whisper adapter and nothing ever falls back to t
 speech segment the VAD passes becomes one ``generateContent`` request carrying the segment as a 16-bit WAV. The
 reply is constrained to JSON ``{"text": ...}``.
 
-Only English and Latin-script Hindi may come out (ADR-24); the prompt says so, the way the local adapter's
-decode options do. ``stt_confidence`` is ``exp(avgLogprobs)`` when the API reports it, else a fixed
+Only English and Latin-script Hindi may come out (ADR-24). The prompt says so with right and wrong examples, and
+because a model can still answer in Devanagari, every reply is passed through ``romanize`` (Devanagari to Hinglish
+Latin letters) before it is returned. Translation into English cannot be caught mechanically; the prompt is the only
+defence against it. ``stt_confidence`` is ``exp(avgLogprobs)`` when the API reports it, else a fixed
 ``DEFAULT_CONFIDENCE``: like Whisper's score it ranks segments and is not a calibrated probability.
 
 The API key travels only in the ``x-goog-api-key`` header. It is never logged, stored, or put in an error message.
@@ -25,6 +27,7 @@ import numpy as np
 
 from ..config import SttModelConfig
 from .adapter import SttResult
+from .romanize import romanize
 
 ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 DEFAULT_CONFIDENCE = 0.9
@@ -50,16 +53,28 @@ def wav_bytes(audio: np.ndarray, sample_rate: int = 16000) -> bytes:
 
 
 def instruction(config: SttModelConfig) -> str:
-    rules = ["You are a speech-to-text engine for a meeting. Transcribe exactly what is said in the audio.",
-             "Do not translate, summarize, answer, or add commentary, speaker names, or timestamps.",
+    rules = ["You are a speech-to-text engine for a meeting. Write down exactly the words that are spoken, in the "
+             "order they are spoken. You are a transcriber, not a translator.",
+             "Output only Latin (English) letters. Never output Devanagari or any other script.",
+             "Do not translate, summarize, answer, correct, or add commentary, speaker names, or timestamps.",
              'If there is no intelligible speech (silence, noise, music), return {"text": ""}.']
     if "hi" in config.languages:
-        rules.append("Speech is English or Hindi, often mixed. Write English as English. Write Hindi in Latin "
-                     "letters the way people type Hinglish (for example: \"haan, main kal dekh lunga\"), never "
-                     "in Devanagari and never translated into English.")
+        rules += ["Speakers mix Hindi and English (Hinglish). Keep every word in the language it was spoken in: "
+                  "English words stay English, and Hindi words are written phonetically in Latin letters, the way "
+                  "people type Hindi in chat messages.",
+                  'Example. Spoken: "kya kar rahe ho, meeting kab start hogi?" '
+                  'Correct: {"text": "kya kar rahe ho, meeting kab start hogi?"} '
+                  'Wrong (translated): {"text": "what are you doing, when will the meeting start?"} '
+                  'Wrong (Devanagari): {"text": "क्या कर रहे हो, मीटिंग कब स्टार्ट होगी?"}',
+                  'Example. Spoken: "haan theek hai, main kal deploy kar dunga" '
+                  'Correct: {"text": "haan theek hai, main kal deploy kar dunga"}']
     else:
         rules.append("Speech is English. Write it in English.")
     return " ".join(rules)
+
+
+USER_PROMPT = ("Transcribe this audio word for word. Hindi stays Hindi, written in Latin letters (Hinglish); "
+               "English stays English. Do not translate. No Devanagari.")
 
 
 def parse_reply(body: dict) -> SttResult:
@@ -80,7 +95,7 @@ def parse_reply(body: dict) -> SttResult:
         text = value.get("text", "") if isinstance(value, dict) else ""
     except ValueError:
         text = raw  # the schema was ignored; the plain reply is still the transcript
-    text = " ".join(str(text).split())
+    text = " ".join(romanize(str(text)).split())  # ADR-24 backstop: a model that still returns Devanagari
     if not text:
         return SttResult("", 0.0)
     logprob = candidate.get("avgLogprobs")
@@ -136,7 +151,7 @@ class GeminiSttAdapter:
             "contents": [{"role": "user", "parts": [
                 {"inlineData": {"mimeType": "audio/wav",
                                 "data": base64.b64encode(wav_bytes(audio, self.sample_rate)).decode("ascii")}},
-                {"text": "Transcribe this audio."}]}],
+                {"text": USER_PROMPT}]}],
             "generationConfig": generation,
         }
 

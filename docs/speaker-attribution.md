@@ -71,7 +71,7 @@ stable 1-based join order (`joined_at`, then `device_id`), for example `Speaker 
 
 ## Residual risk: cross-device audio bleed
 
-Device-based attribution (Path 1) assumes a device's audio predominantly reflects its own owner. In practice, a nearby phone can pick up another speaker at reduced volume. This is mitigated, not eliminated, by the VAD energy-gating in `transport.md`/`stt-pipeline.md` (a distant, quieter voice is less likely to clear a device's own gate than its actual owner). Where it does slip through, the result is a stray line attributed to the wrong (but real, connected) participant — not a fabricated name — and it remains manually correctable like any other utterance. This is a documented, accepted limitation, not a silent gap: state it plainly if asked, rather than implying the system is bleed-proof.
+Device-based attribution (Path 1) assumes a device's audio predominantly reflects its own owner. In practice, a nearby phone can pick up another speaker at reduced volume. This is mitigated, not eliminated, by the VAD energy-gating in `transport.md`/`stt-pipeline.md` (a distant, quieter voice is less likely to clear a device's own gate than its actual owner), and by the cross-device bleed filter (ADR-32), which drops a segment when another phone in the meeting heard the same speech clearly louder. Where it does slip through, the result is a stray line attributed to the wrong (but real, connected) participant — not a fabricated name — and it remains manually correctable like any other utterance. This is a documented, accepted limitation, not a silent gap: state it plainly if asked, rather than implying the system is bleed-proof.
 
 ## What this document deliberately does not do
 

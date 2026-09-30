@@ -59,6 +59,7 @@ class DeviceQueue:
     failed: int = 0
     dropped: int = 0
     suppressed: int = 0   # hallucinated stock phrases on windows the VAD judged mostly non-speech
+    bleed: int = 0        # segments dropped as another phone's speech heard quieter (ADR-32); not in ``dropped``
     last_counted: int = 0  # window_id whose outcome was last counted, so a window is never counted twice
 
 
@@ -142,6 +143,12 @@ class SttScheduler:
             state.in_ring = True
             self._ring.append(window.device_id)
         self._available.release()
+
+    def reject(self, window: Window, reason: str) -> None:
+        """Drop a window before it is queued (``reason`` ``bleed``): audited and reported, never silent."""
+        state = self._device(window.device_id, window.meeting_id)
+        state.bleed += 1
+        self._spawn(self._report_drop(state, window, reason))
 
     def _take(self) -> Window:
         """Next window in round-robin order across devices. A permit guarantees one exists."""
@@ -250,17 +257,18 @@ class SttScheduler:
         except StorageError:
             log.exception("could not record the STT invocation for %s", related)
 
-    async def _report_drop(self, state: DeviceQueue, dropped: Window) -> None:
+    async def _report_drop(self, state: DeviceQueue, dropped: Window, reason: str = "overload") -> None:
         if self.db is not None:
             try:
                 await self.db.run(lambda tx: emit(
                     tx, "stt_window_dropped", "stt",
-                    {"device_id": dropped.device_id, "window_id": dropped.window_id, "reason": "overload"},
+                    {"device_id": dropped.device_id, "window_id": dropped.window_id, "reason": reason},
                     meeting_id=dropped.meeting_id))
             except StorageError:
                 log.exception("could not audit a dropped window for %s", dropped.device_id)
+        message = "dropped: the queue was full" if reason == "overload" else "dropped: another phone heard this louder"
         await self._deliver(self._outcome(dropped, "dropped", "", 0.0, 0.0, (time.monotonic() - dropped.created_at) * 1000,
-                                          "dropped: the queue was full"))
+                                          message))
 
     async def _deliver(self, outcome: TranscribedWindow) -> None:
         if self.on_window is None:
@@ -299,4 +307,4 @@ class SttScheduler:
 
     def stats(self) -> dict[str, dict]:
         return {d: {"enqueued": s.enqueued, "transcribed": s.transcribed, "empty": s.empty, "failed": s.failed,
-                    "dropped": s.dropped, "suppressed": s.suppressed, **self.backlog(d)} for d, s in self.devices.items()}
+                    "dropped": s.dropped, "suppressed": s.suppressed, "bleed": s.bleed, **self.backlog(d)} for d, s in self.devices.items()}
