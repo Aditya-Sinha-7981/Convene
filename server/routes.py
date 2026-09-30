@@ -23,6 +23,8 @@ from .repositories import audit_events, meetings as meetings_repo, utterances, p
 from .summary.views import summary_payload
 from .export.service import ExportRenderError, MIME
 from .transport.signaling import signaling_endpoint
+from .policies.extract import ExtractionError
+from .policies.service import PolicyVersionNotFailed
 
 log = logging.getLogger("convene.api")
 
@@ -243,10 +245,7 @@ async def create_policy(request: Request, title: str = Form(...), tags: str | No
     except OverflowError: raise ApiError(413, "payload_too_large", "policy file exceeds the configured upload limit")
     except ValueError as exc: raise ApiError(400, "invalid_request", str(exc)) from exc
     except KeyError: raise ApiError(404, "policy_not_found", "no such policy")
-    except Exception as exc:
-        from .policies.extract import ExtractionError
-        if isinstance(exc, ExtractionError): raise ApiError(400, exc.code, exc.message)
-        raise
+    except ExtractionError as exc: raise ApiError(400, exc.code, exc.message) from exc
 
 
 @router.post("/api/policies/{policy_id}/versions")
@@ -255,7 +254,9 @@ async def add_policy_version(policy_id: str, request: Request, file: UploadFile 
     data = await file.read()
     try: return JSONResponse(await _runtime(request).policies.upload(None, [], file.filename or "upload", data, policy_id), status_code=202)
     except OverflowError: raise ApiError(413, "payload_too_large", "policy file exceeds the configured upload limit")
+    except ValueError as exc: raise ApiError(400, "invalid_request", str(exc)) from exc
     except KeyError: raise ApiError(404, "policy_not_found", "no such policy")
+    except ExtractionError as exc: raise ApiError(400, exc.code, exc.message) from exc
 
 
 @router.post("/api/policies/{policy_id}/versions/{version_id}/retry")
@@ -263,9 +264,10 @@ async def retry_policy_version(policy_id: str, version_id: str, request: Request
     if not is_uuid4(policy_id) or not is_uuid4(version_id): raise ApiError(400,"invalid_request","policy ids must be UUID v4")
     await read_json_body(request)
     try:
-        version=await _runtime(request).policies.retry(version_id)
-        if version.policy_id != policy_id: raise KeyError(version_id)
+        version=await _runtime(request).policies.retry(version_id, policy_id)
     except KeyError: raise ApiError(404,"policy_not_found","no such policy version")
+    except PolicyVersionNotFailed as exc:
+        raise ApiError(409,"policy_version_not_failed",f"only a failed version can be retried; this one is {exc}") from exc
     except FileNotFoundError: raise ApiError(500,"internal_error","the retained original file is missing")
     return JSONResponse({"version":asdict(version)},status_code=202)
 

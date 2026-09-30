@@ -44,3 +44,20 @@ async def test_empty_document_is_retained_as_a_visible_no_text_failure(tmp_path)
     assert version.status=="failed" and version.error_code=="no_text_layer"
     assert (settings.policies_dir/version.storage_path).is_file()
     db.close()
+
+
+@pytest.mark.asyncio
+async def test_retry_leaves_a_ready_version_untouched(tmp_path):
+    from server.policies.service import PolicyVersionNotFailed
+    settings=Settings(root=tmp_path,database_path=tmp_path/"db.sqlite",exports_dir=tmp_path/"exports",policies_dir=tmp_path/"policies")
+    db=Database.open(settings.database_path); service=PolicyService(db,settings,FakeEmbeddingAdapter(dimension=384))
+    result=await service.upload("Travel",[],"t.docx",docx_bytes("Flights need approval."))
+    await __import__('asyncio').gather(*service._tasks)
+    version_id=result["version"]["policy_version_id"]
+    with pytest.raises(PolicyVersionNotFailed):
+        await service.retry(version_id)
+    with pytest.raises(KeyError):
+        await service.retry(version_id, policy_id="00000000-0000-4000-8000-000000000000")
+    version=policies.version(db.conn,version_id)
+    assert version.status=="ready" and "Flights" in version.extracted_text and not service._tasks
+    db.close()

@@ -36,3 +36,12 @@
 - History policy citations receive a distinct source treatment while keeping the established meeting citation layout and links.
 - Verified with `node --check client/policies.js`, `node --check client/policy.js`, `node --check client/history_qa.js`, and `git diff --check`. Browser visual review remains to be performed locally.
 - Tightened the answer instruction to request short, complete sentences and extended the defensive cleanup to remove a model's literal `[speaker, time since that meeting started]` source placeholder. Citation cards remain the readable, linked source presentation.
+
+## 2026-09-30 — pre-push review fixes
+
+- `tests/test_action_item_edit.py` pinned migration 0009 by applying only 0001–0009, so migration 0010 no longer breaks it.
+- Retry now accepts only a `failed` version of the named policy. It checks both conditions before changing any state. A `ready` or `pending` version returns `409 policy_version_not_failed` (documented in `api.md`). Before this, retrying a ready version broke the `extracted_text` CHECK constraint and returned 500, and a version under another policy was requeued before the 404.
+- `POST /api/policies/{id}/versions` now maps unsupported/spoofed files to `400 unsupported_format` and empty files to `400 invalid_request`, matching `POST /api/policies` (previously 500).
+- Added `tests/test_policy_routes.py` (HTTP error mapping, retry rules) and a service-level retry test.
+- Full non-model suite on the development Mac (loopback allowed): **733 passed, 0 failed, 12 model tests deselected**. This supersedes the sandbox run above.
+- Still open, not blocking: pending retry tasks are awaited rather than cancelled at shutdown (up to `retry_max_delay_s`, with endless retries when no embedding model is loaded); `[paths].policies` duplicates `[policies].storage_dir`; `chunk_text` does not split an over-long sentence on word boundaries; mixed `both` Q&A skips the transcript catch-up and reports `unindexed_utterances: 0`; `GET /api/policies/{id}` returns `tags` as a JSON string.

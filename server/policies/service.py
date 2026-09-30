@@ -16,6 +16,10 @@ from ..rag.chunker import chunk_text
 from ..rag.vector_store import VectorStore
 from .extract import ExtractionError, extract, media_type
 
+class PolicyVersionNotFailed(Exception):
+    """Only a failed version can be retried; a ready or pending one is left untouched."""
+
+
 class PolicyService:
     def __init__(self, db, settings, adapter=None, priority=None):
         self.db, self.settings, self.adapter, self.priority = db, settings, adapter, priority
@@ -74,9 +78,11 @@ class PolicyService:
         self._schedule(version.policy_version_id, data)
         return {"policy":asdict(document),"version":asdict(version)}
 
-    async def retry(self, version_id):
+    async def retry(self, version_id, policy_id=None):
+        """Resubmit a failed version. Checks run before any state change, so a rejected retry has no side effects."""
         version=await self.db.run(lambda tx: policies.version(tx.conn,version_id))
-        if not version: raise KeyError(version_id)
+        if not version or (policy_id is not None and version.policy_id != policy_id): raise KeyError(version_id)
+        if version.status != "failed": raise PolicyVersionNotFailed(version.status)
         base=self.settings.policies_dir or self.settings.root / "data/policies"; path=base/version.storage_path
         if not path.is_file(): raise FileNotFoundError(path)
         await self.db.run(lambda tx: policies.update_version_status(tx.conn,version_id,status="pending",error_code=None,error_message=None))

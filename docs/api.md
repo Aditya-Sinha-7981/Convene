@@ -59,6 +59,7 @@ Single FastAPI process (ADR-01). REST for request/response operations, WebSocket
 | `device_conflict` | 409 | the `device_id` is registered in another meeting, or registered here with a different `is_shared` |
 | `ambiguous_display_name` | 409 | a correction by `display_name` matches more than one participant |
 | `color_taken` | 409 | the requested participant colour is already used in this meeting (ADR-25) |
+| `policy_version_not_failed` | 409 | a policy retry named a version that is `ready` or `pending`; only `failed` versions can be retried |
 | `summary_in_progress` | 409 | a summary attempt is already running |
 | `summary_not_ready` | 409 | export needs a `ready` summary and none exists |
 | `transcript_empty` | 409 | nothing to summarize |
@@ -1553,13 +1554,14 @@ Policy upload is the only exception to the JSON-only/64 KiB body convention: `PO
 {}
 ```
 
-**Status codes** — `202`; `400 invalid_request`; `404 policy_not_found`; `500 internal_error` if its retained source is absent.
+**Status codes** — `202`; `400 invalid_request`; `404 policy_not_found`; `409 policy_version_not_failed`; `500 internal_error` if its retained source is absent.
 
 | Status | Code | When |
 |---|---|---|
 | 202 | — | retry queued |
 | 400 | `invalid_request` | malformed id/body |
-| 404 | `policy_not_found` | unknown policy/version |
+| 404 | `policy_not_found` | unknown policy/version, or the version belongs to another policy |
+| 409 | `policy_version_not_failed` | the version is `ready` or `pending`; nothing is changed |
 | 500 | `internal_error` | retained original missing |
 
 **Side effects** — resubmits a failed retained version to local extraction/indexing; source bytes and version number never change.
