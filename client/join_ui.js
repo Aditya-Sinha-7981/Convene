@@ -102,11 +102,14 @@
     liveView.hidden = true;
     orb?.stop(); orb = null; clearInterval(orbTimer);
   }
+  let micPaused = false;
+  window.conveneMicPaused = (value) => { micPaused = value; updateOrbState(); };
   function updateOrbState() {
     const state = pill.dataset.state;
-    orb?.setActive(state === "connected");
-    liveView.dataset.state = state;
+    orb?.setActive(state === "connected" && !micPaused);
+    liveView.dataset.state = micPaused && state === "connected" ? "paused" : state;
     if (state !== "connected") orbState.textContent = state === "problem" ? "Not connected" : "Connecting…";
+    else if (micPaused) orbState.textContent = "Paused — tap Resume to talk";
     else orbState.textContent = orb && orb.level > .12 ? "Hearing you" : "Listening…";
   }
 
@@ -135,7 +138,7 @@
     "connection problem": ["problem", "still", "I can't reach the meeting. Check you're on the meeting Wi-Fi."],
     "could not join": ["problem", "still", "The meeting didn't let us in. See the note below."],
     "microphone error": ["problem", "still", "I can't hear you yet. Allow the microphone and try again."],
-    stopped: ["idle", "off", "Your microphone is off. Join again whenever you're ready."],
+    stopped: ["idle", "off", "You've left the meeting. Join again whenever you're ready."],
     closed: ["idle", "off", "Your microphone is off. Join again whenever you're ready."],
   };
   let walker = null;

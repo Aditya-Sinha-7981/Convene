@@ -4,7 +4,9 @@
         -> per-device Resampler -> Windower (per-device EnergyVad) -> SttScheduler (shared workers)
         -> on_window(TranscribedWindow)
 
-Everything up to the scheduler is per-device state with nothing shared. The output is a callback, not a
+Everything up to the scheduler is per-device state. The one cross-device step is the bleed filter (ADR-32): before
+a segment is queued it reads snapshots of the other devices' frame levels in the same meeting, and any error there
+keeps the segment. The output is a callback, not a
 database row: creating an ``Utterance`` is attribution's job (CON-06). No audio is persisted: windows live in
 memory until transcribed.
 """
@@ -15,6 +17,7 @@ import numpy as np
 from ..config import PipelineConfig
 from .adapter import SttAdapter
 from .audio import Resampler
+from .bleed import BleedConfig, judge
 from .priority import ComputePriority
 from .scheduler import DrainResult, SttScheduler, TranscribedWindow
 from .segmenting import SegmentConfig, Segmenter
@@ -62,6 +65,9 @@ class SttPipeline:
                                       blocklist=config.hallucination_blocklist,
                                       blocklist_max_speech_fraction=config.hallucination_max_speech_fraction,
                                       blocklist_min_strength_db=config.hallucination_min_strength_db)
+        self.bleed = BleedConfig(enabled=config.bleed_filter and config.segmentation == "segments",
+                                 min_correlation=config.bleed_min_correlation,
+                                 min_level_gap_db=config.bleed_min_level_gap_db, max_lag_ms=config.bleed_max_lag_ms)
         self.priority = ComputePriority(self.scheduler.total_backlog, high_backlog_windows=config.priority_high_backlog_windows,
                                         max_wait_s=config.priority_max_wait_s)
 
@@ -96,7 +102,7 @@ class SttPipeline:
         samples = stage.resampler.process(pcm, sample_rate)
         windows, _ = stage.windower.feed(samples, t_wall)
         for window in windows:
-            self.scheduler.submit(window)
+            self._submit(window)
 
     def stream_ended(self, device_id: str) -> None:
         """The device's audio stopped (its peer closed): send whatever speech is still buffered."""
@@ -104,7 +110,7 @@ class SttPipeline:
         if stage is not None:
             windows, _ = stage.windower.flush()
             for window in windows:
-                self.scheduler.submit(window)
+                self._submit(window)
 
     def flush_meeting(self, meeting_id: str) -> None:
         """Cut and queue the partial final window of every device in the meeting."""
@@ -112,7 +118,26 @@ class SttPipeline:
             if self._meetings.get(device_id) == meeting_id:
                 windows, _ = stage.windower.flush()
                 for window in windows:
-                    self.scheduler.submit(window)
+                    self._submit(window)
+
+    def _submit(self, window) -> None:
+        """Queue a segment for STT unless the bleed filter finds it is another phone's speech heard quieter."""
+        if self.bleed.enabled and window.meeting_id is not None:
+            try:
+                own = self._stages[window.device_id].windower.levels.snapshot()
+                others = {device_id: stage.windower.levels.snapshot() for device_id, stage in self._stages.items()
+                          if device_id != window.device_id and self._meetings.get(device_id) == window.meeting_id}
+                verdict = judge(window, own, others, self.bleed) if others else None
+            except Exception:
+                log.exception("bleed filter failed for %s; keeping the segment", window.device_id)
+                verdict = None
+            if verdict is not None and verdict.drop:
+                log.info("bleed: dropped %s segment %d (same speech as %s, corr %.2f, %.1f dB louder there)",
+                         window.device_id[:8], window.window_id, verdict.source_device_id[:8], verdict.correlation,
+                         verdict.level_gap_db)
+                self.scheduler.reject(window, "bleed")
+                return
+        self.scheduler.submit(window)
 
     async def drain(self, meeting_id: str, timeout: float) -> DrainResult:
         """Flush partial windows, then wait for every queued and in-flight window of the meeting (used by CON-10)."""

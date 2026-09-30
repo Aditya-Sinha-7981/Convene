@@ -88,3 +88,9 @@ body { min-height: 100vh; min-height: 100dvh; }
   .join-status[data-state="connecting"] .status-orb { animation: none; }
   .swatch:active .avatar { transform: none; }
 }
+
+/* Pause keeps the phone in the meeting; Leave ends its session. Both appear only in the live view. */
+body:not(.is-live) #pause, body:not(.is-live) #stop { display: none; }
+.join-form .join-leave { border-color: var(--danger-line); color: var(--danger); }
+#pause[aria-pressed="true"] { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-hover); }
+.live-view[data-state="paused"] .orb { opacity: .45; }

@@ -7,6 +7,10 @@
 const meetingId = decodeURIComponent(location.pathname.split("/").pop());
 const keyPrefix = `convene:${meetingId}:`;
 const MAX_QUIET_FAILURES = 5;
+// The browser's own noise suppression and echo cancellation clean the signal on the phone. Automatic gain control is
+// off so a phone far from a speaker stays quieter than the near one: the server's bleed filter relies on that level
+// difference (ADR-32). Browsers treat these as hints and may ignore them.
+const MIC_CONSTRAINTS = { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false }, video: false };
 
 function storageGet(key) {
   try { return localStorage.getItem(keyPrefix + key); } catch { return null; }
@@ -37,17 +41,37 @@ let retryTimer = null;
 let retryDelay = 1000;
 let failures = 0;
 let generation = 0;
+let paused = false;
 
 const nameInput = document.querySelector("#name");
 const status = document.querySelector("#status");
 const detail = document.querySelector("#detail");
 const startButton = document.querySelector("#start");
 const stopButton = document.querySelector("#stop");
+const pauseButton = document.querySelector("#pause");
 const retryButton = document.querySelector("#retry");
 nameInput.value = storageGet("name") || "";
 
 function setStatus(value) { status.textContent = value; }
 function setDetail(value) { detail.textContent = value; }
+
+// Pause keeps the connection and the seat in the meeting: the track sends silence, which the server's VAD ignores.
+function setPaused(value) {
+  paused = value;
+  if (stream) stream.getAudioTracks().forEach(track => { track.enabled = !value; });
+  pauseButton.textContent = value ? "Resume microphone" : "Pause microphone";
+  pauseButton.setAttribute("aria-pressed", String(value));
+  setDetail(value ? "Microphone paused. You're still in the meeting." : "");
+  if (typeof window.conveneMicPaused === "function") window.conveneMicPaused(value);
+}
+
+function resetControls() {
+  if (paused) setPaused(false);
+  startButton.disabled = false;
+  stopButton.disabled = true;
+  pauseButton.disabled = true;
+  retryButton.hidden = true;
+}
 
 function cleanupConnection() {
   if (peer) { peer.close(); peer = null; }
@@ -63,9 +87,7 @@ function finish(message) {
   cleanupConnection();
   if (stream) stream.getTracks().forEach(track => track.stop());
   stream = null;
-  startButton.disabled = false;
-  stopButton.disabled = true;
-  retryButton.hidden = true;
+  resetControls();
   setStatus("stopped");
   setDetail(message);
 }
@@ -183,7 +205,7 @@ async function start() {
   if (!name) { setDetail("Enter your name first."); nameInput.focus(); return; }
   try {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error("Microphone API unavailable. Check HTTPS certificate trust.");
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS);
   } catch (error) {
     setDetail(String(error));
     setStatus("microphone error");
@@ -208,7 +230,8 @@ async function start() {
   retryDelay = 1000;
   startButton.disabled = true;
   stopButton.disabled = false;
-  stream.getAudioTracks()[0].onended = () => { setDetail("Microphone stopped; tap Join again."); stopButton.click(); };
+  pauseButton.disabled = false;
+  stream.getAudioTracks()[0].onended = () => { stopButton.click(); setDetail("Microphone stopped; tap Join again."); };
   connect();
 }
 
@@ -220,6 +243,8 @@ retryButton.onclick = () => {
   retryButton.hidden = true;
   connect();
 };
+pauseButton.onclick = () => { if (!stopped) setPaused(!paused); };
+// Leave: tell the server this phone left the meeting and release the microphone.
 stopButton.onclick = () => {
   if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "leave" }));
   stopped = true;
@@ -229,10 +254,9 @@ stopButton.onclick = () => {
   cleanupConnection();
   if (stream) stream.getTracks().forEach(track => track.stop());
   stream = null;
-  startButton.disabled = false;
-  stopButton.disabled = true;
-  retryButton.hidden = true;
+  resetControls();
   setStatus("stopped");
+  setDetail("You left the meeting. Join again whenever you're ready.");
 };
 window.addEventListener("online", () => { if (!stopped) retry(); });
 document.addEventListener("visibilitychange", () => {

@@ -102,6 +102,13 @@ hallucination_min_strength_db = 10.0
 log_transcripts = true          # print each transcribed line on the server console (never written to a file)
 priority_high_backlog_windows = 4
 priority_max_wait_s = 3.0
+# Cross-device bleed filter (ADR-32): a segment is dropped before STT when another phone in the meeting heard the same
+# speech (loudness envelopes correlate at >= bleed_min_correlation) at least bleed_min_level_gap_db louder. Starting
+# values from synthetic tests only; tune with the B7 bleed test on real phones. false turns it off.
+bleed_filter = true
+bleed_min_correlation = 0.7
+bleed_min_level_gap_db = 6.0
+bleed_max_lag_ms = 300
 
 [attribution]
 device_confidence = 0.95

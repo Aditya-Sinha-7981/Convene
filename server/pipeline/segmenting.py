@@ -12,7 +12,8 @@ words in half, and gives attribution one line per stretch of speech instead of o
 * A gap in the stream (a reconnect) ends the open segment first; no segment spans it.
 * Timestamps use the same time base as fixed windows (``StreamClock``): server wall clock at receipt.
 
-Everything here is per device; nothing is shared.
+Everything here is per device. ``levels`` (each frame's level on the server clock) is only appended to here; the
+cross-device bleed filter reads snapshots of it (ADR-32).
 """
 import time
 from collections import deque
@@ -20,6 +21,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .bleed import LevelHistory
 from .vad import EnergyVad, VadConfig
 from .windowing import StreamClock, Window, iso_utc
 
@@ -68,6 +70,7 @@ class Segmenter:
         self._consumed = 0                              # samples turned into frames so far
         self._next_id = 1
         self.windows_seen = self.windows_gated = self.windows_passed = 0
+        self.levels = LevelHistory()
 
     # -- input ------------------------------------------------------------------------------
 
@@ -89,6 +92,7 @@ class Segmenter:
         frame_len = self.vad.frame_len
         whole = len(data) // frame_len
         for i, (voiced, level, margin) in enumerate(self.vad.analyze(data[:whole * frame_len])):
+            self.levels.append(self.clock.time_at(self._consumed), level, voiced)
             emitted, dropped = self._on_frame(_Frame(data[i * frame_len:(i + 1) * frame_len], voiced, level, margin,
                                                      self._consumed))
             self._consumed += frame_len

@@ -623,7 +623,9 @@ say the dates are UTC. "Open now" changes as items are edited after the period, 
 environment when the server starts (`CONVENE_STT=gemini`, `GEMINI_API_KEY`, `GEMINI_STT_MODEL`, optional
 `CONVENE_STT_WORKERS`). The default and the configuration file stay local. The key is kept out of `Settings`,
 logs, audit payloads and error messages. There is no automatic fallback in either direction. The ADR-24 language
-rule is carried into the prompt.
+rule is carried into the prompt, with right and wrong examples, and enforced for script by converting any returned
+Devanagari to Hinglish Latin letters (`server/pipeline/romanize.py`). A model that translates instead of transcribing
+cannot be caught mechanically.
 
 **Rationale:** Local STT quality on real phone audio was not good enough for the demo, and the user asked for a
 connector that the environment switches. The adapter contract (ADR-14) made this a new adapter, with no change to the
@@ -640,4 +642,34 @@ continue. `stt_confidence` is `exp(avgLogprobs)` when reported, else a fixed 0.9
 Whisper's score.
 
 **Status:** Adopted 2026-09-30 at the user's request, for the demo only. The local model remains the default.
+
+### ADR-32: A cross-device bleed filter before STT, and pause separate from leave on the phone
+
+**Decision:** Extends ADR-05 without replacing it. After a segment passes its own device's VAD, the pipeline compares
+its 20 ms loudness envelope with the other devices of the same meeting over the same wall-clock span. It drops the
+segment before STT when the envelopes correlate (Pearson at least 0.7 at the best lag within 300 ms) **and** another
+device heard it at least 6 dB louder. Every drop is audited (`stt_window_dropped`, reason `bleed`). Every doubt keeps
+the segment. It is configurable under `[pipeline]` (`bleed_*`) and runs only in segments mode. Each device still
+owns and writes only its own state; the filter reads snapshots, and an error in it keeps the segment. The phone asks
+for echo cancellation and noise suppression and turns automatic gain control off, so relative levels stay
+meaningful. The join page gains **Pause microphone** (the track is disabled; the connection and seat stay) separate
+from **Leave meeting** (the existing `leave`).
+
+**Rationale:** The user asked for bleed and noise to be handled. Two phones near one speaker is the common demo
+failure, and a wrong-name line is worse than a missing one. Comparing envelopes, not just levels, keeps overlapping
+real speakers. Dropping before STT also saves compute. Pause-without-leave lets someone step out without losing
+their device and colour.
+
+**Alternatives considered:** Comparing transcribed text after STT (rejected: needs retracting an utterance already
+written and pushed); level comparison alone (rejected: would drop a quieter person talking over a louder one);
+cross-correlating raw waveforms (heavier, and sensitive to clock drift at 16 kHz); a server-side noise-suppression
+model (a new dependency, untested on phones).
+
+**Tradeoffs:** Values come from synthetic tests only. Automatic gain control that a browser ignores the hint on, room
+echo, and very different microphones can defeat the level test (then bleed is kept, not dropped). A near-simultaneous
+quiet reply that tracks the loud speaker's rhythm could in principle be dropped. Turning gain control off makes a
+quiet speaker quieter on their own phone; the VAD's -50 dBFS floor and `vad_margin_db` may need tuning on real phones.
+The paused state is not shown on the dashboard.
+
+**Status:** Adopted 2026-09-30 at the user's request; needs the B7 real-phone bleed measurement before any claim.
 
