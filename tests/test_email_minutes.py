@@ -19,6 +19,7 @@ from server.ids import new_id
 from server.mail import message
 from server.mail.resend import (ENDPOINT, Attachment, MailConfigError, MailError, ResendMailer,
                                 mailer_from_environment)
+from server.export.docx_renderer import render
 from server.mail.service import mask
 from server.repositories import participant_emails
 from tests.support.reports import meeting_at
@@ -174,6 +175,32 @@ def test_message_escapes_meeting_values_and_names_the_attachment_safely():
     assert mask("priya@example.com") == "pr•••@example.com"
 
 
+def headings(content: bytes) -> list[str]:
+    return [p.text for p in Document(io.BytesIO(content)).paragraphs if p.style.name.startswith(("Heading", "Title"))]
+
+
+def test_renderer_keeps_the_title_block_and_only_the_chosen_sections():
+    from types import SimpleNamespace
+    meeting = SimpleNamespace(title="Plan", meeting_id="m", started_at=None, created_at="2026-09-30T09:00:00.000Z")
+    summary = SimpleNamespace(summary_text="We agreed.")
+    args = (meeting, [], summary, [], [])
+    names = lambda doc: [p.text for p in doc.paragraphs if p.style.name.startswith(("Heading", "Title"))]
+    assert names(render(*args)) == ["Plan", "Summary", "Action items", "Transcript appendix"]
+    assert names(render(*args, sections=("action_items",))) == ["Plan", "Action items"]
+    assert names(render(*args, sections=("transcript", "summary"))) == ["Plan", "Summary", "Transcript appendix"]
+    for bad in ((), ("decisions",)):
+        with pytest.raises(ValueError):
+            render(*args, sections=bad)
+
+
+def test_message_lists_only_what_is_attached():
+    assert message.contents(("action_items",)) == "the action items"
+    assert message.contents(("summary", "action_items")) == "the summary and the action items"
+    html, text = message.bodies("Maya", "Plan", "30 September 2026", ("summary", "action_items"))
+    assert "attached: the summary and the action items." in text and "transcript" not in text
+    assert "transcript" not in html
+
+
 # --- the API --------------------------------------------------------------------------------------
 
 
@@ -238,7 +265,11 @@ async def test_send_emails_each_recipient_separately_and_audits_ids_only(tmp_pat
 
         event = db.conn.execute("SELECT payload FROM AuditEvent WHERE event_type = 'minutes_emailed'").fetchone()[0]
         assert json.loads(event) == {"export_id": body["export_id"], "sent_participant_ids": [seeded.people["Priya"]],
-                                     "failed_participant_ids": [seeded.people["Sam"]]}
+                                     "failed_participant_ids": [seeded.people["Sam"]],
+                                     "sections": {seeded.people[n]: ["summary", "action_items", "transcript"]
+                                                  for n in ("Priya", "Sam")}}
+        export_file = server.runtime.settings.exports_dir / f"{seeded.meeting_id}.docx"
+        assert sent["attachment"].content == export_file.read_bytes()  # everything = the downloadable file itself
         everything = db.conn.execute("SELECT group_concat(payload) FROM AuditEvent").fetchone()[0]
         assert "@example" not in everything
     finally:
@@ -297,5 +328,58 @@ async def test_join_registration_accepts_email_and_never_returns_it(tmp_path, ht
             assert (response.status, (await response.json())["error"]["code"]) == (400, "invalid_request")
         async with http.get(f"{server.base_url}/api/meetings/{meeting.meeting_id}") as response:
             assert "priya@example.com" not in await response.text()
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_each_person_gets_the_sections_chosen_for_them(tmp_path, http):
+    mailer = FakeMailer()
+    server = await serve(tmp_path, mailer)
+    try:
+        db = server.runtime.db
+        seeded = meeting_at(db, "2026-09-30T09:00:00.000Z", title="Launch review", people=("Priya", "Sam", "Maya", "Lee"))
+        with_emails(db, seeded, {"Priya": "priya@example.com", "Sam": "sam@example.com", "Maya": "maya@example.com",
+                                 "Lee": "lee@example.com"})
+        everything, short = ["transcript", "summary", "action_items"], ["action_items", "summary"]
+        plan = [{"participant_id": seeded.people["Priya"], "sections": everything},
+                {"participant_id": seeded.people["Sam"], "sections": everything},
+                {"participant_id": seeded.people["Maya"], "sections": short}]
+        async with http.post(f"{server.base_url}/api/meetings/{seeded.meeting_id}/email", json={"recipients": plan}) as response:
+            body = await response.json()
+        assert response.status == 200 and body["sent_count"] == 3
+        got = {m["to"].split("@")[0]: m for m in mailer.sent}
+        assert set(got) == {"priya", "sam", "maya"}  # Lee was not picked, so gets nothing
+        assert headings(got["priya"]["attachment"].content) == ["Launch review", "Summary", "Action items", "Transcript appendix"]
+        assert headings(got["maya"]["attachment"].content) == ["Launch review", "Summary", "Action items"]
+        assert "the summary and the action items." in got["maya"]["text"]
+        stamps = {r["display_name"]: r["last_sent_at"] for r in body["recipients"]}
+        assert stamps["Lee"] is None and stamps["Maya"] is not None
+        event = json.loads(db.conn.execute("SELECT payload FROM AuditEvent WHERE event_type = 'minutes_emailed'").fetchone()[0])
+        assert event["sections"][seeded.people["Maya"]] == ["summary", "action_items"]  # stored in template order
+        assert seeded.people["Lee"] not in event["sections"]
+        assert db.conn.execute("SELECT COUNT(*) FROM Export WHERE status = 'ready'").fetchone()[0] == 1  # no extra exports
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_bad_selection_is_refused_before_anything_is_sent(tmp_path, http):
+    mailer = FakeMailer()
+    server = await serve(tmp_path, mailer)
+    try:
+        db = server.runtime.db
+        seeded = meeting_at(db, "2026-09-30T09:00:00.000Z", people=("Priya", "Sam"))
+        with_emails(db, seeded, {"Priya": "priya@example.com"})
+        priya, sam = seeded.people["Priya"], seeded.people["Sam"]
+        bad = [[], [{"participant_id": priya, "sections": []}], [{"participant_id": priya, "sections": ["decisions"]}],
+               [{"participant_id": priya, "sections": ["summary"]}, {"participant_id": priya, "sections": ["summary"]}],
+               [{"participant_id": sam, "sections": ["summary"]}],  # Sam gave no address
+               [{"participant_id": new_id(), "sections": ["summary"]}], [{"sections": ["summary"]}]]
+        for recipients in bad:
+            async with http.post(f"{server.base_url}/api/meetings/{seeded.meeting_id}/email",
+                                 json={"recipients": recipients}) as response:
+                assert (response.status, (await response.json())["error"]["code"]) == (400, "invalid_request"), recipients
+        assert mailer.sent == []
     finally:
         await server.stop()

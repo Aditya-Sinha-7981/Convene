@@ -30,7 +30,12 @@ A second fixed template in the same renderer package (`server/export/report_rend
 
 Determinism follows the minutes template: fixed core timestamps, UTC dates, the generation date passed in, equivalent document XML for equal data. The report is regenerated on every download from an in-memory buffer. It has no `Export` row (whose `meeting_id` is per meeting) and no file under `data/exports/`. At most `[reports].max_meetings` (default 50) meetings go in one report; a wider range is refused with a message to narrow it and is never truncated. A render failure is `500 export_render_failed` and stores nothing.
 
-## Emailing the minutes (ADR-33)
+## Emailing the minutes (ADR-33, ADR-34)
+
+Each recipient gets the title block plus only the sections chosen for them (`summary`, `action_items`,
+`transcript`), rendered by the same template with its `sections` argument in the fixed order. The full selection
+attaches the exported file itself. Any other selection is rendered in memory for the email only, with no `Export`
+row or file. The body says what is attached ("the summary and the action items").
 
 `POST /api/meetings/{meeting_id}/email` attaches the same current, non-stale minutes file as the download, named
 `Convene minutes - <title>.docx` (unsafe characters replaced). It sends one message per participant who gave an

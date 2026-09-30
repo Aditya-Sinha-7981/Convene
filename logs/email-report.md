@@ -90,3 +90,42 @@ reported that sending works.
 - Put the key in `mail.env`, never in `stt.env`, `creds.env`, or a tracked file. Rotate the key if it is ever pasted into a
   chat or log.
 - Bounces after Resend accepts a message are not tracked; "Sent" means Resend accepted it.
+
+## Choose who gets which parts — 2026-09-30 (ADR-34)
+
+Branch `feature/email-sections`, from `feature/email-report`. The user asked to choose recipients and, per person, the
+parts they get (for example two people everything, the rest summary and action items).
+
+### Decisions
+
+- `POST …/email` takes optional `recipients: [{participant_id, sections}]`. Sections are a non-empty subset of
+  `summary`, `action_items` and `transcript`. People not listed get nothing. Without the list, everyone gets
+  everything (the ADR-33 behaviour). Bad input is `400 invalid_request` before anything is rendered or sent: an empty
+  list, a duplicate, a participant without an address, or an empty or unknown section.
+- The title block is always included. `docx_renderer.render(..., sections=)` keeps the template order, and the
+  default output is unchanged.
+- The full selection attaches the exported file itself (byte-identical, tested). Other selections are rendered in
+  memory once per distinct set (`ExportService.render_sections`), with no `Export` row or file, and all of them before
+  the first message.
+- The email body names what is attached. `minutes_emailed` gains `sections` (participant id → parts).
+- UI: a count line, a tick box per person with an address, and Summary / Action items / Transcript chips per person.
+  Presets for the ticked people, and Tick all / Untick all. People without an address are listed but cannot be
+  picked. "Send to n people". The choice is page state only.
+- "Decisions" is not offered as a part: it is not a stored field (it sits inside the summary text).
+
+### Checks
+
+- `tests/test_email_minutes.py`: 23 passed (4 new: renderer subsets and invalid sections, the body lists only the
+  attached parts, a mixed per-person send checked by each attachment's headings plus the audit `sections` and no
+  extra `Export` row, bad selections refused with nothing sent). `tests/test_docx_renderer.py` passes unchanged.
+- Full non-model suite: 824 passed, 2 failed. Both failures are in `tests/test_api_contract_docs.py` for the
+  `GET /api/overview` section added in commits adad006/0b564ce (a `"…"` meeting_id example, and the section lacks the
+  required parts). They fail the same on a clean checkout of that commit, without this change. Not touched here.
+- Headless Chromium against a scratch server with a fake mailer: 4 participants, 3 with an address. Untick all, tick
+  Maya, "Summary + action items", tick Priya and Sam, send. The attachments' headings: Priya and Sam had Summary,
+  Action items and Transcript appendix, and Maya had Summary and Action items, with "attached: the summary and the
+  action items." No console errors.
+
+### Not run
+
+- A real Resend send of a partial attachment, and the picker at phone width (the post-meeting page is a laptop page).

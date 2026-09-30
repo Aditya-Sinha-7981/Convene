@@ -286,7 +286,7 @@ The complete set. Payloads reference records by ID and never contain transcript 
 | `summary_failed` | `summary` | `summary_id`, `error_code`, `attempts`, `duration_ms`, `drain_timed_out` |
 | `export_created` | `export` | `export_id`, `summary_id`, `input_as_of_seq`, `type` |
 | `export_failed` | `export` | `export_id`, `error_code` |
-| `minutes_emailed` | `export` | `export_id`, `sent_participant_ids`, `failed_participant_ids` |
+| `minutes_emailed` | `export` | `export_id`, `sent_participant_ids`, `failed_participant_ids`, `sections` |
 | `action_item_updated` | `api` | `action_item_id`, `summary_id`, `from`, `to`, `via` |
 | `action_item_note_added` | `api` | `note_id`, `action_item_id`, `source_meeting_id` |
 | `policy_created` | `policy` | `policy_id`, `title`, `tag_count` |
@@ -313,7 +313,9 @@ Payload value sets:
   `summary_failed.error_code`: `summary_generation_failed` \| `summary_invalid_output` \| `transcript_too_long` \|
   `transcript_empty`. Payloads carry ids and counts, never transcript text.
 - `minutes_emailed` (ADR-33) records one press of **Send minutes by email**: the DOCX export that was attached and
-  which participants' messages Resend accepted or refused. It holds participant ids only, never an address.
+  which participants' messages Resend accepted or refused. `sections` maps each chosen participant id to the parts
+  they were sent, in template order (`summary`, `action_items`, `transcript`; ADR-34). It holds ids only, never an
+  address. `export_id` is the current export the send was based on, whatever parts each person got.
 - `action_item_updated` (CON-16) records one manual edit of an `ActionItem`. Its `meeting_id` is the item's own meeting. `from` and `to` are objects with the same keys, only the fields that changed, drawn from `owner_participant_id`, `due_date` and `status`. `from` holds the values immediately before the edit and `to` the values after it, so every prior value can be recovered, as with `utterance_corrected`. Values are IDs, dates and enum values, never item text. `via` is `edit` for a direct edit, or `note` when the status change was sent with a note (`action_item_note_added` is written in the same transaction). A no-op edit writes no event.
 - `action_item_note_added` (CON-16) has the item's meeting as its `meeting_id`. `source_meeting_id` names the meeting the update came from. The note text lives only in the `ActionItemNote` row.
 - `summary_generated.input_as_of_seq` and `export_created.input_as_of_seq` are the `seq` high-water mark of the transcript the artifact was built from. They are how staleness is derived (see below), so no extra column is needed.

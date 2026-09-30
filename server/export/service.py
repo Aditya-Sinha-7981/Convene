@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import os
 import tempfile
 from dataclasses import asdict
@@ -80,21 +81,7 @@ class ExportService:
                 return None
             pending = exports.Export(export_id, meeting_id, "docx", "pending", None, None, created_at)
             exports.insert_pending(tx.conn, pending)
-            meeting = meetings.require(tx.conn, meeting_id)
-            people = participants.list_for_meeting(tx.conn, meeting_id)
-            ordinals = {device.device_id: n for n, device in enumerate(devices.list_for_meeting(tx.conn, meeting_id), 1)}
-            people_by_id = {person.participant_id: person for person in people}
-            lines = []
-            for line in utterances.list_for_meeting(tx.conn, meeting_id):
-                lines.append({"t_start": line.t_start, "text": line.text,
-                              "speaker_label": speaker_label(line, people_by_id.get(line.participant_id), ordinals[line.device_id]),
-                              "low_confidence": is_low_confidence(line, self.threshold)})
-            items = []
-            for item in summaries.action_items(tx.conn, state["summary"].summary_id):
-                value = asdict(item)
-                value["owner_display_name"] = people_by_id.get(item.owner_participant_id).display_name if item.owner_participant_id in people_by_id else None
-                items.append(value)
-            return meeting, people, state["summary"], items, lines
+            return self._inputs(tx.conn, meeting_id, state["summary"])
 
         data = await self.db.run(snapshot)
         if data is None:
@@ -125,6 +112,43 @@ class ExportService:
                 exports.finish(tx.conn, export_id, status="failed", error_message=message)
                 emit(tx, "export_failed", "export", {"export_id": export_id, "error_code": FAILED}, meeting_id=meeting_id)
             await self.db.run(failure)
+            raise ExportRenderError("the DOCX could not be rendered") from exc
+
+    def _inputs(self, conn, meeting_id: str, summary):
+        """The renderer's arguments, read from stored rows: (meeting, participants, summary, items, lines)."""
+        meeting = meetings.require(conn, meeting_id)
+        people = participants.list_for_meeting(conn, meeting_id)
+        ordinals = {device.device_id: n for n, device in enumerate(devices.list_for_meeting(conn, meeting_id), 1)}
+        people_by_id = {person.participant_id: person for person in people}
+        lines = []
+        for line in utterances.list_for_meeting(conn, meeting_id):
+            lines.append({"t_start": line.t_start, "text": line.text,
+                          "speaker_label": speaker_label(line, people_by_id.get(line.participant_id), ordinals[line.device_id]),
+                          "low_confidence": is_low_confidence(line, self.threshold)})
+        items = []
+        for item in summaries.action_items(conn, summary.summary_id):
+            value = asdict(item)
+            value["owner_display_name"] = people_by_id.get(item.owner_participant_id).display_name if item.owner_participant_id in people_by_id else None
+            items.append(value)
+        return meeting, people, summary, items, lines
+
+    async def render_sections(self, meeting_id: str, sections) -> bytes:
+        """A DOCX of only ``sections`` from the current summary, in memory (ADR-34). No Export row, file or event:
+        it is an email attachment, not an export. Raises ``ExportRenderError`` when there is no ready summary."""
+        def read(tx):
+            summary = summaries.current(tx.conn, meeting_id)
+            return None if summary is None else self._inputs(tx.conn, meeting_id, summary)
+        data = await self.db.run(read)
+        if data is None:
+            raise ExportRenderError("no ready summary exists for this meeting")
+
+        def build() -> bytes:
+            buffer = io.BytesIO()
+            render(*data, sections=tuple(sections)).save(buffer)
+            return buffer.getvalue()
+        try:
+            return await asyncio.to_thread(build)
+        except Exception as exc:
             raise ExportRenderError("the DOCX could not be rendered") from exc
 
     async def payload(self, meeting_id: str) -> dict:

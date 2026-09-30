@@ -111,35 +111,102 @@ function renderExport(body) {
   $("download").href = `${api}/export?format=docx`;
 }
 
-// ADR-33: email the DOCX to the people who added an address at join. The server decides who and whether it can;
-// this only shows its answer. Addresses arrive masked, since this page may be on the projector.
+// ADR-33/34: email the DOCX to the people who added an address at join, each with the parts chosen for them. The
+// server decides who can get it and whether it can send; this page holds only the choice (who is ticked, and which
+// parts each person gets). Addresses arrive masked, since this page may be on the projector.
+const PARTS = [["summary", "Summary"], ["action_items", "Action items"], ["transcript", "Transcript"]];
+const PRESETS = [["Everything", ["summary", "action_items", "transcript"]], ["Summary + action items", ["summary", "action_items"]],
+                 ["Action items only", ["action_items"]]];
+const mailChoice = new Map();  // participant_id -> { selected, sections: Set }; new rows start ticked with everything
+
+function choiceFor(id) {
+  if (!mailChoice.has(id)) mailChoice.set(id, { selected: true, sections: new Set(PARTS.map(([key]) => key)) });
+  return mailChoice.get(id);
+}
+
+function checkbox(checked, label, onChange, className) {
+  const wrap = document.createElement("label");
+  wrap.className = className;
+  const input = document.createElement("input");
+  input.type = "checkbox"; input.checked = checked; input.disabled = mailSending;
+  input.onchange = () => { onChange(input.checked); renderMail(); };
+  const text = document.createElement("span"); text.textContent = label;
+  wrap.append(input, text);
+  return wrap;
+}
+
 function renderMail() {
   const state = mailState;
-  const intro = $("mailIntro"), send = $("mailSend"), list = $("mailList");
-  list.replaceChildren();
-  if (!state) { intro.textContent = "Could not check who asked for the minutes."; send.hidden = true; return; }
+  const intro = $("mailIntro"), send = $("mailSend"), list = $("mailList"), bulk = $("mailBulk");
+  list.replaceChildren(); bulk.replaceChildren();
+  if (!state) { intro.textContent = "Could not check who asked for the minutes."; send.hidden = true; bulk.hidden = true; return; }
   const people = state.recipients;
+  const withEmail = new Set(people.map((p) => p.participant_id));
   for (const person of people) {
+    const choice = choiceFor(person.participant_id);
     const li = document.createElement("li");
-    const who = document.createElement("span"); who.className = "who"; who.textContent = person.display_name;
+    li.classList.toggle("is-selected", choice.selected);
+    const pick = checkbox(choice.selected, person.display_name, (on) => { choice.selected = on; }, "pick");
+    pick.querySelector("span").className = "who";
     const addr = document.createElement("span"); addr.className = "addr"; addr.textContent = person.email_masked;
+    const parts = document.createElement("div"); parts.className = "parts";
+    parts.setAttribute("role", "group"); parts.setAttribute("aria-label", `Parts for ${person.display_name}`);
+    for (const [key, label] of PARTS) {
+      parts.append(checkbox(choice.sections.has(key), label, (on) => { on ? choice.sections.add(key) : choice.sections.delete(key); }, "part"));
+    }
+    parts.hidden = !choice.selected;
     const sent = document.createElement("span"); sent.className = "sent";
     const failure = mailFailures.get(person.participant_id);
     if (failure) { sent.classList.add("is-failed"); sent.textContent = `Not sent: ${failure}`; }
     else sent.textContent = person.last_sent_at ? `Sent ${new Date(person.last_sent_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` : "Not sent yet";
-    li.append(who, addr, sent);
+    if (choice.selected && !choice.sections.size) { sent.classList.add("is-failed"); sent.textContent = "Pick at least one part"; }
+    li.append(pick, addr, sent, parts);
     list.append(li);
   }
+  // Everyone else in the meeting, so the count is complete; they cannot be picked without an address.
+  for (const person of participants.filter((p) => !withEmail.has(p.participant_id))) {
+    const li = document.createElement("li"); li.className = "is-unavailable";
+    const who = document.createElement("span"); who.className = "who"; who.textContent = person.display_name || "Unnamed";
+    const why = document.createElement("span"); why.className = "addr"; why.textContent = "didn't add an email";
+    li.append(who, why);
+    list.append(li);
+  }
+
+  const chosen = people.filter((p) => choiceFor(p.participant_id).selected);
+  const empty = chosen.filter((p) => !choiceFor(p.participant_id).sections.size);
   let reason = "";
   if (!state.configured) reason = "Email isn't set up on this laptop. Add RESEND_API_KEY and CONVENE_MAIL_FROM to mail.env and restart Convene.";
   else if (!people.length) reason = "No one added an email address when they joined.";
   else if (!state.meeting_ended) reason = "You can send the minutes once the meeting ends.";
   else if (!summaryReady) reason = "You can send the minutes once the summary is ready.";
-  const count = people.length === 1 ? "1 person" : `${people.length} people`;
-  intro.textContent = reason || `${count} asked for the minutes. Each gets their own email with the DOCX attached, sent from ${state.sender}.`;
+  const total = participants.length === 1 ? "1 participant" : `${participants.length} participants`;
+  const asked = people.length === 1 ? "1 added an email" : `${people.length} added an email`;
+  intro.textContent = reason || `${total} · ${asked}. Tick people, choose what each one gets, then send. Each gets their own email from ${state.sender}.`;
+
+  // Presets apply to everyone ticked; each person's parts can still be changed one by one.
+  bulk.hidden = !people.length || !state.configured;
+  if (!bulk.hidden) {
+    const label = document.createElement("span"); label.className = "bulk-label";
+    label.textContent = chosen.length ? `For the ${chosen.length} ticked:` : "Tick someone to choose what they get.";
+    bulk.append(label);
+    for (const [name, keys] of PRESETS) {
+      const button = document.createElement("button"); button.type = "button"; button.textContent = name;
+      button.disabled = !chosen.length || mailSending;
+      button.onclick = () => { for (const p of chosen) choiceFor(p.participant_id).sections = new Set(keys); renderMail(); };
+      bulk.append(button);
+    }
+    const all = document.createElement("button"); all.type = "button"; all.className = "link";
+    const everyone = chosen.length === people.length;
+    all.textContent = everyone ? "Untick all" : "Tick all";
+    all.disabled = mailSending;
+    all.onclick = () => { for (const p of people) choiceFor(p.participant_id).selected = !everyone; renderMail(); };
+    bulk.append(all);
+  }
+
   send.hidden = !state.configured || !people.length;
-  send.disabled = Boolean(reason) || mailSending || state.sending;
-  send.textContent = mailSending || state.sending ? "Sending…" : people.some((p) => p.last_sent_at) ? "Send again" : "Send minutes by email";
+  send.disabled = Boolean(reason) || mailSending || state.sending || !chosen.length || empty.length > 0;
+  const who = chosen.length === 1 ? "1 person" : `${chosen.length} people`;
+  send.textContent = mailSending || state.sending ? "Sending…" : chosen.length ? `Send to ${who}` : "Send minutes by email";
 }
 
 async function refreshMail() {
@@ -152,13 +219,17 @@ async function refreshMail() {
 
 async function sendMail() {
   if (!mailState || mailSending) return;
-  if (mailState.recipients.some((p) => p.last_sent_at) && !confirm("Some people already got the minutes. Send again to everyone on the list?")) return;
+  const chosen = mailState.recipients.filter((p) => choiceFor(p.participant_id).selected);
+  if (chosen.some((p) => p.last_sent_at) && !confirm("Some of the ticked people already got the minutes. Send to them again?")) return;
+  const recipients = chosen.map((p) => ({ participant_id: p.participant_id,
+    sections: PARTS.map(([key]) => key).filter((key) => choiceFor(p.participant_id).sections.has(key)) }));
   mailSending = true;
   $("mailStatus").className = "";
   $("mailStatus").textContent = "Sending… this needs an internet connection.";
   renderMail();
   try {
-    const response = await fetch(`${api}/email`, { method: "POST" });
+    const response = await fetch(`${api}/email`, { method: "POST", headers: { "Content-Type": "application/json" },
+                                                    body: JSON.stringify({ recipients }) });
     const body = await json(response);
     if (!response.ok) throw new Error(body.error?.message || "Could not send the minutes.");
     mailFailures = new Map(body.failed.map((f) => [f.participant_id, f.error]));

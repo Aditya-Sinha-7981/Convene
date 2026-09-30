@@ -24,7 +24,7 @@ from .repositories import audit_events, meetings as meetings_repo, utterances, p
 from .summary.views import summary_payload
 from .export.service import ExportRenderError, MIME
 from .export.report_renderer import render_report_bytes
-from .mail.service import EmailInProgressError, MailNotConfiguredError, NoRecipientsError
+from .mail.service import EmailInProgressError, MailNotConfiguredError, NoRecipientsError, parse_plan
 from .reports import service as reports
 from .transport.signaling import signaling_endpoint
 from .policies.extract import ExtractionError
@@ -364,12 +364,13 @@ async def get_email_status(meeting_id: str, request: Request):
 
 @router.post("/api/meetings/{meeting_id}/email")
 async def send_email(meeting_id: str, request: Request):
-    """Email the current DOCX minutes to every participant who gave an address. Explicit action only (ADR-33)."""
+    """Email the DOCX minutes to the chosen participants, each with their chosen sections (ADR-33, ADR-34).
+    Without ``recipients`` everyone who gave an address gets everything. Explicit action only."""
     meeting_id = _meeting_id(meeting_id)
-    await read_json_body(request)
+    plan = parse_plan(await read_json_body(request))
     runtime = _runtime(request)
     try:
-        return await runtime.email.send(meeting_id)
+        return await runtime.email.send(meeting_id, plan)
     except MailNotConfiguredError as exc:
         raise ApiError(409, "mail_not_configured", str(exc)) from exc
     except NoRecipientsError as exc:
