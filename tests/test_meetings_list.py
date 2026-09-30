@@ -9,6 +9,9 @@ from server import registry
 from server.ids import new_id
 from server.rag.reasoning import FakeReasoningAdapter
 from server.repositories import exports, meetings, summaries
+from server.repositories import utterances
+from server.repositories.models import Utterance
+from server.timeutil import utc_now
 from tests.support.qa import QA, RAG, TopicEmbedding
 from tests.support.server import settings_in, start_server
 from tests.test_qa_api import meeting_with_a_line
@@ -52,6 +55,30 @@ async def listing(http, server, query=""):
 @pytest.mark.asyncio
 async def test_an_empty_history_is_an_empty_list(server, http):
     assert await listing(http, server) == (200, {"meetings": [], "total": 0})
+
+
+@pytest.mark.asyncio
+async def test_host_overview_reports_stored_totals_and_newest_meeting(server, http):
+    def write(tx):
+        older = registry.create_meeting(tx, "Earlier", now="2026-09-20T09:00:00.000Z")
+        newer = registry.create_meeting(tx, "Latest", now="2026-09-21T09:00:00.000Z")
+        registration = registry.register_device(tx, newer.meeting_id, new_id(), "Asha")
+        utterances.insert(tx.conn, Utterance(
+            new_id(), newer.meeting_id, registration.device.device_id, registration.participants[0].participant_id,
+            "Three useful words", "2026-09-21T10:00:00.000Z", "2026-09-21T10:00:01.000Z",
+            .9, "device", .95, utc_now()))
+        return newer.meeting_id
+    with server.runtime.db.transaction() as tx:
+        newest_id = write(tx)
+
+    async with http.get(server.base_url + "/api/overview") as response:
+        body = await response.json()
+    assert response.status == 200
+    assert body["totals"] == {"meetings": 2, "ended_meetings": 0, "live_meetings": 0, "utterances": 1,
+                              "participants": 1, "open_action_items": 0, "words": 3}
+    assert body["recent_meetings"][0]["meeting_id"] == newest_id
+    assert body["recent_meetings"][0]["participant_count"] == 1
+    assert body["recent_meetings"][0]["utterance_count"] == 1
 
 
 @pytest.mark.asyncio

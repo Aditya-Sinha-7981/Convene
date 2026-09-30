@@ -6,6 +6,16 @@ Functional and legible beats visually elaborate (`requirements.md`). The fronten
 
 ## Surfaces
 
+### 0. Host overview dashboard
+
+- Implemented at `/dashboard`, linked from the home-page navigation. It is a read-only, host-facing overview of
+  persisted Convene activity: all-time meeting, transcript-word, participant, utterance, and open-action-item totals,
+  plus the five newest meetings. It is deliberately separate from `/dashboard/{meeting_id}`, which remains the live
+  per-meeting transcript and Q&A surface.
+- Values come from `GET /api/overview`; the client does not invent or calculate product metrics. Word totals count
+  whitespace-separated words in stored utterance text. A small mascot line is decorative and must not imply a system
+  state or hide an error.
+
 ### 1. Join page (phone)
 
 - Meeting ID/QR entry (or pre-filled from the join link).

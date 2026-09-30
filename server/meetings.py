@@ -63,6 +63,34 @@ async def list_history(runtime, *, status=None, q=None, from_at=None, to_at=None
     return await runtime.db.run(read)
 
 
+async def overview(runtime) -> dict:
+    """The host overview: small, read-only totals plus the newest meetings.
+
+    Word count is deliberately derived from stored transcript text rather than a client-side estimate, so the
+    dashboard remains truthful after a reload and includes words from every saved meeting.
+    """
+    def read(tx):
+        conn = tx.conn
+        totals = {
+            "meetings": conn.execute("SELECT COUNT(*) FROM Meeting").fetchone()[0],
+            "ended_meetings": conn.execute("SELECT COUNT(*) FROM Meeting WHERE status = 'ended'").fetchone()[0],
+            "live_meetings": conn.execute("SELECT COUNT(*) FROM Meeting WHERE status = 'live'").fetchone()[0],
+            "utterances": conn.execute("SELECT COUNT(*) FROM Utterance").fetchone()[0],
+            "participants": conn.execute("SELECT COUNT(*) FROM Participant").fetchone()[0],
+            "open_action_items": conn.execute("SELECT COUNT(*) FROM ActionItem WHERE status = 'open'").fetchone()[0],
+        }
+        totals["words"] = sum(len((row[0] or "").split()) for row in conn.execute("SELECT text FROM Utterance"))
+        recent = []
+        for meeting in meetings.list_meetings(conn, limit=5):
+            participant_count = conn.execute("SELECT COUNT(*) FROM Participant WHERE meeting_id = ?", (meeting.meeting_id,)).fetchone()[0]
+            utterance_count = conn.execute("SELECT COUNT(*) FROM Utterance WHERE meeting_id = ?", (meeting.meeting_id,)).fetchone()[0]
+            recent.append({**meeting_view(meeting), "participant_count": participant_count,
+                           "utterance_count": utterance_count,
+                           "has_summary": summaries.current(conn, meeting.meeting_id) is not None})
+        return {"totals": totals, "recent_meetings": recent}
+    return await runtime.db.run(read)
+
+
 async def rename_meeting(runtime, meeting_id: str, body: dict) -> dict:
     if set(body) - {"title"} or "title" not in body:
         raise ValidationError("send exactly {\"title\": \"...\"}")
@@ -136,4 +164,4 @@ def _summary_running(runtime, meeting_id: str) -> bool:
     return runtime.summary is not None and runtime.summary.running(meeting_id) is not None
 
 
-__all__ = ["create_meeting", "get_meeting", "list_history", "rename_meeting", "delete_meeting", "register_device", "colors", "end_meeting", "participant_view"]
+__all__ = ["create_meeting", "get_meeting", "list_history", "overview", "rename_meeting", "delete_meeting", "register_device", "colors", "end_meeting", "participant_view"]

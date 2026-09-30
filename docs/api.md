@@ -2,7 +2,7 @@
 
 Single FastAPI process (ADR-01). REST for request/response operations, WebSocket for signaling and live push feeds. This document is authoritative for endpoint shape — other docs describe *when* these are called, not their exact contracts. Stored field names come from `data-model.md` and are never renamed here; where the API adds a computed field it is listed under [Derived fields](#derived-fields).
 
-**Implementation status (through CON-09):** implemented and covered by automated loopback tests: `POST /api/meetings`, `GET /api/meetings/{meeting_id}`, `POST …/devices`, `POST …/end`, `GET …/transcript`, and `POST …/utterances/{utterance_id}/correct`; signaling and dashboard WebSockets; and the pages `/`, `/join/{meeting_id}`, `/dashboard/{meeting_id}`, and `/static/…`. The dashboard feed includes `meeting_status`, `device_status`, `connection_event`, `device_gauges`, `utterance`, and `utterance_updated`; the dashboard consumes server-computed labels and low-confidence state. Live Q&A (`POST …/qa`, the `qa_answer` push) is implemented by CON-09. Summarization (`POST …/summarize`, `GET …/summary`, the `summary_ready` and `summary_failed` pushes, summarization started by `end`, and the post-meeting page `/meetings/{meeting_id}`) is implemented by CON-10. Export is implemented by CON-11. The history list (`GET /api/meetings`), history Q&A (`POST /api/qa`) and the `/history` page are implemented by CON-14, and rename (`PATCH`) and delete (`DELETE /api/meetings/{meeting_id}`) by ADR-27. Action-item editing, notes and the global list (`/api/action-items…`, the `/action-items` page) are implemented by CON-16. Periodic reports (`/api/reports/preview`, `/api/reports/download`, the `/reports` page) are implemented by CON-18. Enrollment routes remain unimplemented. None of this has been verified on real phones. A route section below describes the contract, not a claim that the route exists.
+**Implementation status (through CON-09):** implemented and covered by automated loopback tests: `POST /api/meetings`, `GET /api/meetings/{meeting_id}`, `POST …/devices`, `POST …/end`, `GET …/transcript`, and `POST …/utterances/{utterance_id}/correct`; signaling and dashboard WebSockets; and the pages `/`, `/join/{meeting_id}`, `/dashboard/{meeting_id}`, and `/static/…`. The dashboard feed includes `meeting_status`, `device_status`, `connection_event`, `device_gauges`, `utterance`, and `utterance_updated`; the dashboard consumes server-computed labels and low-confidence state. Live Q&A (`POST …/qa`, the `qa_answer` push) is implemented by CON-09. Summarization (`POST …/summarize`, `GET …/summary`, the `summary_ready` and `summary_failed` pushes, summarization started by `end`, and the post-meeting page `/meetings/{meeting_id}`) is implemented by CON-10. Export is implemented by CON-11. The history list (`GET /api/meetings`), history Q&A (`POST /api/qa`) and the `/history` page are implemented by CON-14, and rename (`PATCH`) and delete (`DELETE /api/meetings/{meeting_id}`) by ADR-27. Action-item editing, notes and the global list (`/api/action-items…`, the `/action-items` page) are implemented by CON-16. Periodic reports (`/api/reports/preview`, `/api/reports/download`, the `/reports` page) are implemented by CON-18. The host overview (`GET /api/overview`, `/dashboard`) is implemented as a read-only dashboard. Enrollment routes remain unimplemented. None of this has been verified on real phones. A route section below describes the contract, not a claim that the route exists.
 
 **Status of decisions:** contract choices that change a documented behavior or the schema are marked **(proposed)** and recorded as ADR-15 to ADR-18 in `decisions.md`, pending project-lead confirmation. Shapes marked **provisional** belong to should-have features and are finalized by CON-13 (enrollment) and CON-14 (history).
 
@@ -118,6 +118,7 @@ API views may add computed fields to a stored entity. They are computed on the s
 | POST | `/api/meetings/{meeting_id}/devices/{device_id}/enroll` | provisional (CON-13) |
 | POST | `/api/meetings/{meeting_id}/end` | MVP |
 | GET | `/api/meetings/{meeting_id}/transcript` | MVP |
+| GET | `/api/overview` | host dashboard |
 | POST | `/api/meetings/{meeting_id}/utterances/{utterance_id}/correct` | MVP |
 | POST | `/api/meetings/{meeting_id}/qa` | MVP |
 | POST | `/api/qa` | should-have (CON-14) |
@@ -151,6 +152,7 @@ These return HTML for a browser, not JSON. Assets are served from the same proce
 | Method | Path | Surface (`frontend.md`) | Status |
 |---|---|---|---|
 | GET | `/` | Meeting history view, with a "New meeting" button that calls `POST /api/meetings` | 200 |
+| GET | `/dashboard` | Host overview dashboard | 200 |
 | GET | `/join/{meeting_id}` | Join page (phone) | 200, 404 |
 | GET | `/dashboard/{meeting_id}` | Live dashboard, including the join QR while the meeting is `created` or `live` | 200, 302 to `/meetings/{meeting_id}` if the meeting has ended, 404 |
 | GET | `/meetings/{meeting_id}` | Post-meeting view: summary, action items, export, and Q&A in history mode | 200, 404 |
@@ -164,6 +166,20 @@ These return HTML for a browser, not JSON. Assets are served from the same proce
 The prototype's `GET /app.js` is replaced by `/static/`. Serving these pages is the frontend tasks' work; the routes exist so no page needs a guessed URL.
 
 ## REST: Meetings
+
+### GET /api/overview
+
+Read-only, all-time host-dashboard metrics. No query parameters and no side effects. `words` is the number of
+whitespace-separated words in stored utterance text; `recent_meetings` is capped at five newest meetings.
+
+**Response** — `200`.
+
+```json
+{
+  "totals": {"meetings": 12, "ended_meetings": 11, "live_meetings": 1, "utterances": 342, "words": 4876, "participants": 31, "open_action_items": 4},
+  "recent_meetings": [{"meeting_id": "…", "title": "Product review", "status": "ended", "participant_count": 4, "utterance_count": 38, "has_summary": true}]
+}
+```
 
 ### GET /api/database
 
