@@ -10,6 +10,7 @@ const meetingId = decodeURIComponent(location.pathname.split("/").filter(Boolean
 const api = `/api/meetings/${encodeURIComponent(meetingId)}`;
 const $ = (id) => document.getElementById(id);
 let meeting = null, participants = [], busy = false, refreshTimer = null, pollTimer = null, exportState = null;
+let mailState = null, mailSending = false, mailFailures = new Map(), summaryReady = false;
 
 async function json(response) {
   try { return await response.json(); } catch { return {}; }
@@ -66,6 +67,8 @@ let jumped = false;
 
 function renderSummary(body) {
   const latest = body?.latest_attempt || null, current = body?.summary || null;
+  summaryReady = current !== null;  // sending renders the DOCX if needed, so a ready summary is enough
+  if (mailState) renderMail();
   $("none").hidden = latest !== null;
   $("pending").hidden = latest?.status !== "pending";
   $("failed").hidden = latest?.status !== "failed";
@@ -106,6 +109,70 @@ function renderExport(body) {
   $("exportNone").hidden = current !== null || latest?.status === "pending";
   $("download").hidden = current === null;
   $("download").href = `${api}/export?format=docx`;
+}
+
+// ADR-33: email the DOCX to the people who added an address at join. The server decides who and whether it can;
+// this only shows its answer. Addresses arrive masked, since this page may be on the projector.
+function renderMail() {
+  const state = mailState;
+  const intro = $("mailIntro"), send = $("mailSend"), list = $("mailList");
+  list.replaceChildren();
+  if (!state) { intro.textContent = "Could not check who asked for the minutes."; send.hidden = true; return; }
+  const people = state.recipients;
+  for (const person of people) {
+    const li = document.createElement("li");
+    const who = document.createElement("span"); who.className = "who"; who.textContent = person.display_name;
+    const addr = document.createElement("span"); addr.className = "addr"; addr.textContent = person.email_masked;
+    const sent = document.createElement("span"); sent.className = "sent";
+    const failure = mailFailures.get(person.participant_id);
+    if (failure) { sent.classList.add("is-failed"); sent.textContent = `Not sent: ${failure}`; }
+    else sent.textContent = person.last_sent_at ? `Sent ${new Date(person.last_sent_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` : "Not sent yet";
+    li.append(who, addr, sent);
+    list.append(li);
+  }
+  let reason = "";
+  if (!state.configured) reason = "Email isn't set up on this laptop. Add RESEND_API_KEY and CONVENE_MAIL_FROM to mail.env and restart Convene.";
+  else if (!people.length) reason = "No one added an email address when they joined.";
+  else if (!state.meeting_ended) reason = "You can send the minutes once the meeting ends.";
+  else if (!summaryReady) reason = "You can send the minutes once the summary is ready.";
+  const count = people.length === 1 ? "1 person" : `${people.length} people`;
+  intro.textContent = reason || `${count} asked for the minutes. Each gets their own email with the DOCX attached, sent from ${state.sender}.`;
+  send.hidden = !state.configured || !people.length;
+  send.disabled = Boolean(reason) || mailSending || state.sending;
+  send.textContent = mailSending || state.sending ? "Sending…" : people.some((p) => p.last_sent_at) ? "Send again" : "Send minutes by email";
+}
+
+async function refreshMail() {
+  try {
+    const response = await fetch(`${api}/email`);
+    mailState = response.ok ? await json(response) : null;
+  } catch { mailState = null; }
+  renderMail();
+}
+
+async function sendMail() {
+  if (!mailState || mailSending) return;
+  if (mailState.recipients.some((p) => p.last_sent_at) && !confirm("Some people already got the minutes. Send again to everyone on the list?")) return;
+  mailSending = true;
+  $("mailStatus").className = "";
+  $("mailStatus").textContent = "Sending… this needs an internet connection.";
+  renderMail();
+  try {
+    const response = await fetch(`${api}/email`, { method: "POST" });
+    const body = await json(response);
+    if (!response.ok) throw new Error(body.error?.message || "Could not send the minutes.");
+    mailFailures = new Map(body.failed.map((f) => [f.participant_id, f.error]));
+    mailState = { ...mailState, recipients: body.recipients };
+    const total = body.sent_count + body.failed.length;
+    $("mailStatus").className = body.failed.length ? "is-failed" : "";
+    $("mailStatus").textContent = body.failed.length ? `Sent to ${body.sent_count} of ${total}. The addresses that failed are marked above.` : `Sent to ${total === 1 ? "1 person" : `all ${total}`}.`;
+  } catch (error) {
+    $("mailStatus").className = "is-failed";
+    $("mailStatus").textContent = error.message;
+  }
+  mailSending = false;
+  await refreshExport();  // sending may have rendered a fresh DOCX
+  await refreshMail();
 }
 
 function correctionForm(utterance, row) {
@@ -193,6 +260,7 @@ async function refresh() {
     else throw new Error(summaryBody.error?.message || "Could not load the summary.");
     const exportBody = await json(exported);
     if (exported.ok) renderExport(exportBody); else renderExport(null);
+    await refreshMail();
   } catch (error) { setError(error.message); }
 }
 
@@ -244,5 +312,6 @@ $("delete").onclick = async () => {
 $("retry").onclick = summarize;
 $("regenerate").onclick = summarize;
 $("summarize").onclick = summarize;
+$("mailSend").onclick = sendMail;
 $("exportRetry").onclick = () => { $("download").click(); };
 refresh().then(listen);

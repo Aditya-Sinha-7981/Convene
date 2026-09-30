@@ -26,6 +26,7 @@
   <p class="orb-who" id="orbWho"></p>
 </section>
 <div class="join-form"><label for="name">Your name</label><input id="name" class="field" maxlength="80" autocomplete="name" placeholder="e.g. Priya">
+<div class="email-field" id="emailField"><label for="email">Your email <span>(optional)</span></label><input id="email" class="field" type="email" inputmode="email" maxlength="254" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="e.g. priya@example.com"><p class="email-hint">Want the minutes? We'll email them to you after the meeting, only if the host sends them. Used for nothing else.</p></div>
 <fieldset class="color-picker" id="colorPicker"><legend>Your colour <span>(optional)</span></legend><div class="swatches" id="swatches"></div><p class="color-hint" id="colorHint">Skip it and we'll pick one no one else has.</p></fieldset>
 <button id="start" class="btn btn-primary">Join and start microphone</button><button id="pause" class="btn btn-secondary" type="button" aria-pressed="false" disabled>Pause microphone</button><button id="stop" class="btn btn-secondary join-leave" type="button" disabled>Leave meeting</button><button id="retry" class="btn btn-secondary" hidden>Try again</button></div>
 <p id="consent">This session's audio is being transcribed. Keep this page open while you speak.</p>

@@ -673,3 +673,36 @@ The paused state is not shown on the dashboard.
 
 **Status:** Adopted 2026-09-30 at the user's request; needs the B7 real-phone bleed measurement before any claim.
 
+### ADR-33: An optional email at join, and the DOCX minutes emailed through Resend on request
+
+**Decision:** The join page gains an optional email field. A non-shared device may send `email` with its
+registration. It is stored in its own table, `ParticipantEmail` (migration 0011), not on `Participant`. No participant
+view, dashboard push, audit payload or the `/database` inspector carries it, and deleting the meeting erases it. A
+rejoin may add or change the address; a change resets `last_sent_at`. After the meeting ends, the post-meeting page
+shows who asked for the minutes, with masked addresses. **Send minutes by email** (`POST /api/meetings/{id}/email`)
+attaches the same current DOCX that the download serves and sends one message per address through Resend's REST API,
+using stdlib HTTP (`server/mail/`). The connector is configured only by the operator's environment (`RESEND_API_KEY`,
+`CONVENE_MAIL_FROM`, kept in `mail.env`). Without it the page says email is not set up. Nothing is sent when a
+meeting ends, and nothing is retried later; only the button sends. One audit event, `minutes_emailed`, records the
+export and which participant ids were sent or refused. The subject and body use the mascot's voice
+(`server/mail/message.py`).
+
+**Rationale:** The user asked for it after the first review round. The Gemini connector (ADR-31) already accepted
+a deliberate, operator-configured cloud call for the demo. Email is the same kind of explicit action, and it sends only
+the minutes the laptop already produced. A separate table keeps an address from leaking through any existing view
+that serializes a `Participant`. One message per person keeps addresses private from each other.
+
+**Alternatives considered:** Sending automatically when the summary is ready (rejected: an outward action must be
+deliberate, and the host should check the minutes first); a column on `Participant` (rejected above); Resend's batch
+endpoint (rejected: it does not take attachments); SMTP or the Resend SDK (a new dependency or credentials for one
+POST); showing full addresses on the page (rejected: the page may be on a projector).
+
+**Tradeoffs:** Sending needs internet and hands the minutes, and the full transcript inside them, to Resend and each
+recipient's mail provider. That voids the offline claim for that action only. Addresses are checked loosely; a typo
+is caught only when Resend refuses it or the message bounces. Bounces after acceptance are not tracked. Resend's
+default limit of 2 requests per second means about 0.6 s per recipient, sent in sequence. The address sits in the local
+SQLite file in plain text, like the transcript.
+
+**Status:** Adopted 2026-09-30 at the user's request. Needs one real send with the user's verified domain before any
+claim that mail arrives.
+

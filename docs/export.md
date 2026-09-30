@@ -30,6 +30,16 @@ A second fixed template in the same renderer package (`server/export/report_rend
 
 Determinism follows the minutes template: fixed core timestamps, UTC dates, the generation date passed in, equivalent document XML for equal data. The report is regenerated on every download from an in-memory buffer. It has no `Export` row (whose `meeting_id` is per meeting) and no file under `data/exports/`. At most `[reports].max_meetings` (default 50) meetings go in one report; a wider range is refused with a message to narrow it and is never truncated. A render failure is `500 export_render_failed` and stores nothing.
 
+## Emailing the minutes (ADR-33)
+
+`POST /api/meetings/{meeting_id}/email` attaches the same current, non-stale minutes file as the download, named
+`Convene minutes - <title>.docx` (unsafe characters replaced). It sends one message per participant who gave an
+address at join, through Resend (`server/mail/resend.py`, configured by `RESEND_API_KEY` and `CONVENE_MAIL_FROM`).
+The subject is "Your words, delivered: <title>". The HTML and plain-text body gives the title and date, says what is
+attached, and says why the person got it, in the mascot's voice (`server/mail/message.py`). Every meeting value is
+HTML-escaped. The meeting must have ended. If rendering fails, nothing is sent. A refused address does not stop the
+others. Only the button sends: nothing is emailed when a meeting ends.
+
 ## Generation flow
 
 1. Triggered after summarization completes (automatically) or manually re-triggered from the dashboard.

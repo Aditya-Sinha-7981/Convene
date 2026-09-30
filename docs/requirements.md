@@ -36,6 +36,7 @@ Convene is successful if, live with only weak internet needed for the trusted-ho
 | Action items as a tracked checklist (owner, status) | Nice polish on top of already-extracted action items; not required for the core loop |
 | Meeting history dashboard (list/search past meetings) | Needed as the front door to cross-meeting RAG; build alongside it, not before |
 | Periodic reports across meetings in a date range (CON-18) | Answers the problem statement's "generate periodic reports"; an aggregation of stored summaries and action items with no model call, built after tracked action items |
+| Email the minutes to participants (ADR-33) | Optional address at join; after the meeting, one button sends the DOCX through Resend. A deliberate, operator-configured cloud action like ADR-31; the demo never depends on it |
 | Policy and rules repository | Versioned local policy files strengthen the knowledge-base pitch; CON-17 proceeds before CON-12 only by project-lead exception, and does not make the demo gate pass |
 
 ## Nice-to-have (only if there is meaningfully spare time)

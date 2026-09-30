@@ -31,6 +31,8 @@ notes.
 
 - Ending a meeting creates a structured summary with decisions and action items.
 - The summary can be downloaded as a DOCX minutes document.
+- People who add an email when they join can be sent the DOCX minutes from the post-meeting page, through Resend,
+  when the laptop has a Resend key (ADR-33). Nothing is emailed unless someone presses Send.
 - Meeting titles can be renamed, and inactive meetings can be deleted after a deliberate confirmation.
 
 ### Saved local record

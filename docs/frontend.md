@@ -10,6 +10,9 @@ Functional and legible beats visually elaborate (`requirements.md`). The fronten
 
 - Meeting ID/QR entry (or pre-filled from the join link).
 - Name entry.
+- Optional email field (ADR-33): "Want the minutes? We'll email them to you after the meeting, only if the host
+  sends them." Checked by the browser before the microphone is requested, then by the server; remembered for this
+  meeting on this phone like the name; hidden in the live view.
 - Optional colour picker (ADR-25): 12 swatches, each the mascot's head in a palette colour; colours already used in the
   meeting are greyed out and cannot be chosen. Skipping it lets the server assign an unused colour. Tapping the picked
   swatch again clears it. After joining, the picker collapses to the person's own colour, which a rejoin keeps.
@@ -63,6 +66,11 @@ Functional and legible beats visually elaborate (`requirements.md`). The fronten
 - Action items are editable in place (CON-16). Each shows its owner, due date, status and note count. The owner is picked from this meeting's participants or "Unassigned"; the due date is a date field with a clear action; the status buttons (Open, Done, Cancelled) take one click. "Add note" appends a note from this meeting, and "Notes (n)" shows the existing ones. Every change is sent to the server, and the row redraws from the server's reply. A failed save shows the error and leaves the row showing the stored values; nothing is updated optimistically. The Regenerate and Summarize actions warn that edits to the current action items will not carry over to a new summary (ADR-28).
 - Summary status (pending, ready, failed with its reason), a staleness notice with a regenerate action, and the transcript, readable whatever the summary's status. Served at `/meetings/{meeting_id}` for a live meeting too, as the "summarize now" entry point (the dashboard links to it and goes there after "End meeting"). CON-10 built a deliberately minimal version (`client/post_meeting.html`); the planned UI redesign replaces its look.
 - Export/download button (DOCX).
+- "Email the minutes" (ADR-33): lists the people who added an email at join (name, masked address, when last sent).
+  **Send minutes by email** is enabled once the meeting has ended, a summary exists and the server has a Resend
+  key. Otherwise one line says why (not set up, no one added an address, meeting still running, no summary yet).
+  Pressing it again asks for confirmation when anyone already got the minutes. After a send, the page shows
+  "Sent to n of m" and marks each address that was refused, with Resend's reason.
 - Q&A box remains available in history mode against this specific meeting. Implemented (CON-14): an "Ask about this
   meeting" panel labelled "History · This meeting only", open once the meeting has ended (while it runs, the panel
   points to the live dashboard instead). The page also lists the participants, and each transcript line has the

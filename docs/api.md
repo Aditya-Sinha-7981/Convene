@@ -54,7 +54,7 @@ Single FastAPI process (ADR-01). REST for request/response operations, WebSocket
 | `summary_not_found` | 404 | no summary attempt exists for this meeting |
 | `action_item_not_found` | 404 | no such action item (CON-16) |
 | `meeting_ended` | 409 | the operation needs a meeting that has not ended |
-| `meeting_not_ended` | 409 | history Q&A named a meeting that has not ended |
+| `meeting_not_ended` | 409 | history Q&A named a meeting that has not ended, or the minutes were emailed before the meeting ended (ADR-33) |
 | `meeting_active` | 409 | a phone is still connected, so the meeting cannot be deleted |
 | `device_conflict` | 409 | the `device_id` is registered in another meeting, or registered here with a different `is_shared` |
 | `ambiguous_display_name` | 409 | a correction by `display_name` matches more than one participant |
@@ -62,6 +62,9 @@ Single FastAPI process (ADR-01). REST for request/response operations, WebSocket
 | `policy_version_not_failed` | 409 | a policy retry named a version that is `ready` or `pending`; only `failed` versions can be retried |
 | `summary_in_progress` | 409 | a summary attempt is already running |
 | `summary_not_ready` | 409 | export needs a `ready` summary and none exists |
+| `mail_not_configured` | 409 | the minutes were to be emailed, but this server was started without `RESEND_API_KEY` and `CONVENE_MAIL_FROM` (ADR-33) |
+| `no_recipients` | 409 | the minutes were to be emailed, but no participant of the meeting gave an address (ADR-33) |
+| `email_in_progress` | 409 | a send of this meeting's minutes is already running (ADR-33) |
 | `report_empty` | 409 | a report was requested for a date range with no ended meeting (CON-18) |
 | `transcript_empty` | 409 | nothing to summarize |
 | `device_not_connected` | 409 | enrollment needs a connected device (provisional) |
@@ -127,6 +130,8 @@ API views may add computed fields to a stored entity. They are computed on the s
 | POST | `/api/meetings/{meeting_id}/summarize` | MVP |
 | GET | `/api/meetings/{meeting_id}/summary` | MVP |
 | GET | `/api/meetings/{meeting_id}/export` | MVP |
+| GET | `/api/meetings/{meeting_id}/email` | should-have (ADR-33) |
+| POST | `/api/meetings/{meeting_id}/email` | should-have (ADR-33) |
 | GET | `/api/action-items` | should-have (CON-16) |
 | GET | `/api/action-items/{action_item_id}` | should-have (CON-16) |
 | PATCH | `/api/action-items/{action_item_id}` | should-have (CON-16) |
@@ -406,9 +411,12 @@ Register a device at join. **REST registers; the signaling WebSocket only attach
   "display_name": "Priya",
   "is_shared": false,
   "declared_speaker_count": 1,
-  "color": "teal"
+  "color": "teal",
+  "email": "priya@example.com"
 }
 ```
+
+`email` is optional (ADR-33): an address to send the minutes to after the meeting, only for a non-shared device. Omitted, null or blank means none. It is trimmed and loosely checked (one `@`, a dot in the domain, no spaces, at most 254 characters). It is stored in `ParticipantEmail`, never returned by this or any participant view, and never audited. Unlike the other fields, a non-empty `email` in a replay is stored (or replaces the earlier address), so a rejoining phone can add or fix it.
 
 `color` is optional: one of the 12 palette keys `lime`, `green`, `teal`, `cyan`, `sky`, `azure`, `violet`, `plum`, `magenta`, `pink`, `slate`, `charcoal` (ADR-25), only for a non-shared device. Omitted or null, the server assigns a random colour not yet used in the meeting (once all 12 are used, one of the least used). The Convene brand colour is never a participant colour.
 
@@ -449,7 +457,7 @@ Register a device at join. **REST registers; the signaling WebSocket only attach
 |---|---|---|
 | 201 | — | new device registered |
 | 200 | — | replay of an existing registration |
-| 400 | `invalid_request` | missing or invalid `device_id`, `display_name`, speaker count or `color` |
+| 400 | `invalid_request` | missing or invalid `device_id`, `display_name`, speaker count, `color` or `email` |
 | 409 | `color_taken` | the requested `color` is already used by a participant in this meeting |
 | 404 | `meeting_not_found` | unknown meeting |
 | 409 | `meeting_ended` | the meeting has ended |
@@ -457,7 +465,7 @@ Register a device at join. **REST registers; the signaling WebSocket only attach
 | 413 | `payload_too_large` | body over 64 KiB |
 | 415 | `unsupported_media_type` | not JSON |
 
-**Side effects** — on a new registration: inserts `Device` and, for a non-shared device, its `Participant` in one transaction; audit `device_registered`; push `device_status`. A replay writes nothing and pushes nothing. Registration does not start the meeting.
+**Side effects** — on a new registration: inserts `Device` and, for a non-shared device, its `Participant` (and its `ParticipantEmail` when `email` is given) in one transaction; audit `device_registered`; push `device_status`. A replay writes nothing and pushes nothing, except that a non-empty `email` is stored. Registration does not start the meeting.
 
 ### GET /api/meetings/{meeting_id}/colors
 
@@ -973,6 +981,98 @@ Errors use the JSON error shape:
 ### GET /api/meetings/{meeting_id}/export/status
 
 Read the current ready export, latest attempt, and derived `stale` flag for the post-meeting view. This endpoint never renders. It returns `200` with `{ "export", "latest_attempt", "stale", "as_of_seq" }`, where both export objects are null when no attempt exists; unknown meetings return `404 meeting_not_found`.
+
+### GET /api/meetings/{meeting_id}/email
+
+Who in this meeting asked for the minutes by email, and whether this server can send them (ADR-33). The post-meeting page uses it to show the **Send minutes by email** panel. Addresses are masked (the first two characters of the local part, then `•••@domain`): the page may be on a projector.
+
+**Request** — no body.
+
+**Response** — `200`. `configured` is false when the server was started without `RESEND_API_KEY`; `sender` is the configured `CONVENE_MAIL_FROM`, or null. `sending` is true while a send for this meeting is running. `last_sent_at` is the last successful send to that address, or null.
+
+```json
+{
+  "configured": true,
+  "sender": "Convene <minutes@example.com>",
+  "meeting_ended": true,
+  "sending": false,
+  "recipients": [
+    {
+      "participant_id": "3e8b1d47-52a9-4c60-b7f2-0a9c6d4e8b15",
+      "display_name": "Priya",
+      "email_masked": "pr•••@example.com",
+      "last_sent_at": null
+    }
+  ]
+}
+```
+
+**Status codes**
+
+| Status | Code | When |
+|---|---|---|
+| 200 | — | success |
+| 400 | `invalid_request` | the meeting id is not a UUID v4 |
+| 404 | `meeting_not_found` | unknown meeting |
+
+**Side effects** — none.
+
+### POST /api/meetings/{meeting_id}/email
+
+Email the DOCX minutes to every participant of this meeting who gave an address at join (ADR-33). This is the only way anything is emailed: nothing is sent when a meeting ends. The attachment is the same current, non-stale file that `GET …/export` serves, rendered first if needed. Each recipient gets a separate message, so no one sees another person's address. Sending uses Resend over the internet, so it needs a connection; the rest of Convene does not. Pressing it again sends again to everyone.
+
+**Request** — no body (an empty JSON object is accepted).
+
+**Response** — `200` once every recipient was tried. `failed` lists the addresses Resend refused or could not be reached for, with the reason; one failure does not stop the others. `recipients` is the same list as `GET …/email`, after the send.
+
+```json
+{
+  "export_id": "a1c9e0d2-4b7f-4e18-9c35-6d2f8b0e7a41",
+  "sent_count": 1,
+  "failed": [
+    {
+      "participant_id": "5b2e8f14-7a3c-4d09-8e61-2c4f9a7b3d50",
+      "display_name": "Arjun",
+      "email_masked": "ar•••@example.org",
+      "error": "Resend HTTP 422: Invalid `to` field."
+    }
+  ],
+  "recipients": [
+    {
+      "participant_id": "3e8b1d47-52a9-4c60-b7f2-0a9c6d4e8b15",
+      "display_name": "Priya",
+      "email_masked": "pr•••@example.com",
+      "last_sent_at": "2026-09-30T12:04:11.512Z"
+    },
+    {
+      "participant_id": "5b2e8f14-7a3c-4d09-8e61-2c4f9a7b3d50",
+      "display_name": "Arjun",
+      "email_masked": "ar•••@example.org",
+      "last_sent_at": null
+    }
+  ]
+}
+```
+
+```json
+{ "error": { "code": "no_recipients", "message": "no one in this meeting added an email address" } }
+```
+
+**Status codes**
+
+| Status | Code | When |
+|---|---|---|
+| 200 | — | every recipient was tried; see `failed` |
+| 400 | `invalid_request` | the meeting id is not a UUID v4, or the body is not JSON |
+| 404 | `meeting_not_found` | unknown meeting |
+| 409 | `meeting_not_ended` | the meeting has not ended |
+| 409 | `mail_not_configured` | the server has no Resend key and sender |
+| 409 | `no_recipients` | no participant gave an address |
+| 409 | `email_in_progress` | a send for this meeting is already running |
+| 409 | `summary_not_ready` | no `ready` summary exists, so there is no DOCX to attach |
+| 500 | `export_render_failed` | rendering the DOCX failed; nothing was sent |
+
+**Side effects** — possibly a DOCX render, exactly as `GET …/export`. For each accepted message, `ParticipantEmail.last_sent_at` is set. One audit `minutes_emailed` (`export_id`, `sent_participant_ids`, `failed_participant_ids`; never an address). No dashboard push.
 
 ### POST /api/meetings/{meeting_id}/devices/{device_id}/enroll
 

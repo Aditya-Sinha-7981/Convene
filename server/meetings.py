@@ -104,7 +104,8 @@ async def register_device(runtime, meeting_id: str, body: dict, user_agent: str 
     if not isinstance(device_id, str):
         raise ValidationError("device_id must be a UUID v4 string")
     registration = await runtime.db.run(lambda tx: registry.register_device(
-        tx, meeting_id, device_id, body.get("display_name"), is_shared, count, user_agent, color=body.get("color")))
+        tx, meeting_id, device_id, body.get("display_name"), is_shared, count, user_agent, color=body.get("color"),
+        email=body.get("email")))
     view = device_view(registration.device, registration.participants)
     return (201 if registration.created else 200), {"device": view}
 

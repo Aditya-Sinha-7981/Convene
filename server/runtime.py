@@ -18,6 +18,7 @@ from .rag.indexer import TranscriptIndexer
 from .rag.qa import QAService
 from .summary import SummaryService
 from .export import ExportService
+from .mail.service import EmailReportService
 from .policies import PolicyService
 from .transport.audio import AudioSink, CountingSink
 from .transport.peers import PeerManager
@@ -45,7 +46,7 @@ class TransportConfig:
 class Runtime:
     def __init__(self, settings: Settings, *, sink: AudioSink | None = None, host: str | None = None,
                  port: int = 8443, transport: TransportConfig | None = None, stt_adapter=None, stt_loaded: bool = False,
-                 embedding_adapter=None, reasoning_adapter=None, reasoning_loaded: bool = False):
+                 embedding_adapter=None, reasoning_adapter=None, reasoning_loaded: bool = False, mailer=None):
         if sink is not None and stt_adapter is not None:
             raise ValueError("pass either a custom audio sink or an STT adapter (the STT pipeline is the sink)")
         self.settings, self.host, self.port = settings, host, port
@@ -64,6 +65,8 @@ class Runtime:
         self.qa: QAService | None = None
         self.summary: SummaryService | None = None
         self.export: ExportService | None = None
+        self.mailer = mailer  # ADR-33: a ResendMailer from the environment, or None (emailing is not configured)
+        self.email: EmailReportService | None = None
         self.policies: PolicyService | None = None
         self._hooks: list[tuple[str, MeetingEndedHook]] = []
         self._log_task: asyncio.Task | None = None
@@ -168,6 +171,7 @@ class Runtime:
         self.export = ExportService(self.db, self.settings.exports_dir,
                                     low_confidence_threshold=self.settings.attribution.low_confidence_threshold)
         self.summary.on_ready = self.export.on_summary_ready
+        self.email = EmailReportService(self.db, self.export, self.mailer)
         self.policies = PolicyService(self.db, self.settings, self.embedding_adapter,
                                       priority=self.pipeline.priority if self.pipeline else None)
         await self.policies.start()

@@ -10,6 +10,8 @@ see `tests/manual-test/DEMO_FLOW.md`. For the talk track and judge Q&A, see `dem
 - Pick the STT backend in `stt.env` (see `stt.env.example`). Use `CONVENE_STT=local` for the offline story or
   `CONVENE_STT=gemini` for better transcripts. With Gemini, do **not** claim offline or "audio never leaves the
   laptop"; say "speech-to-text uses Gemini for this demo, everything else runs on the laptop".
+- For the email beat, put `RESEND_API_KEY` and `CONVENE_MAIL_FROM` in `mail.env` (see `mail.env.example`). The
+  startup log says whether email is set up. Sending needs internet.
 - `./scripts/start_demo.sh` with `CONVENE_CERT`/`CONVENE_KEY`. Wait for `Certificate OK`, `STT model ready` (or the
   Gemini check), and `Reasoning model ready`.
 - For the reports beat, have two or three **ended** meetings with summaries and a few action items from earlier
@@ -29,6 +31,7 @@ see `tests/manual-test/DEMO_FLOW.md`. For the talk track and judge Q&A, see `dem
 | 7 | **Live Q&A: the key moment** | Ask about something said minutes ago ("What did we decide about the beta launch date?"). The answer cites who said it, under "Sources". Then ask something never discussed ("Who owns the marketing budget?"). It honestly says it was not discussed instead of inventing an answer. | dashboard "Ask the room" | Automated + real-model honesty check passed (0/36 fabricated on fixtures); not run on real phones |
 | 8 | **End meeting → summary + action items** | Press End meeting. The post-meeting page shows the summary and action items with owners, written by the local LLM as validated structured data. | `/meetings/{id}` | Real model measured on fixtures; real meeting not run |
 | 9 | **DOCX minutes** | Download the minutes: title, participants, summary, action-item table, and the full transcript with corrected speakers, low-confidence lines italicized. Deterministic code, not the model, lays out the file. | post-meeting page | Automated; opening in Word/Pages not recorded |
+| 9b | **Minutes in everyone's inbox (new)** | Phones that typed an email at join are listed under "Email the minutes" (addresses masked). Press **Send minutes by email**: each person gets "Your words, delivered: <title>" with the DOCX attached. Say it is the one deliberate internet action, and nothing is sent unless someone presses it. | post-meeting page | Automated with a fake mailer; a real Resend send not yet recorded |
 | 10 | **Action items are tracked, not just listed** | Set an owner, a due date and a status (open / done / cancelled). Add a note "from" a later meeting. The overdue items show in red. | post-meeting page, `/action-items` | Automated; browser click-through not run |
 | 11 | **Meeting history + cross-meeting Q&A** | Open Past meetings, search or filter by date, and ask one question across all ended meetings. Each source names its meeting and links to the exact transcript line. Rename or delete a meeting (delete needs the exact title typed). | `/history` | Automated; HTTP smoke check with fake models |
 | 12 | **Policy repository** | Show the uploaded policies and their versions (older versions stay downloadable). In History Q&A, choose "Policies" or "Both" and ask a policy question. Policy sources are labelled as policies. | `/policies`, `/history` | Automated with generated documents; real PDFs not run |

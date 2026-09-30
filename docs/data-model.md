@@ -51,6 +51,20 @@ A person. For a non-shared device, exactly one Participant maps to one Device. F
 | enrollment_status | TEXT | `not_required` \| `pending` \| `enrolled` \| `failed` |
 | color | TEXT, nullable | palette key (`lime` … `charcoal`, `server/colors.py`); chosen at join or assigned; unique in the meeting while any of the 12 is free; null only on rows from before migration 0007 (ADR-25) |
 
+### ParticipantEmail (ADR-33)
+
+The optional address a participant typed on the join page, used only when someone presses **Send minutes by email** on the post-meeting page. It is a separate table so that no participant view, dashboard push, audit payload or the `/database` inspector carries it. Migration 0011.
+
+| Field | Type | Notes |
+|---|---|---|
+| participant_id | TEXT (UUID) | PK, FK → Participant; one address per participant |
+| meeting_id | TEXT (UUID) | FK → Meeting |
+| email | TEXT | 3–254 characters, trimmed; loosely checked (one `@`, a dot in the domain, no spaces) |
+| created_at | TEXT (ISO 8601) | when it was stored or last changed |
+| last_sent_at | TEXT (ISO 8601), nullable | the last successful send to this address; reset to null when the address changes |
+
+Index: `(meeting_id)`.
+
 ### SpeakerEnrollment
 
 Only populated for Participants on a shared Device.
@@ -272,6 +286,7 @@ The complete set. Payloads reference records by ID and never contain transcript 
 | `summary_failed` | `summary` | `summary_id`, `error_code`, `attempts`, `duration_ms`, `drain_timed_out` |
 | `export_created` | `export` | `export_id`, `summary_id`, `input_as_of_seq`, `type` |
 | `export_failed` | `export` | `export_id`, `error_code` |
+| `minutes_emailed` | `export` | `export_id`, `sent_participant_ids`, `failed_participant_ids` |
 | `action_item_updated` | `api` | `action_item_id`, `summary_id`, `from`, `to`, `via` |
 | `action_item_note_added` | `api` | `note_id`, `action_item_id`, `source_meeting_id` |
 | `policy_created` | `policy` | `policy_id`, `title`, `tag_count` |
@@ -297,6 +312,8 @@ Payload value sets:
   meeting-end attempt stopped waiting for queued STT and summarized the lines that existed (`summarization.md`).
   `summary_failed.error_code`: `summary_generation_failed` \| `summary_invalid_output` \| `transcript_too_long` \|
   `transcript_empty`. Payloads carry ids and counts, never transcript text.
+- `minutes_emailed` (ADR-33) records one press of **Send minutes by email**: the DOCX export that was attached and
+  which participants' messages Resend accepted or refused. It holds participant ids only, never an address.
 - `action_item_updated` (CON-16) records one manual edit of an `ActionItem`. Its `meeting_id` is the item's own meeting. `from` and `to` are objects with the same keys, only the fields that changed, drawn from `owner_participant_id`, `due_date` and `status`. `from` holds the values immediately before the edit and `to` the values after it, so every prior value can be recovered, as with `utterance_corrected`. Values are IDs, dates and enum values, never item text. `via` is `edit` for a direct edit, or `note` when the status change was sent with a note (`action_item_note_added` is written in the same transaction). A no-op edit writes no event.
 - `action_item_note_added` (CON-16) has the item's meeting as its `meeting_id`. `source_meeting_id` names the meeting the update came from. The note text lives only in the `ActionItemNote` row.
 - `summary_generated.input_as_of_seq` and `export_created.input_as_of_seq` are the `seq` high-water mark of the transcript the artifact was built from. They are how staleness is derived (see below), so no extra column is needed.
@@ -342,4 +359,4 @@ Policy documents and every uploaded version are retained append-only in this tas
 
 No automatic deletion for the hackathon build — data volumes at this scale don't need it. Retention policy is an explicit deferred item (see `requirements.md` non-goals), not an oversight.
 
-A user can permanently delete one meeting (`DELETE /api/meetings/{meeting_id}`, ADR-27). That removes every row the meeting owns, including its audit events, and the multi-meeting `QAQuery` rows that cited its chunks. Its action items go with it, together with every `ActionItemNote` attached to them, including notes added from other meetings. The notes the meeting was the **source** of are deleted too, even when they sit on another meeting's item, along with their `action_item_note_added` events. A status change sent with such a note stays on the item, and its `action_item_updated` event stays, because it describes the surviving item. It leaves one `meeting_deleted` audit event with no `meeting_id`, holding only the deleted id and counts. `meeting_deleted` is the one event whose payload names a meeting that no longer exists.
+A user can permanently delete one meeting (`DELETE /api/meetings/{meeting_id}`, ADR-27). That removes every row the meeting owns, including its audit events, and the multi-meeting `QAQuery` rows that cited its chunks. Its participants' email addresses (`ParticipantEmail`) go with it. Its action items go with it, together with every `ActionItemNote` attached to them, including notes added from other meetings. The notes the meeting was the **source** of are deleted too, even when they sit on another meeting's item, along with their `action_item_note_added` events. A status change sent with such a note stays on the item, and its `action_item_updated` event stays, because it describes the surviving item. It leaves one `meeting_deleted` audit event with no `meeting_id`, holding only the deleted id and counts. `meeting_deleted` is the one event whose payload names a meeting that no longer exists.
