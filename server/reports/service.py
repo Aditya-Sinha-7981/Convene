@@ -12,7 +12,7 @@ in range are counted as excluded. Meetings read oldest first. The figures (docs/
 """
 import json
 
-from ..errors import ValidationError
+from ..errors import MeetingNotEndedError, ValidationError
 from ..repositories import base, meetings, participants, summaries
 from ..summary.views import is_stale
 
@@ -78,6 +78,25 @@ def _meeting_section(conn, meeting) -> dict:
             "summary_state": state, "summary_text": current.summary_text if current else None,
             "failure_code": failure, "stale": is_stale(conn, meeting.meeting_id, current),
             "action_items": items}
+
+
+def selected_sections(conn, meeting_ids: list[str], max_meetings: int) -> list[dict]:
+    """The chosen ended meetings' sections, oldest first, for the summaries download (history page).
+
+    Duplicates are ignored. An unknown id is ``MeetingNotFoundError``; a meeting that has not ended is
+    ``MeetingNotEndedError``, as history Q&A refuses it. At most ``max_meetings``, like a periodic report.
+    """
+    ids = list(dict.fromkeys(meeting_ids))
+    if not ids:
+        raise ValidationError("meeting_ids must name at least one meeting")
+    if len(ids) > max_meetings:
+        raise ValidationError(f"meeting_ids names {len(ids)} meetings; the limit is {max_meetings}")
+    rows = [meetings.require(conn, meeting_id) for meeting_id in ids]
+    for meeting in rows:
+        if meeting.status != "ended":
+            raise MeetingNotEndedError(f"meeting {meeting.meeting_id} has not ended")
+    rows.sort(key=lambda meeting: (meeting.started_at or meeting.created_at, meeting.meeting_id))
+    return [_meeting_section(conn, meeting) for meeting in rows]
 
 
 def _closed_in_range(conn, from_at: str, to_at: str) -> tuple[list[dict], list[dict]]:

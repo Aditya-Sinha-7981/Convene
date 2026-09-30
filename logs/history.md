@@ -98,3 +98,40 @@ stays on the dashboard). Recorded as ADR-27.
 Checks: `tests/test_meeting_admin.py` 9 passed. Full non-model suite 646 passed, plus the same 3 pre-existing
 `test_db_migrations` failures. JS 7 passed. `tests/test_audit_emit.py`: the pinned set of events that may have no
 meeting now includes `meeting_deleted`. Not checked in a browser: the Chrome extension was unavailable.
+
+## 2026-09-30 — Summaries of several meetings at once (branch feature/multi-summary)
+
+Asked for by the user: tick several past meetings and see each title with its summary, as multi-meeting Q&A already
+does.
+
+- Client only: no route, schema, event or model change. `client/history_summaries.js` reads
+  `GET /api/meetings/{id}/summary` per ticked meeting (cached for the page, fetched in parallel) and renders them
+  oldest first. The history page's right column gets Ask / Summaries tabs over the one selection. The selection now
+  keeps each meeting's row (title, dates, count), not just its title.
+- Missing summaries: "Summarize now" per meeting, and "Summarize all n without a summary". That starts
+  `POST …/summarize` one meeting at a time, polling every 3 s until each finishes. Each is tried once; `409
+  transcript_empty` shows "Nothing was transcribed", and a failure shows on its card and the queue moves on. When one
+  finishes, the list reloads, so the Summary/DOCX badges appear. "Copy all" writes plain text.
+- Not built: a combined summary across meetings written by the model (that would be a new model call and a new
+  contract), or a downloadable file of the summaries (Reports already covers a date range as DOCX).
+
+Checks: headless Chromium against a scratch server with a fake reasoning model (2.5 s delay): 5 meetings ticked, 2
+with summaries. The tab reads "Summaries (5)". The bulk button wrote the 2 summarizable ones one after the other
+(one pending, the next still waiting), and the one without audio showed "Nothing was transcribed". The list badges
+updated without a reload. The layout was also checked at 390 px. No console errors or failed requests. Full
+non-model suite: 824 passed, with the same 2 `GET /api/overview` doc-test failures as before this change. Not run: real meetings with the local model (one summary takes about a
+minute, so several queue for several minutes).
+
+### Download (same branch)
+
+- `GET /api/summaries/download?meeting_ids=a,b,…` renders the ticked meetings' summaries as one DOCX
+  (`render_summaries` beside the report template). It reuses the report's per-meeting builder through
+  `reports.selected_sections`. Ended meetings only (`409 meeting_not_ended`), unknown ones are `404`, repeats are
+  removed, and the cap is `[reports].max_meetings`. No model call, and no row, file or event. The file is
+  `convene-summaries-<UTC date>.docx`.
+- The Summaries tab gets a **Download DOCX** link next to Copy all, built from the current selection.
+- Docs: api.md (route index and section), export.md ("Summaries of selected meetings"), frontend.md, feature-status,
+  demo-features.
+- Checks: `tests/test_summaries_download.py` 2 passed. It covers oldest-first order, a ready, a failed and a
+  none-yet summary, repeats ignored, no action items, a fake model that fails if called, row counts unchanged, and
+  the 400/404/409 cases.

@@ -98,6 +98,50 @@ def render_report(data: dict, generated_at: str) -> Document:
     return document
 
 
+SELECTION_STATES = {
+    "none": "No summary yet.",
+    "pending": "A summary was still being written when this file was made.",
+}
+
+
+def render_summaries(sections: list[dict], generated_at: str) -> Document:
+    """Several meetings' summaries in one file (history page): each title and date, participants, then its summary.
+
+    ``sections`` are ``server.reports.service.selected_sections`` output, oldest first. No action items or transcript:
+    it is the "Summaries" tab as a document. Same conventions as the report: fixed core timestamps, UTC dates.
+    """
+    document = Document()
+    core = document.core_properties
+    core.created = core.modified = datetime(2000, 1, 1, tzinfo=timezone.utc)
+    document.add_heading("Convene meeting summaries", 0)
+    document.add_paragraph(f"Generated: {_utc_date(generated_at)}")
+    with_summary = sum(1 for meeting in sections if meeting["summary_state"] == "ready")
+    count = "1 meeting" if len(sections) == 1 else f"{len(sections)} meetings"
+    document.add_paragraph(f"{count}, {with_summary} with a summary, oldest first (dates are UTC)")
+    for meeting in sections:
+        document.add_heading(f"{meeting['title']} — {_utc_date(meeting['started_at'] or meeting['created_at'])}", level=1)
+        names = ", ".join(meeting["participants"]) or "No participants registered"
+        document.add_paragraph(f"Participants: {names}")
+        if meeting["summary_state"] == "ready":
+            if meeting["stale"]:
+                document.add_paragraph("Note: the transcript changed after this summary was written, so it may be "
+                                       "out of date.").runs[0].italic = True
+            for paragraph in (meeting["summary_text"] or "").split("\n\n"):
+                if paragraph.strip():
+                    document.add_paragraph(paragraph.strip())
+        elif meeting["summary_state"] == "failed":
+            document.add_paragraph(f"No summary: the last attempt failed ({meeting['failure_code']}).")
+        else:
+            document.add_paragraph(SELECTION_STATES[meeting["summary_state"]])
+    return document
+
+
+def render_summaries_bytes(sections: list[dict], generated_at: str) -> bytes:
+    buffer = io.BytesIO()
+    render_summaries(sections, generated_at).save(buffer)
+    return buffer.getvalue()
+
+
 def render_report_bytes(data: dict, generated_at: str) -> bytes:
     buffer = io.BytesIO()
     render_report(data, generated_at).save(buffer)

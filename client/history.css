@@ -100,9 +100,40 @@
 .hq-citation strong { color: var(--accent-hover); font-weight: 650; }
 .hq-excerpt { overflow-wrap: anywhere; }
 
+/* The right-hand side: Ask and Summaries share one sticky column and the list's selection. */
+.hx-side { position: sticky; top: 16px; display: grid; gap: 10px; }
+.hx-side .hq-panel { position: static; }
+.hx-tabs { display: inline-flex; justify-self: start; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
+.hx-tabs button { min-height: 32px; padding: 0 14px; border: 0; border-radius: 999px; background: none; color: var(--ink-2); font-size: 14px; font-weight: 650; }
+.hx-tabs button[aria-selected="true"] { background: var(--accent); color: var(--on-accent); }
+.hx-tabs button:focus-visible { outline: 3px solid var(--accent-line); outline-offset: 2px; }
+
+/* Summaries of the selected meetings (client/history_summaries.js). */
+.hs-panel { display: flex; flex-direction: column; max-height: calc(100vh - 80px); }
+.hs-head { display: grid; gap: 8px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.hs-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+.hs-tools .btn { min-height: 34px; padding: 0 14px; font-size: 13px; }
+.hs-tools a.btn { display: inline-flex; align-items: center; text-decoration: none; }
+.hs-tools a.btn[aria-disabled="true"] { opacity: .5; pointer-events: none; }
+.hs-list { display: grid; gap: 0; overflow-y: auto; }
+.hs-list:empty { display: none; }
+.hs-card { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.hs-card:last-child { border-bottom: 0; }
+.hs-title { color: var(--ink); font-size: 16px; font-weight: 700; text-decoration: none; overflow-wrap: anywhere; }
+.hs-title:hover { color: var(--accent); text-decoration: underline; }
+.hs-meta { margin: 2px 0 8px; color: var(--muted); font-size: 12px; }
+.hs-text { margin: 0 0 8px; color: var(--ink); font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+.hs-note { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
+.hs-note.is-busy { color: var(--accent-hover); }
+.hs-note.is-stale { color: var(--review); }
+.hs-note.is-failed { color: var(--danger); }
+.hs-action { min-height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 600; }
+.hs-action:disabled { opacity: .5; }
+
 @media (max-width: 880px) {
   .hx-grid { grid-template-columns: minmax(0, 1fr); }
-  .hq-panel { position: static; }
+  .hq-panel, .hx-side { position: static; }
+  .hs-panel { max-height: none; }
 }
 @media (max-width: 520px) {
   .hx-row { grid-template-columns: auto minmax(0, 1fr); }

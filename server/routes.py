@@ -23,7 +23,7 @@ from .timeutil import utc_now
 from .repositories import audit_events, meetings as meetings_repo, utterances, policies
 from .summary.views import summary_payload
 from .export.service import ExportRenderError, MIME
-from .export.report_renderer import render_report_bytes
+from .export.report_renderer import render_report_bytes, render_summaries_bytes
 from .mail.service import EmailInProgressError, MailNotConfiguredError, NoRecipientsError, parse_plan
 from .reports import service as reports
 from .transport.signaling import signaling_endpoint
@@ -504,6 +504,27 @@ async def report_download(request: Request):
         log.exception("report render failed")
         raise ApiError(500, "export_render_failed", "the report could not be rendered; retry is safe") from exc
     name = f"convene-report-{from_at[:10]}-to-{to_at[:10]}.docx"
+    return Response(content, media_type=MIME, headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@router.get("/api/summaries/download")
+async def summaries_download(request: Request):
+    """The chosen ended meetings' summaries in one DOCX (history page "Summaries" tab). Regenerated on every
+    request from stored rows; no model call, nothing stored, like the periodic report."""
+    raw = request.query_params.get("meeting_ids") or ""
+    ids = [value.strip() for value in raw.split(",") if value.strip()]
+    bad = [value for value in ids if not is_uuid4(value)]
+    if bad:
+        raise ApiError(400, "invalid_request", f"meeting_ids must be UUID v4 values: {', '.join(bad[:5])}")
+    cap = _runtime(request).settings.reports.max_meetings
+    sections = await _runtime(request).db.run(lambda tx: reports.selected_sections(tx.conn, ids, cap))
+    now = utc_now()
+    try:
+        content = await asyncio.to_thread(render_summaries_bytes, sections, now)
+    except Exception as exc:
+        log.exception("summaries render failed")
+        raise ApiError(500, "export_render_failed", "the summaries could not be rendered; retry is safe") from exc
+    name = f"convene-summaries-{now[:10]}.docx"
     return Response(content, media_type=MIME, headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 

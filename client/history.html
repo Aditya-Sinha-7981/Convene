@@ -38,7 +38,12 @@
       <button id="more" class="btn btn-secondary hx-more" type="button" hidden>Show more</button>
     </section>
 
-    <section class="hq-panel" id="qa" aria-labelledby="qaHeading">
+    <div class="hx-side">
+    <div class="hx-tabs" role="tablist" aria-label="Across meetings">
+      <button type="button" role="tab" id="tabAsk" aria-controls="qa" aria-selected="true">Ask</button>
+      <button type="button" role="tab" id="tabSum" aria-controls="sums" aria-selected="false">Summaries</button>
+    </div>
+    <section class="hq-panel" id="qa" role="tabpanel" aria-labelledby="qaHeading">
       <div class="hq-panel-head">
         <h2 id="qaHeading">Ask across meetings</h2>
         <fieldset class="hx-scope">
@@ -62,6 +67,17 @@
       <p class="hq-empty muted" data-qa-empty>Answers come only from the transcripts of the meetings in scope, with the meeting, speaker and time for every source.</p>
       <ol class="hq-answers" data-qa-answers aria-live="polite"></ol>
     </section>
+
+    <section class="hq-panel hs-panel" id="sums" role="tabpanel" aria-labelledby="sumHeading" hidden>
+      <div class="hq-panel-head hs-head">
+        <h2 id="sumHeading">Summaries of selected meetings</h2>
+        <p class="hq-scope"><span class="hq-scope-tag">Summaries</span><span data-sum-scope></span></p>
+        <div class="hs-tools"><button type="button" class="btn btn-primary" data-sum-all hidden></button><a class="btn btn-secondary" data-sum-download aria-disabled="true">Download DOCX</a><button type="button" class="btn btn-secondary" data-sum-copy>Copy all</button></div>
+      </div>
+      <p class="hq-empty muted" data-sum-empty>Tick meetings in the list to see their summaries here, one after another.</p>
+      <div class="hs-list" data-sum-list aria-live="polite"></div>
+    </section>
+    </div>
   </div>
 </main>
 <script type="module" src="/static/history.js"></script>

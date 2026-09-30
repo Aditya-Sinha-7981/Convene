@@ -139,6 +139,7 @@ API views may add computed fields to a stored entity. They are computed on the s
 | POST | `/api/action-items/{action_item_id}/notes` | should-have (CON-16) |
 | GET | `/api/reports/preview` | should-have (CON-18) |
 | GET | `/api/reports/download` | should-have (CON-18) |
+| GET | `/api/summaries/download` | should-have (history summaries) |
 | GET | `/api/database` | demo support |
 | WS | `/ws/signal/{meeting_id}` | MVP |
 | WS | `/ws/dashboard/{meeting_id}` | MVP |
@@ -1418,6 +1419,30 @@ Render and download the report DOCX for a range.
 | 500 | `internal_error` | database error |
 
 **Side effects** — none. No `Export` row, no file under `data/exports/`, no audit event.
+
+### GET /api/summaries/download
+
+The summaries of the meetings ticked on the history page, in one DOCX (the "Summaries" tab's **Download DOCX**). Like the periodic report it is regenerated on every request from stored rows: no model call, and nothing is stored (`export.md`, "Summaries of selected meetings").
+
+**Request** — query parameter `meeting_ids`: comma-separated UUIDs of **ended** meetings, at least one and at most `[reports].max_meetings` (default 50) after repeats are removed.
+
+**Response** — `200` with the file: `Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document` and `Content-Disposition: attachment; filename="convene-summaries-<UTC date>.docx"`. The meetings appear oldest first (by `started_at`, else `created_at`), each with its title, UTC date, participants and current summary. A meeting without a ready summary says so instead, and a stale summary is marked. Action items and transcripts are not included. Errors use the JSON error shape:
+
+```json
+{ "error": { "code": "meeting_not_ended", "message": "meeting 0d4f6a52-7c1b-4e7a-b0a3-51e1f4c2a9d8 has not ended" } }
+```
+
+**Status codes**
+
+| Status | Code | When |
+|---|---|---|
+| 200 | — | the DOCX |
+| 400 | `invalid_request` | `meeting_ids` missing or empty, a value is not a UUID v4, or more than the limit |
+| 404 | `meeting_not_found` | a named meeting does not exist |
+| 409 | `meeting_not_ended` | a named meeting has not ended |
+| 500 | `export_render_failed` | rendering failed; nothing was stored and a retry is safe |
+
+**Side effects** — none: no row, file, audit event or model call.
 
 ## WebSocket: `/ws/signal/{meeting_id}`
 
