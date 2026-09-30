@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<script src="/static/theme.js"></script>
+<title>Convene — Dashboard</title>
+<link rel="icon" href="/static/brand/logo-mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/overview.css">
+</head>
+<body>
+<header class="overview-bar">
+  <a class="brand" href="/"><img src="/static/brand/logo.svg" alt="Convene home"></a>
+  <p class="local-state"><i aria-hidden="true"></i>Local workspace</p>
+  <button class="theme-toggle" type="button" data-theme-toggle></button>
+  <a class="btn btn-primary" href="/#start">New meeting <span aria-hidden="true">→</span></a>
+</header>
+
+<div class="shell">
+  <aside class="sidebar">
+    <p class="sidebar-label">Workspace</p>
+    <nav class="sidebar-nav" aria-label="Workspace">
+      <a class="active" href="/dashboard"><span class="nav-icon" aria-hidden="true">⌁</span>Dashboard</a>
+      <a href="/history"><span class="nav-icon" aria-hidden="true">◷</span>Past meetings</a>
+      <a href="/action-items"><span class="nav-icon" aria-hidden="true">✓</span>Action items</a>
+      <a href="/reports"><span class="nav-icon" aria-hidden="true">▤</span>Reports</a>
+      <a href="/policies"><span class="nav-icon" aria-hidden="true">⌑</span>Policies</a>
+      <a href="/database"><span class="nav-icon" aria-hidden="true">◫</span>Database</a>
+    </nav>
+    <div class="sidebar-note"><span class="sidebar-note-dot" aria-hidden="true"></span><p><b>Everything stays local.</b><br>Your meeting record lives on this laptop.</p></div>
+  </aside>
+
+  <main class="overview">
+    <section class="overview-head">
+      <div><p class="eyebrow">Host workspace</p><h1>Good to see you.</h1><p class="intro">Here’s what Convene has helped your room remember.</p></div>
+      <a class="quiet-link" href="/history">View all meetings <span aria-hidden="true">→</span></a>
+    </section>
+
+    <p id="error" class="error" role="alert" hidden></p>
+
+    <section class="stat-grid" aria-label="Meeting statistics">
+      <article class="stat-card"><div class="stat-card-top"><span>Total meetings</span><span class="stat-icon" aria-hidden="true">◫</span></div><strong id="meetingCount">—</strong><p><span class="soft-dot" aria-hidden="true"></span><span id="meetingDetail">Loading your record…</span></p></article>
+      <article class="stat-card"><div class="stat-card-top"><span>Words transcribed</span><span class="stat-icon" aria-hidden="true">✦</span></div><strong id="wordCount">—</strong><p><span class="soft-dot" aria-hidden="true"></span>Across every stored conversation</p></article>
+      <article class="stat-card"><div class="stat-card-top"><span>People heard</span><span class="stat-icon" aria-hidden="true">♧</span></div><strong id="peopleCount">—</strong><p><span class="soft-dot" aria-hidden="true"></span>Registered meeting participants</p></article>
+      <article class="stat-card"><div class="stat-card-top"><span>Open follow-ups</span><span class="stat-icon" aria-hidden="true">✓</span></div><strong id="actionCount">—</strong><p><span class="soft-dot" aria-hidden="true"></span>Action items still in motion</p></article>
+    </section>
+
+    <section class="workspace-grid">
+      <article class="mascot-card">
+        <div class="mascot-copy"><p class="eyebrow">Transcript telemetry</p><h2>Every word has somewhere to land.</h2><p id="mascotLine">I’m counting the good ideas and the “let’s circle back”s.</p><a class="btn btn-secondary" href="/history">Explore meeting history</a></div>
+        <img src="/static/brand/mascot.svg" alt="" class="overview-mascot" width="128" height="145">
+        <div class="word-orbit" aria-hidden="true"><span id="utteranceCount">—</span><small>utterances</small></div>
+      </article>
+
+      <article class="health-card">
+        <div class="panel-title"><div><p class="eyebrow">Workspace health</p><h2>Ready when your room is</h2></div><span class="health-badge"><i aria-hidden="true"></i>Local</span></div>
+        <dl class="health-list"><div><dt>Meeting record</dt><dd id="recordState">Loading</dd></div><div><dt>Current session</dt><dd id="liveState">Loading</dd></div><div><dt>Transcript lines</dt><dd id="utteranceState">Loading</dd></div></dl>
+      </article>
+    </section>
+
+    <section class="recent-panel" aria-labelledby="recentHeading"><div class="panel-title"><div><p class="eyebrow">Recent activity</p><h2 id="recentHeading">Your latest meetings</h2></div><a class="quiet-link" href="/history">See history <span aria-hidden="true">→</span></a></div><div id="recent" class="recent-list" aria-live="polite"></div></section>
+  </main>
+</div>
+<script type="module" src="/static/overview.js"></script>
+</body>
+</html>

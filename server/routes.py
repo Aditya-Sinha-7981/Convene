@@ -154,6 +154,12 @@ async def list_meetings(request: Request):
                                       limit=limit, offset=offset)
 
 
+@router.get("/api/overview")
+async def overview(request: Request):
+    """Read-only host dashboard totals and newest meetings."""
+    return await service.overview(_runtime(request))
+
+
 @router.post("/api/meetings/{meeting_id}/devices")
 async def register_device(meeting_id: str, request: Request):
     body = await read_json_body(request)
@@ -562,6 +568,12 @@ def _not_found_page() -> HTMLResponse:
 @router.get("/")
 async def home():
     return _page("home.html")
+
+
+@router.get("/dashboard")
+async def overview_page():
+    """Host-facing meeting overview. The per-meeting live dashboard remains /dashboard/{meeting_id}."""
+    return _page("overview.html")
 
 
 @router.get("/history")
