@@ -93,6 +93,8 @@
 .hq-citations { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
 .hq-citation { display: grid; gap: 2px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink-2); font-size: 12px; line-height: 1.45; text-decoration: none; }
 .hq-citation:hover { border-color: var(--accent-line); background: var(--accent-soft); }
+.hq-citation.is-policy { border-left: 3px solid var(--review-line); }
+.hq-citation.is-policy strong { color: var(--review); }
 .hq-citation:focus-visible { outline: 3px solid var(--accent-line); outline-offset: 2px; }
 .hq-cite-meeting { color: var(--ink); font-weight: 650; }
 .hq-citation strong { color: var(--accent-hover); font-weight: 650; }

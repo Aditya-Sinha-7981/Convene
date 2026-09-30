@@ -63,6 +63,14 @@ export function mountHistoryQA({ root, scope, onCitation }) {
 
   function citationItem(citation) {
     const entry = el("li");
+    if (citation.source_type === "policy") {
+      const link = el("a", "hq-citation is-policy");
+      link.href = `/policies/${encodeURIComponent(citation.policy_id)}`;
+      link.append(el("span", "hq-cite-meeting", `Policy · ${citation.policy_title} · version ${citation.version_number}`),
+        el("strong", "", "Policy source"), el("span", "hq-excerpt", citation.text.replace(/^Policy:[^\n]*\n/, "").slice(0, 180)));
+      entry.append(link);
+      return entry;
+    }
     const link = el("a", "hq-citation");
     link.href = `/meetings/${encodeURIComponent(citation.meeting_id)}#u-${encodeURIComponent(citation.utterance_ids?.[0] || "")}`;
     link.title = "Open this moment in the meeting's transcript";
@@ -127,7 +135,7 @@ export function mountHistoryQA({ root, scope, onCitation }) {
   async function ask(text, request) {
     const question = (text || "").trim();
     const current = scope();
-    const body = request || { question, mode: "history", meeting_ids: current.meeting_ids };
+    const body = request || { question, mode: "history", meeting_ids: current.meeting_ids, sources: current.sources || "meetings" };
     if (!question || pending || (!request && !current.ready)) return;
     body.question = question;
     ui.error.textContent = "";
@@ -136,7 +144,7 @@ export function mountHistoryQA({ root, scope, onCitation }) {
     render();
     try {
       const response = await fetch("/api/qa", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: body.question, mode: "history", meeting_ids: body.meeting_ids }) });
+        body: JSON.stringify({ question: body.question, mode: "history", meeting_ids: body.meeting_ids, sources: body.sources || "meetings" }) });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error?.message || "Could not ask the question.");
       results.unshift({ ...result, label: pending.label, request: { ...body, label: pending.label } });

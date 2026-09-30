@@ -4,6 +4,7 @@
 [paths]
 database = "data/convene.db"
 exports = "data/exports"
+policies = "data/policies"
 
 # Optional trusted public hostname for participant join URLs, for example "convene.example.com". Leave empty for
 # local IP + mkcert development mode. Cloudflare credentials never go in this file or the server process.
@@ -56,6 +57,12 @@ answer_timeout_s = 30.0
 index_stale_s = 30.0
 # History Q&A (POST /api/qa, CON-14): the most meetings one explicit meeting_ids list may name.
 history_max_meetings = 50
+
+[policies]
+storage_dir = "data/policies"
+max_upload_bytes = 20971520
+min_similarity = 0.50
+per_source_cap = 5
 
 # End-of-meeting summary (CON-10). Measured on the reference laptop with scripts/measure_summary.py (logs/summary-export.md):
 # continuous talk is about 310 prompt tokens per minute, so 16000 tokens is about 50 minutes of nonstop speech (turn-taking

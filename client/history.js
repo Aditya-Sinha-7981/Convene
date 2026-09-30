@@ -11,14 +11,16 @@ let rows = [], total = 0, loading = null, filterTimer = null;
 const STATUS = { ended: "Ended", live: "Live", created: "Not started" };
 
 function mode() { return document.querySelector("input[name=scope]:checked").value; }
+function sources() { return document.querySelector("input[name=sources]:checked").value; }
 
 function scope() {
-  if (mode() === "all") return { meeting_ids: null, label: "All ended meetings", ready: true };
+  if (sources() === "policies") return { meeting_ids: null, sources: "policies", label: "All current policies", ready: true };
+  if (mode() === "all") return { meeting_ids: null, sources: sources(), label: sources() === "both" ? "All ended meetings and current policies" : "All ended meetings", ready: true };
   const n = selected.size;
   if (n === 0) return { meeting_ids: [], label: "No meetings selected", ready: false, hint: "Tick one or more ended meetings in the list." };
   if (n > MAX_SELECTED) return { meeting_ids: [], label: `${n} meetings selected`, ready: false, hint: `Select at most ${MAX_SELECTED} meetings.` };
   const label = n === 1 ? `Searching “${[...selected.values()][0] || "Untitled meeting"}”` : `Searching ${n} meetings`;
-  return { meeting_ids: [...selected.keys()], label, ready: true };
+  return { meeting_ids: [...selected.keys()], sources: sources(), label: sources() === "both" ? `${label} and current policies` : label, ready: true };
 }
 
 const qa = mountHistoryQA({ root: $("qa"), scope });
@@ -137,5 +139,5 @@ $("filters").addEventListener("submit", (event) => event.preventDefault());
 $("filters").addEventListener("input", () => { clearTimeout(filterTimer); filterTimer = setTimeout(() => load(), 200); });
 $("more").onclick = () => load(true);
 $("clearSel").onclick = () => { selected.clear(); render(); };
-for (const radio of document.querySelectorAll("input[name=scope]")) radio.onchange = () => qa.refreshScope();
+for (const radio of document.querySelectorAll("input[name=scope], input[name=sources]")) radio.onchange = () => qa.refreshScope();
 load();

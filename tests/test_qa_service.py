@@ -348,6 +348,8 @@ def test_the_generation_deadline_covers_decoding_and_waiting_for_an_earlier_answ
     ("Friday, if QA signs off by Wednesday (Sam, 00:09:20). Lee owns the rollback plan [Lee, 00:10:02].",
      "Friday, if QA signs off by Wednesday. Lee owns the rollback plan."),
     ("Lee owns it (excerpt 2).", "Lee owns it."),
+    ("The director must approve [speaker, time since that meeting started] receipts.",
+     "The director must approve receipts."),
     ("The launch is at 10:30 on Friday.", "The launch is at 10:30 on Friday."),  # a time in the answer itself stays
     ("(Priya, 00:12:03)", "(Priya, 00:12:03)"),                             # never cleaned down to nothing
 ])

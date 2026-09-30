@@ -579,3 +579,11 @@ need a stored column or index at thousands. Deleting a later meeting removes the
 although a status change those notes made remains.
 
 **Status:** Approved by the project lead on 2026-09-27 (CON-16 §11: all recommended defaults).
+
+### ADR-29: Policy versions use parallel chunk tables and asynchronous multipart ingestion
+
+**Decision:** Policy originals are uploaded via the documented `multipart/form-data` exception, retained under `data/policies/` by SHA-256, and processed asynchronously. `PolicyChunk`/`PolicyChunkVector` stay separate from meeting-shaped transcript tables but use the same local embedding resource, sqlite-vec database, model guard, priority gate, retrieval path, and citation rules. The current policy version is the newest fully indexed version, so old ready chunks remain searchable until the new version commits ready atomically. Policy scope is opt-in on history Q&A; the default remains meetings, and combined retrieval applies per-index thresholds and caps without cross-index score merging.
+
+**Tradeoffs:** Separate tables add a small schema surface but avoid weakening transcript foreign keys. Upload completion does not imply searchable content; the UI must show `pending`/`failed` clearly. There is deliberately no OCR, editing, deletion, approval workflow, or cross-policy score comparison.
+
+**Status:** Approved by the project lead on 2026-09-28 (CON-17 §11 defaults plus explicit additions).

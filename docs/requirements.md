@@ -35,6 +35,7 @@ Convene is successful if, live with only weak internet needed for the trusted-ho
 | Cross-meeting history search / RAG across past meetings | Strengthens the "knowledge base" pitch, but a single strong in-meeting Q&A demo already proves the concept |
 | Action items as a tracked checklist (owner, status) | Nice polish on top of already-extracted action items; not required for the core loop |
 | Meeting history dashboard (list/search past meetings) | Needed as the front door to cross-meeting RAG; build alongside it, not before |
+| Policy and rules repository | Versioned local policy files strengthen the knowledge-base pitch; CON-17 proceeds before CON-12 only by project-lead exception, and does not make the demo gate pass |
 
 ## Nice-to-have (only if there is meaningfully spare time)
 

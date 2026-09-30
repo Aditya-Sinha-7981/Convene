@@ -102,6 +102,11 @@ Functional and legible beats visually elaborate (`requirements.md`). The fronten
   application-table counts and bounded rows so a judge can see persisted meetings, transcript lines, audit events,
   summaries, and exports. It is not a SQL console and exposes no write action.
 
+### Policy repository (CON-17)
+
+- `/policies` lists local policy documents and accepts PDF/DOCX upload. `/policies/{policy_id}` shows every immutable version, its processing/failure state, extracted read-only text, and a download of the retained original. A pending upload never blocks a live meeting UI.
+- History Q&A makes policy scope explicit. Meeting citations retain their transcript appearance; policy citations are labelled as a policy and identify the title/version rather than speakers and timestamps.
+
 ## What the frontend explicitly does not do
 
 - No client-side attribution logic, no client-side model inference of any kind — it only displays what the server has already computed and calls existing endpoints for actions (corrections, questions, ending the meeting).

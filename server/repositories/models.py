@@ -95,6 +95,36 @@ class TranscriptChunk:
 
 
 @dataclass(frozen=True, slots=True)
+class PolicyDocument:
+    policy_id: str
+    title: str
+    tags: str
+    created_at: str
+    @classmethod
+    def from_row(cls, row): return _load(cls, row)
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyVersion:
+    policy_version_id: str; policy_id: str; version_number: int; storage_path: str; content_hash: str
+    original_filename: str; media_type: str; byte_size: int; extracted_text: str | None; status: str
+    error_code: str | None; error_message: str | None; uploaded_at: str
+    @classmethod
+    def from_row(cls, row): return _load(cls, row)
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyChunk:
+    policy_chunk_id: str; policy_version_id: str; chunk_index: int; text: str; status: str
+    error_message: str | None; created_at: str
+    @classmethod
+    def from_row(cls, row): return _load(cls, row)
+
+    @property
+    def chunk_id(self): return self.policy_chunk_id
+
+
+@dataclass(frozen=True, slots=True)
 class ConnectionEvent:
     event_id: str
     device_id: str

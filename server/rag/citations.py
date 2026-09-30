@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 
 from ..attribution.labels import speaker_label
-from ..repositories import devices, meetings, participants, transcript_chunks, utterances
+from ..repositories import devices, meetings, participants, transcript_chunks, utterances, policies
 
 ERROR_CODES = {"index_unavailable": "retrieval_failed", "retrieval_failed": "retrieval_failed",
                "embedding_model_mismatch": "retrieval_failed",
@@ -46,7 +46,7 @@ def resolve_citations(conn, meeting_id: str, chunk_ids: list[str]) -> list[dict]
         span = rows[start:end + 1]
         speakers = list(dict.fromkeys(labels[start:end + 1]))  # every speaker in the chunk, in order of speech
         citations.append({
-            "chunk_id": chunk.chunk_id, "chunk_index": chunk.chunk_index, "meeting_id": chunk.meeting_id,
+            "source_type": "meeting", "chunk_id": chunk.chunk_id, "chunk_index": chunk.chunk_index, "meeting_id": chunk.meeting_id,
             "utterance_id_start": chunk.utterance_id_start, "utterance_id_end": chunk.utterance_id_end,
             "utterance_ids": [row.utterance_id for row in span], "speakers": speakers,
             "t_start": span[0].t_start, "t_end": max(row.t_end for row in span), "text": chunk.text})
@@ -71,6 +71,26 @@ def resolve_history_citations(conn, chunk_ids: list[str]) -> list[dict]:
             resolved[citation["chunk_id"]] = {**citation, "meeting_title": meeting.title,
                                               "meeting_started_at": meeting.started_at or meeting.created_at}
     return [resolved[chunk_id] for chunk_id in chunk_ids if chunk_id in resolved]
+
+
+def resolve_policy_citations(conn, chunk_ids: list[str]) -> list[dict]:
+    result=[]
+    for chunk_id in chunk_ids:
+        chunk=policies.chunk(conn, chunk_id)
+        if not chunk: continue
+        version=policies.version(conn,chunk.policy_version_id); document=policies.document(conn,version.policy_id)
+        result.append({"source_type":"policy","chunk_id":chunk.policy_chunk_id,"chunk_index":chunk.chunk_index,
+                       "policy_id":document.policy_id,"policy_title":document.title,"version_number":version.version_number,
+                       "uploaded_at":version.uploaded_at,"text":chunk.text})
+    return result
+
+
+def resolve_mixed_citations(conn, chunk_ids: list[str]) -> list[dict]:
+    resolved=[]
+    for chunk_id in chunk_ids:
+        if policies.chunk(conn, chunk_id): resolved.extend(resolve_policy_citations(conn,[chunk_id]))
+        else: resolved.extend(resolve_history_citations(conn,[chunk_id]))
+    return resolved
 
 
 def query_view(row: dict, error_code: str | None, reason: str | None, message: str | None = None) -> dict:

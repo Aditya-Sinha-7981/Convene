@@ -131,6 +131,12 @@ new chunk with the next `chunk_index`, so `chunk_index` is creation order and ti
 range. An utterance too long for one chunk is split at sentence boundaries into several chunks that share its
 utterance range and contain nothing else.
 
+### PolicyDocument and PolicyVersion (CON-17)
+
+`PolicyDocument` is a local read-only identity with `policy_id` (UUID), `title` (1–200 characters), `tags` (a JSON array of trimmed, case-folded strings), and `created_at`. `PolicyVersion` is append-only: it has `policy_version_id`, `policy_id`, monotonically increasing `version_number`, relative `storage_path`, SHA-256 `content_hash`, display-only `original_filename`, `media_type`, `byte_size`, nullable `extracted_text`, `status` (`pending`, `ready`, `failed`), nullable `error_code`/`error_message`, and `uploaded_at`. The original binary is retained separately under configured `data/policies/`.
+
+`PolicyChunk` and its same-file `sqlite-vec` `PolicyChunkVector` are parallel tables solely because `TranscriptChunk` has mandatory meeting/utterance foreign keys. They share the tokenizer, embedding resource, database-wide `TranscriptIndexMeta` vector-space guard, compute priority, retrieval rules, and audit stream. A document's **current** version is its newest `ready` (fully indexed) version. Earlier ready vectors remain searchable until the replacement reaches `ready`; failed/scanned uploads remain visible and downloadable but are never current or searchable.
+
 ### QAQuery
 
 | Field | Type | Notes |
@@ -224,9 +230,9 @@ The single source of truth (ADR-13) — see `architecture.md` lifecycle sections
 |---|---|---|
 | event_id | TEXT (UUID) | PK |
 | seq | INTEGER | **(proposed)** unique, strictly increasing across the whole database, assigned by the single `emit` write path inside the same transaction as the row (`max(seq) + 1`; there is one writer). It is the ordering key for dashboard resynchronization (`api.md`). It survives restarts because it is stored |
-| meeting_id | TEXT (UUID), nullable | null only for the types that can occur outside a single meeting: `server_started`, `model_load`, `model_error`, `signaling_error` (a join for an unknown meeting), and `qa_query` (a history query across several meetings). Every other type requires it, and `emit` enforces that |
+| meeting_id | TEXT (UUID), nullable | null for process-wide events and policy events (`server_started`, model events, unknown-meeting signaling errors, multi-scope `qa_query`, `meeting_deleted`, and every `policy_*` event). Every other type requires it, and `emit` enforces that |
 | event_type | TEXT | one of the catalog below; a value outside the catalog is rejected by the `emit` path |
-| component | TEXT | emitting component: `api`, `transport`, `registry`, `stt`, `attribution`, `speaker`, `rag`, `summary`, `export`, `models` |
+| component | TEXT | emitting component: `api`, `transport`, `registry`, `stt`, `attribution`, `speaker`, `rag`, `summary`, `export`, `models`, `policy` |
 | timestamp | TEXT (ISO 8601) | |
 | payload | TEXT (JSON) | object with the keys listed for that `event_type` |
 
@@ -268,6 +274,11 @@ The complete set. Payloads reference records by ID and never contain transcript 
 | `export_failed` | `export` | `export_id`, `error_code` |
 | `action_item_updated` | `api` | `action_item_id`, `summary_id`, `from`, `to`, `via` |
 | `action_item_note_added` | `api` | `note_id`, `action_item_id`, `source_meeting_id` |
+| `policy_created` | `policy` | `policy_id`, `title`, `tag_count` |
+| `policy_version_added` | `policy` | `policy_id`, `policy_version_id`, `version_number`, `byte_size`, `content_hash` |
+| `policy_extract_failed` | `policy` | `policy_version_id`, `error_code` |
+| `policy_index_failed` | `policy` | `policy_version_id`, `error_code` |
+| `policy_indexed` | `policy` | `policy_id`, `policy_version_id`, `version_number`, `chunk_count` |
 
 Payload value sets:
 
@@ -326,6 +337,8 @@ Which values are derived from the audit stream and which are live gauges (resolv
 - **Live gauges (ephemeral, never persisted, never used to answer "what happened"):** `last_audio_age_ms`, `audio_duration_s`, `stt_backlog`, `stt_dropped_windows`. `stt_backlog` is the number of the device's windows queued for or being transcribed; `stt_dropped_windows` is how many the overload policy has dropped since the server started (each drop is also an audit event). They are computed in memory, served in `GET /api/meetings/{meeting_id}` and the `device_gauges` dashboard event (`api.md`), and reset by a server restart. A gauge never contradicts the audit stream because it describes the present instant, not history; the audit-visible consequences (a drop, a reconnect, a resumed stream) are separate events.
 
 ## Retention
+
+Policy documents and every uploaded version are retained append-only in this task. There is no policy/version editing, deletion, diffing, approval, or OCR.
 
 No automatic deletion for the hackathon build — data volumes at this scale don't need it. Retention policy is an explicit deferred item (see `requirements.md` non-goals), not an oversight.
 

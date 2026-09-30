@@ -40,7 +40,9 @@ def test_migration_keeps_every_existing_item_and_widens_the_status(tmp_path):
               enumerate(("open", "done", "open"))]
     conn.executemany("INSERT INTO ActionItem VALUES (?, ?, ?, ?, ?, ?)", before)
 
-    assert migrate(conn) == 9
+    for path in MIGRATIONS_DIR.glob("0009_*.sql"):  # stop at 0009 so later migrations don't change this test
+        shutil.copy(path, old)
+    assert migrate(conn, old) == 9
     after = conn.execute("SELECT action_item_id, summary_id, meeting_id, text, owner_participant_id, status, due_date "
                          "FROM ActionItem ORDER BY rowid").fetchall()
     assert [tuple(row) for row in after] == [(*row, None) for row in before]  # same rows, same order
@@ -56,7 +58,7 @@ def test_migration_keeps_every_existing_item_and_widens_the_status(tmp_path):
         column, value = next(iter(bad.items()))
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute(f"UPDATE ActionItem SET {column} = ? WHERE action_item_id = ?", (value, before[1][0]))
-    assert migrate(conn) == 9  # a second run is a no-op
+    assert migrate(conn, old) == 9  # a second run is a no-op
     assert conn.execute("SELECT COUNT(*) FROM ActionItem").fetchone()[0] == 3
     conn.close()
 

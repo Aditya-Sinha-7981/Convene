@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..repositories import transcript_chunks
+from ..repositories import transcript_chunks, policies
 from ..repositories.models import TranscriptChunk
 from .vector_store import VectorStore
 
@@ -60,3 +60,15 @@ def search_meetings(conn, store: VectorStore, meeting_ids: list[str], question_v
     eligible.sort(key=lambda item: -item.similarity)
     kept = [item for item in eligible if item.similarity >= min_similarity][:top_k]
     return Retrieval(kept, eligible[0].similarity if eligible else None, len(eligible))
+
+
+def search_policies(conn, store: VectorStore, version_ids: list[str], question_vector, *, top_k: int,
+                    min_similarity: float) -> Retrieval:
+    eligible=[]
+    for version_id in version_ids:
+        for hit in store.search_policy(conn, version_id, question_vector, top_k * OVERFETCH):
+            chunk=policies.chunk(conn, hit.chunk_id)
+            if chunk and chunk.policy_version_id == version_id and chunk.status == "ready":
+                eligible.append(Evidence(chunk, 1.0-float(hit.distance)))
+    eligible.sort(key=lambda item:-item.similarity)
+    return Retrieval([item for item in eligible if item.similarity >= min_similarity][:top_k], eligible[0].similarity if eligible else None, len(eligible))
