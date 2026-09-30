@@ -587,3 +587,57 @@ although a status change those notes made remains.
 **Tradeoffs:** Separate tables add a small schema surface but avoid weakening transcript foreign keys. Upload completion does not imply searchable content; the UI must show `pending`/`failed` clearly. There is deliberately no OCR, editing, deletion, approval workflow, or cross-policy score comparison.
 
 **Status:** Approved by the project lead on 2026-09-28 (CON-17 §11 defaults plus explicit additions).
+
+### ADR-30: Periodic reports aggregate stored data on demand, with no model and no new table
+
+**Decision:** CON-18 adds a cross-meeting report over an inclusive UTC date range, using `GET /api/meetings`
+`from`/`to` semantics on `created_at`. Only `ended` meetings are reported, oldest first; `created`/`live` ones in range
+are counted as excluded. Per meeting: title, date, duration, participants, the current `ready` summary or an explicit
+"No summary" / "Summary failed: `<code>`" state, a stale note, and its current-summary action items. Range figures:
+opened (items of meetings in range), closed (done, and cancelled separately) by the last status change in
+`action_item_updated` events inside the range, from any meeting, and "Open now" at generation time. A
+second fixed `python-docx` template in `server/export/` renders it, regenerated on every download into memory. There is no
+`Export` row, no stored file, no audit event, and no model call. `[reports].max_meetings` (50) caps a report: over
+the cap is `400 invalid_request`, never truncation. An empty range is `409 report_empty`. Routes: `GET
+/api/reports/preview`, `GET /api/reports/download`, page `/reports`.
+
+**Rationale:** The problem statement asks for periodic reports. Aggregating stored summaries and CON-16's items and
+events answers it with no new failure mode on stage (ADR-12). Reusing the history filter makes the preview count
+match `/history`. `Export` is per meeting (`meeting_id` NOT NULL), and rendering is fast and deterministic, so
+storing reports would add schema for no benefit. A read that stores nothing is not audited, like viewing a summary.
+
+**Alternatives considered:** Filtering on `started_at` (rejected for consistency with the history filter);
+caching reports in a new table (rejected); "still open as of range end" by replaying events (deferred); an
+AI-written overview paragraph (out of scope: a new model output, which would need CON-10-style validation); a
+short "no meetings" DOCX for an empty range (rejected in favour of `409` and a disabled button).
+
+**Tradeoffs:** UTC day boundaries can place a late-evening local meeting on the next date; the page and document
+say the dates are UTC. "Open now" changes as items are edited after the period, and it is labelled that way.
+
+**Status:** Adopted with CON-18 §11's recommended defaults on 2026-09-30, when the user asked for CON-18 to be implemented. The project lead should confirm them.
+
+### ADR-31: A demo-only Gemini STT connector, selected by the operator's environment
+
+**Decision:** Within ADR-06, the `stt` resource type gains a cloud backend: Google Gemini through its REST
+`generateContent` API, with stdlib HTTP only (`server/pipeline/gemini_adapter.py`). It is chosen only by the
+environment when the server starts (`CONVENE_STT=gemini`, `GEMINI_API_KEY`, `GEMINI_STT_MODEL`, optional
+`CONVENE_STT_WORKERS`). The default and the configuration file stay local. The key is kept out of `Settings`,
+logs, audit payloads and error messages. There is no automatic fallback in either direction. The ADR-24 language
+rule is carried into the prompt.
+
+**Rationale:** Local STT quality on real phone audio was not good enough for the demo, and the user asked for a
+connector that the environment switches. The adapter contract (ADR-14) made this a new adapter, with no change to the
+VAD, scheduling, attribution or storage.
+
+**Alternatives considered:** Google's `google-genai` SDK (rejected: a new dependency for one POST); an automatic
+fallback when local STT fails (rejected by ADR-06); a dashboard toggle (deferred: switching needs a restart
+anyway).
+
+**Tradeoffs:** Cloud mode needs internet and sends meeting audio to Google, so it voids the offline and privacy
+claims for that run; the server prints a warning at startup. Free-tier rate limits can fail segments when several
+phones talk at once. One retry is made, and then the segment is reported as an STT failure while other devices
+continue. `stt_confidence` is `exp(avgLogprobs)` when reported, else a fixed 0.9, which is not comparable to
+Whisper's score.
+
+**Status:** Adopted 2026-09-30 at the user's request, for the demo only. The local model remains the default.
+

@@ -150,12 +150,16 @@ def test_load_of_an_unprovisioned_adapter_raises_and_transcribing_before_load_is
         adapter.load()
 
 
-def test_build_adapter_selects_by_configured_runtime_and_rejects_cloud_runtimes():
+def test_build_adapter_selects_by_configured_runtime_and_rejects_unwired_runtimes():
     adapter = build_adapter(replace(CONFIG, runtime="mlx"))
     assert isinstance(adapter, MlxWhisperAdapter) and adapter.model_identifier == "org/model"
-    for cloud in ("groq", "gemini", "whatever"):
+    for cloud in ("groq", "whatever"):
         with pytest.raises(ValueError, match="not available"):
-            build_adapter(replace(CONFIG, runtime=cloud))
+            build_adapter(replace(CONFIG, runtime=cloud), environ={"GEMINI_API_KEY": "k"})
+    with pytest.raises(ValueError, match="GEMINI_API_KEY"):  # the demo-only connector never runs without a key
+        build_adapter(replace(CONFIG, runtime="gemini"), environ={})
+    from server.pipeline.gemini_adapter import GeminiSttAdapter
+    assert isinstance(build_adapter(replace(CONFIG, runtime="gemini"), environ={"GEMINI_API_KEY": "k"}), GeminiSttAdapter)
 
 
 @pytest.mark.parametrize(("languages", "options"), [

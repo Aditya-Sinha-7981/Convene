@@ -107,3 +107,8 @@ priority_max_wait_s = 3.0
 device_confidence = 0.95
 unresolved_confidence = 0.2
 low_confidence_threshold = 0.8
+
+# Periodic reports across meetings (CON-18): aggregation of stored summaries and action items, no model call.
+# A range holding more ended meetings than this is refused with a message to narrow it; it is never truncated.
+[reports]
+max_meetings = 50

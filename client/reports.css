@@ -1,0 +1,10 @@
+/* Periodic reports (CON-18). Built on history.css; indigo for Convene's own controls, no amber. */
+.rp-page { max-width: 44rem; }
+.rp-card { display: grid; gap: 14px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow-sm); }
+.rp-presets { display: flex; flex-wrap: wrap; gap: 8px; }
+.rp-preset { min-height: 34px; padding: 0 12px; font-size: 13px; }
+.rp-note { margin: 0; font-size: 13px; }
+.rp-preview { margin: 0; min-height: 1.4em; font-size: 15px; font-weight: 600; color: var(--ink); }
+.rp-actions { display: flex; justify-content: flex-end; }
+.btn.is-disabled { opacity: .5; pointer-events: none; }
+@media (max-width: 540px) { .rp-actions .btn { width: 100%; justify-content: center; } }

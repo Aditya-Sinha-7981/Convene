@@ -2,7 +2,7 @@
 
 Single FastAPI process (ADR-01). REST for request/response operations, WebSocket for signaling and live push feeds. This document is authoritative for endpoint shape — other docs describe *when* these are called, not their exact contracts. Stored field names come from `data-model.md` and are never renamed here; where the API adds a computed field it is listed under [Derived fields](#derived-fields).
 
-**Implementation status (through CON-09):** implemented and covered by automated loopback tests: `POST /api/meetings`, `GET /api/meetings/{meeting_id}`, `POST …/devices`, `POST …/end`, `GET …/transcript`, and `POST …/utterances/{utterance_id}/correct`; signaling and dashboard WebSockets; and the pages `/`, `/join/{meeting_id}`, `/dashboard/{meeting_id}`, and `/static/…`. The dashboard feed includes `meeting_status`, `device_status`, `connection_event`, `device_gauges`, `utterance`, and `utterance_updated`; the dashboard consumes server-computed labels and low-confidence state. Live Q&A (`POST …/qa`, the `qa_answer` push) is implemented by CON-09. Summarization (`POST …/summarize`, `GET …/summary`, the `summary_ready` and `summary_failed` pushes, summarization started by `end`, and the post-meeting page `/meetings/{meeting_id}`) is implemented by CON-10. Export is implemented by CON-11. The history list (`GET /api/meetings`), history Q&A (`POST /api/qa`) and the `/history` page are implemented by CON-14, and rename (`PATCH`) and delete (`DELETE /api/meetings/{meeting_id}`) by ADR-27. Action-item editing, notes and the global list (`/api/action-items…`, the `/action-items` page) are implemented by CON-16. Enrollment routes remain unimplemented. None of this has been verified on real phones. A route section below describes the contract, not a claim that the route exists.
+**Implementation status (through CON-09):** implemented and covered by automated loopback tests: `POST /api/meetings`, `GET /api/meetings/{meeting_id}`, `POST …/devices`, `POST …/end`, `GET …/transcript`, and `POST …/utterances/{utterance_id}/correct`; signaling and dashboard WebSockets; and the pages `/`, `/join/{meeting_id}`, `/dashboard/{meeting_id}`, and `/static/…`. The dashboard feed includes `meeting_status`, `device_status`, `connection_event`, `device_gauges`, `utterance`, and `utterance_updated`; the dashboard consumes server-computed labels and low-confidence state. Live Q&A (`POST …/qa`, the `qa_answer` push) is implemented by CON-09. Summarization (`POST …/summarize`, `GET …/summary`, the `summary_ready` and `summary_failed` pushes, summarization started by `end`, and the post-meeting page `/meetings/{meeting_id}`) is implemented by CON-10. Export is implemented by CON-11. The history list (`GET /api/meetings`), history Q&A (`POST /api/qa`) and the `/history` page are implemented by CON-14, and rename (`PATCH`) and delete (`DELETE /api/meetings/{meeting_id}`) by ADR-27. Action-item editing, notes and the global list (`/api/action-items…`, the `/action-items` page) are implemented by CON-16. Periodic reports (`/api/reports/preview`, `/api/reports/download`, the `/reports` page) are implemented by CON-18. Enrollment routes remain unimplemented. None of this has been verified on real phones. A route section below describes the contract, not a claim that the route exists.
 
 **Status of decisions:** contract choices that change a documented behavior or the schema are marked **(proposed)** and recorded as ADR-15 to ADR-18 in `decisions.md`, pending project-lead confirmation. Shapes marked **provisional** belong to should-have features and are finalized by CON-13 (enrollment) and CON-14 (history).
 
@@ -62,6 +62,7 @@ Single FastAPI process (ADR-01). REST for request/response operations, WebSocket
 | `policy_version_not_failed` | 409 | a policy retry named a version that is `ready` or `pending`; only `failed` versions can be retried |
 | `summary_in_progress` | 409 | a summary attempt is already running |
 | `summary_not_ready` | 409 | export needs a `ready` summary and none exists |
+| `report_empty` | 409 | a report was requested for a date range with no ended meeting (CON-18) |
 | `transcript_empty` | 409 | nothing to summarize |
 | `device_not_connected` | 409 | enrollment needs a connected device (provisional) |
 | `device_not_shared` | 409 | enrollment applies only to shared devices (provisional) |
@@ -69,7 +70,7 @@ Single FastAPI process (ADR-01). REST for request/response operations, WebSocket
 | `payload_too_large` | 413 | body over 64 KiB |
 | `unsupported_media_type` | 415 | not `application/json` |
 | `enrollment_low_quality` | 422 | no usable sample could be embedded (provisional) |
-| `export_render_failed` | 500 | rendering the DOCX failed; summary and transcript are unaffected |
+| `export_render_failed` | 500 | rendering the DOCX (minutes or periodic report) failed; summary and transcript are unaffected |
 | `internal_error` | 500 | unexpected server error |
 
 Failure codes that appear inside successful responses, pushes, or audit payloads rather than as HTTP errors: `retrieval_failed` and `generation_failed` (a `QAQuery` with `status = failed`), `summary_generation_failed`, `summary_invalid_output`, `transcript_too_long` and `transcript_empty` (the `summary_failed.error_code` of a failed `Summary`, `summarization.md`), `stt_failed`, and `enrollment_failed`. `no_grounding` is a `QAQuery.status` value, not an error code.
@@ -130,6 +131,8 @@ API views may add computed fields to a stored entity. They are computed on the s
 | GET | `/api/action-items/{action_item_id}` | should-have (CON-16) |
 | PATCH | `/api/action-items/{action_item_id}` | should-have (CON-16) |
 | POST | `/api/action-items/{action_item_id}/notes` | should-have (CON-16) |
+| GET | `/api/reports/preview` | should-have (CON-18) |
+| GET | `/api/reports/download` | should-have (CON-18) |
 | GET | `/api/database` | demo support |
 | WS | `/ws/signal/{meeting_id}` | MVP |
 | WS | `/ws/dashboard/{meeting_id}` | MVP |
@@ -147,6 +150,7 @@ These return HTML for a browser, not JSON. Assets are served from the same proce
 | GET | `/dashboard/{meeting_id}` | Live dashboard, including the join QR while the meeting is `created` or `live` | 200, 302 to `/meetings/{meeting_id}` if the meeting has ended, 404 |
 | GET | `/meetings/{meeting_id}` | Post-meeting view: summary, action items, export, and Q&A in history mode | 200, 404 |
 | GET | `/action-items` | Global action-item list: open items across meetings, with edits and notes (CON-16) | 200 |
+| GET | `/reports` | Periodic report: pick a date range, see the matching meeting count, download the DOCX (CON-18) | 200 |
 | GET | `/policies` | Versioned local policy list/detail entry point (CON-17) | 200 |
 | GET | `/policies/{policy_id}` | Read-only policy versions and original downloads (CON-17) | 200, 404 |
 | GET | `/database` | Read-only local SQLite inspector for the demo laptop | 200 |
@@ -1230,6 +1234,64 @@ Attach an update to an existing item, from the meeting where it was mentioned, o
 | 415 | `unsupported_media_type` | not JSON |
 
 **Side effects** — one transaction inserts the `ActionItemNote` and writes audit `action_item_note_added`. If `status` differs from the item's status, the same transaction updates it and writes audit `action_item_updated` with `via: note`. A status change makes the DOCX stale; the note alone does not, because notes are not in the file. Not idempotent: each call appends a note.
+
+## REST: Reports (CON-18)
+
+A periodic report covers every **ended** meeting whose `created_at` falls in a date range. It aggregates what is already stored (each meeting's current summary and its action items, plus action-item audit events) and makes **no model call** (ADR-30). Nothing is stored: the DOCX is rendered on each request, and neither route writes a row or an audit event. The range parameters are parsed exactly like `GET /api/meetings` `from`/`to`, so a preview count equals the history list's `total` for `status=ended` and the same dates. The template and figure definitions are in `export.md`, "Periodic report".
+
+### GET /api/reports/preview
+
+How many meetings a report over this range would hold, before anything is rendered.
+
+**Request** — query parameters, both required: `from` and `to`, inclusive `created_at` bounds. An ISO 8601 date such as `2026-09-01` means the start of that day (UTC) for `from` and its last millisecond for `to`; a date-time with a zone is converted to UTC. `from` after `to` is rejected.
+
+**Response** — `200`. `meeting_count` counts ended meetings in range; `with_summary_count` those with a `ready` summary; `excluded_not_ended_count` the `created` or `live` meetings in range, which are not reported; `over_cap` is true when `meeting_count` exceeds `max_meetings` (`[reports].max_meetings`), and a download would then be refused. `from` and `to` echo the resolved UTC bounds.
+
+```json
+{
+  "from": "2026-09-01T00:00:00.000Z",
+  "to": "2026-09-30T23:59:59.999Z",
+  "meeting_count": 7,
+  "with_summary_count": 6,
+  "excluded_not_ended_count": 2,
+  "max_meetings": 50,
+  "over_cap": false
+}
+```
+
+**Status codes**
+
+| Status | Code | When |
+|---|---|---|
+| 200 | — | success, including zero meetings or a range over the cap |
+| 400 | `invalid_request` | `from` or `to` missing or malformed, or `from` after `to` |
+
+**Side effects** — none. Read-only.
+
+### GET /api/reports/download
+
+Render and download the report DOCX for a range.
+
+**Request** — query parameters: `from` and `to` as in the preview (both required), and `format`, default and only value `docx`.
+
+**Response** — `200` with the file: `Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document` and `Content-Disposition: attachment; filename="convene-report-<from date>-to-<to date>.docx"`, where the dates are the resolved UTC dates (for example `convene-report-2026-09-01-to-2026-09-30.docx`). The name comes from the range, never from a meeting title. Rendering runs off the event loop into an in-memory buffer. It reflects the database at the moment of the request, so a meeting deleted or ended after the preview makes the counts differ; that is not an error. Errors use the JSON error shape:
+
+```json
+{ "error": { "code": "report_empty", "message": "no ended meetings in this date range" } }
+```
+
+**Status codes**
+
+| Status | Code | When |
+|---|---|---|
+| 200 | — | the DOCX |
+| 400 | `invalid_request` | `from`/`to` missing, malformed or reversed; or more ended meetings in range than `[reports].max_meetings` (the message says to narrow the range; the report is never truncated) |
+| 400 | `unsupported_format` | `format` present and not `docx` |
+| 409 | `report_empty` | no ended meeting in the range |
+| 500 | `export_render_failed` | rendering failed; nothing was stored and a retry is safe |
+| 500 | `internal_error` | database error |
+
+**Side effects** — none. No `Export` row, no file under `data/exports/`, no audit event.
 
 ## WebSocket: `/ws/signal/{meeting_id}`
 

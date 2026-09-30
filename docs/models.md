@@ -8,7 +8,7 @@ Application code never references a model name directly (ADR-14). Every capabili
 
 | Resource type | Purpose | Default (local) | Fallback (cloud, manual only — ADR-06) |
 |---|---|---|---|
-| `stt` | Transcribe an audio window | `mlx-whisper` with `mlx-community/whisper-large-v3-turbo`, **pinned to revision `a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb`** in `config/convene.toml` (measured on the reference laptop, below) | Groq Whisper-large-v3 (free tier), not wired |
+| `stt` | Transcribe an audio window | `mlx-whisper` with `mlx-community/whisper-large-v3-turbo`, **pinned to revision `a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb`** in `config/convene.toml` (measured on the reference laptop, below) | Gemini (model named by `GEMINI_STT_MODEL`), **wired as a demo-only connector** selected by `CONVENE_STT=gemini` (ADR-31); Groq not wired |
 | `embedding` | Embed transcript chunks and questions for RAG | `BAAI/bge-small-en-v1.5` via `sentence-transformers`, CPU, pinned to revision `5c38ec7c405ec4b44b94cc5a9bb96e735b38267a` in `config/convene.toml` | none needed — cheap enough to always run local |
 | `speaker_embedding` | Enrollment + runtime classification for shared devices | local speaker-embedding model (ECAPA-TDNN-class, CPU) | none — must run local, no meaningful cloud equivalent for this use case |
 | `reasoning` | Summarization + RAG answer generation | `mlx-lm` with `mlx-community/Meta-Llama-3.1-8B-Instruct-4bit`, **pinned to revision `241a666dad6cb93c8ff213d39a7f34a36bf26db4`**, resident from startup (measured, below) | Groq (Llama 3.3 70B, free tier) or Gemini Flash (free tier), not wired |
@@ -95,6 +95,10 @@ STT has scheduling priority over `reasoning` calls (see `stt-pipeline.md`) — a
 ## Cloud fallback activation
 
 Cloud resource-type backends exist behind the exact same adapter interface as their local counterparts (`transcribe_window(...)`, `generate(...)`) and are selected purely by configuration — never invoked automatically from within the live transcription or Q&A critical path (ADR-06). Activating one is a deliberate action (a config flag or an explicit "use cloud" toggle in the dashboard), logged as such, not a silent runtime failover — a silent failover risks masking a real local-performance problem that should instead be fixed or tuned before demo day.
+
+### Gemini STT connector (demo only, ADR-31)
+
+`server/pipeline/gemini_adapter.py` implements the same `transcribe_window` contract. It is chosen only by the operator's environment when the server starts: `CONVENE_STT=gemini` plus `GEMINI_API_KEY` and `GEMINI_STT_MODEL` (for example in a gitignored `stt.env` that `scripts/start_demo.sh` loads; see `stt.env.example`). `CONVENE_STT=local` or unset keeps the pinned local model. A missing key or model fails startup, and startup makes one real request to check them. Nothing ever switches between local and cloud at runtime. In cloud mode each VAD speech segment is one `generateContent` request (16-bit WAV inline, JSON reply, temperature 0), `[pipeline].workers` rises to `CONVENE_STT_WORKERS` (default 4) because calls wait on the network, and a `429`/`5xx` is retried once after one second. `model_load`, `ModelExecution` and `model_error` record `runtime = gemini` and the model name, never the key. **Cloud mode sends meeting audio to Google and needs internet, so it voids the offline and privacy claims for that run.** Embeddings, summaries and Q&A stay local. Free-tier request-per-minute limits are low: several phones talking produce several requests a minute each, and a `429` after the retry fails that segment (it is reported like any STT failure, and other devices continue).
 
 ## Model swap procedure
 
