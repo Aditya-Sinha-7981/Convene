@@ -1,60 +1,159 @@
 # Convene
 
-Convene turns phones on a local Wi-Fi network into separate meeting microphones: a laptop receives each phone's audio over WebRTC, transcribes it locally, attributes each dedicated device's speech to its registered participant, and presents a live dashboard with correction. The checked-in system includes transport, meeting/device registry, local STT, dedicated-device attribution and correction, live grounded Q&A, structured summary/action items, and deterministic DOCX export. Automated and reference-laptop model checks pass; the complete offline multi-phone demo is **not yet proven**. A first real-phone trusted-host run verified QR join, microphone capture, local transcription, device attribution, and dashboard rendering; the broader Wi-Fi, reconnect, multi-device, noise, language, and end-to-end checklist remains open.
+**Convene** turns smartphones on the same Wi-Fi network into individual meeting microphones. Each participant joins from their phone, while a laptop receives separate audio streams, transcribes them locally, attributes speech by device identity, and turns the conversation into searchable minutes, action items, and exportable documents.
 
-Read the [Convene documentation](docs/README.md) for the design and build plan, and `AGENTS.md` before changing anything.
+Built by **Team The Mentalist** for the **SISTec Innovation Hackathon 4.0 (SIH 4.0)**.
 
-## Install
+## Achievement
 
-Use Python 3.11–3.13 (the automated tests also pass on 3.14). Install while the Internet is available, then work offline:
+- **Overall Winner:** SISTec Innovation Hackathon 4.0
+- **Prize:** ₹40,000
+- **Team:** The Mentalist
+- **Event:** [SISTec Innovation Hackathon 4.0](https://www.sistecrsih.in/)
+
+SIH 4.0 was a national-level, 24-hour innovation hackathon hosted by SISTec Ratibad, Bhopal. Convene was developed for its DT-17 problem statement and evolved through several iterations based on judge feedback.
+
+## The problem
+
+Traditional meeting transcription tools usually receive one mixed audio stream and try to guess who said what. That creates unreliable speaker labels, especially in rooms with overlapping speech or similar voices.
+
+Convene takes a different approach:
+
+> Give each participant a phone.
+> Treat each phone as a dedicated microphone.
+> Use device identity for reliable speaker attribution.
+
+This makes the common case a reliable systems problem rather than a fragile speaker-diarization problem.
+
+## What Convene does
+
+- Connects 1–10 phones to one laptop over local Wi-Fi
+- Captures and streams each phone's microphone audio through WebRTC
+- Transcribes speech locally using Whisper-based STT
+- Attributes transcript lines to participants through their registered devices
+- Shows a live speaker-labelled transcript dashboard
+- Flags low-confidence attribution and supports manual correction
+- Answers questions grounded in the current or past meeting transcript
+- Generates structured summaries and action items
+- Exports meeting minutes as DOCX
+- Supports meeting history, cross-meeting Q&A, action-item tracking, reports, and a local policy repository
+- Keeps meeting traffic and default AI processing local
+
+## Architecture
+
+```text
+Phones
+  │
+  ├── Browser microphone capture
+  ├── WebRTC audio streams
+  └── WebSocket signalling
+          │
+          ▼
+Laptop Server
+  ├── FastAPI + aiortc
+  ├── Per-device VAD and audio segmentation
+  ├── Local speech-to-text
+  ├── Device-based speaker attribution
+  ├── SQLite + sqlite-vec storage
+  ├── Live dashboard updates
+  ├── Local RAG-based Q&A
+  ├── Structured summarization
+  └── Deterministic DOCX export
+```
+
+## Tech stack
+
+- **Backend:** Python, FastAPI, aiortc
+- **Transport:** WebRTC and WebSockets
+- **Speech-to-text:** MLX Whisper
+- **LLM / summaries / Q&A:** Local MLX language models
+- **Retrieval:** sentence-transformers + sqlite-vec
+- **Database:** SQLite
+- **Document export:** python-docx
+- **Frontend:** Vanilla HTML, CSS, and JavaScript
+
+## Quick start
+
+### Requirements
+
+- Python 3.11–3.13
+- A Mac with Apple Silicon is recommended for the default MLX model stack
+- Phones and laptop connected to the same local Wi-Fi network
+- HTTPS for mobile browser microphone access
+
+### Install
 
 ```sh
 uv venv --python 3.13
-uv pip install -r requirements-dev.txt     # runtime dependencies plus pytest and the aiohttp test client
+uv pip install -r requirements-dev.txt
 ```
 
-## Run
+### Provision local models
 
-Download the speech model once while online (about 1.6 GB); the server never downloads anything and will not start without it:
+Run this once while online:
 
 ```sh
 .venv/bin/python scripts/provision_models.py
+.venv/bin/python scripts/provision_models.py --resource embedding
+.venv/bin/python scripts/provision_models.py --resource reasoning
 ```
 
-To check phones and Wi-Fi without the model, start the server with `--no-stt` (audio is received and counted, not transcribed).
-
-For a zero-install phone run, join the laptop to the hotspot, run the explicit Cloudflare DNS preflight, then start with the publicly trusted hostname and pre-issued full-chain certificate:
+### Run
 
 ```sh
-.venv/bin/python scripts/update_dns.py
-.venv/bin/python -m server.app --cert /outside/repo/fullchain.pem --key /outside/repo/privkey.pem \
-  --public-host convene.example.com --advertise-ip 172.20.10.4
+.venv/bin/python -m server.app
 ```
 
-The preflight is an operator command, not server behavior: it updates the DNS-only Cloudflare A record to the laptop's current hotspot IP. A phone then needs only to join the hotspot, scan the meeting QR, enter a name, and allow microphone access—no profile or CA installation. Weak internet is required for the DNS update and first lookup, but all meeting traffic stays on the local hotspot. See [network and HTTPS](docs/network-and-https.md) and [domain setup](docs/domain-setup.md).
+For the full trusted-host, HTTPS, and hotspot setup, see:
 
-For developer-owned phones, IP + `mkcert` remains available; it requires manually trusting the local CA on each phone and is not the demo path. See [deployment](docs/deployment.md).
+- [Deployment guide](docs/deployment.md)
+- [Network and HTTPS guide](docs/network-and-https.md)
+- [Manual phone test checklist](docs/manual-tests.md)
 
-The terminal logs connection state, audio, and a metrics line every 5 seconds. `https://<laptop-ip>:8443/metrics` returns the same per-device counters as JSON (a debug route, not part of the API contract). `last_audio_age_ms` is time since the last audio frame, **not** one-way latency. The microphone stays active while the join page is open; screen lock and background behavior must be measured on each browser.
+## Privacy and local-first design
 
-Run details, the startup checks, and the database location are in [deployment](docs/deployment.md). The earlier DT-17 `aiohttp` prototype and its optional `STT_COMMAND` command-line transcription were replaced by this server and its speech pipeline, and are recoverable from Git history (commit `d44ba68`).
+Convene is designed for local meetings:
 
-For demo day, use the short [operator flow](tests/manual-test/DEMO_FLOW.md). The complete physical-phone checklist is [here](tests/manual-test/PHYSICAL_PHONE_TESTS.md); it is deliberately separate from synthetic automated tests.
+- Audio stays on the local network.
+- Default transcription, embeddings, retrieval, and reasoning run locally.
+- Cloud services are optional and must be explicitly configured or triggered.
+- Meeting data is stored locally in SQLite.
+- No user account system is required for the demo workflow.
 
-## Data
+## Team
 
-Meetings, devices, participants, utterances and the audit stream are stored in SQLite at `data/convene.db`, with exports under `data/exports/`; both paths come from `config/convene.toml`. `data/` is git-ignored because it will hold private transcripts. Never commit it or paste its contents into logs.
+**The Mentalist**
 
-## Test
+- Aaditya Sinha — Team Lead, architecture, engineering, product direction, and presentation
+- Add team members and contributions here
 
-```sh
-.venv/bin/python -m pytest tests -q
-```
+## Documentation
 
-Tests run offline with no phones, certificates, or model weights. Tests that need the real speech model are marked `model` and skipped by default; run them on the reference laptop with `.venv/bin/python -m pytest tests -m model`.
+The project documentation covers the architecture, API contracts, model choices, deployment, testing, demo flow, and technical decisions.
 
-With the model loaded, each phone's speech is printed on the server terminal as `STT [Name] #n ...` (one line per stretch of speech; `log_transcripts = false` in `config/convene.toml` turns it off). Per-phone counters are at `GET /metrics`.
+Start here:
 
-**What to check by hand, step by step, with real phones:** [`docs/manual-tests.md`](docs/manual-tests.md).
+- [Project context](docs/project-context.md)
+- [Architecture](docs/architecture.md)
+- [API reference](docs/api.md)
+- [Deployment](docs/deployment.md)
+- [Testing](docs/testing.md)
+- [Demo flow](docs/demo.md)
 
-The default run needs no weights (`tests/js/` runs the join page under `node`). They use synthetic phones over loopback, which show the server's protocol, identity and cleanup code work; they do **not** show browser, Wi-Fi, HTTPS-trust, screen-lock, or latency behavior. Those need real phones: the regression checklist R1 to R9 in `logs/transport.md`.
+## A personal note
+
+Convene is the project I worked on, built from the start with a small idea of how can I transfer audio chunks from a mic to my laptop with as little internet as possible(only DNS resolution) and wirelessly and then it just kept shaping up into what it is today. I wanted to build this because this is a problem many of us face and I decided to put the features I thought I found useful, turns out, the judges found them useful too
+
+This is what the coding was all about, finding solutions to a problem that you face and I believe this is a biggest gift for a coder, the ability to find a solution for any of their problem. 
+
+I know there are online polished alternatives like Otter or Firefly, but they are just that, online, meanwhile Convene with it's mascot(took me a lot of time to design) is offline first 
+
+This project and the presentation planning proved to me that I actually have what it takes, from BGI hackathon 3rd place winner to Sistec 1st place overall winner, this is a milestone for me.
+
+Sistec Innovation Hackathon 3.0 was my first ever hackathon, and now in 4.0, I am the winner of it. I have learned many things in that 1 year and proved that I have what it takes to thrive. 
+
+The best of of it, I never felt the pressure during presentation or project questioning, since I knew how it was built, I knew what was done where because I did it, and I was confident in it. It was fun to even see the judges trying to come up with questions, if any at all. A wonderful time indeed.
+
+To anyone who's reading this, this project is proof that a simple idea, you can make something great, it's not always about how complex your project it, but how useful and easy-to-use it is for the people around you. 
+
+— **Aaditya Sinha**, Team Lead, The Mentalist
